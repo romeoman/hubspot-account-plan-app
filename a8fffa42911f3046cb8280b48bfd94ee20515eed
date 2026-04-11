@@ -1,0 +1,67 @@
+planning/local/SPEC_FOR_AI_PROTOTYPING.md
+  a49c809582dfe624 1-93
+.taskmaster/docs/prd.md
+  a49c809582dfe624 1-441
+planning/local/OFFICE_HOURS_DESIGN_DOC.md
+  a49c809582dfe624 1-269
+planning/local/STACK_HOSTING_AND_TEST_ENV_NOTES.md
+  a49c809582dfe624 1-89
+planning/local/LOCAL_IMPLEMENTATION_PLAN_WITH_AUTOPLAN_REVIEW.md
+  a49c809582dfe624 1-1255
+.gitignore
+  a49c809582dfe624 1-5
+planning/chatprd/REPO_DRAFT_AND_EXECUTION_CHECKLIST.md
+  a49c809582dfe624 1-133
+planning/local/AI_CODING_RULES_AND_STANDARDS.md
+  a49c809582dfe624 1-127
+planning/local/ENGINEERING_REVIEW_TEST_PLAN.md
+  a49c809582dfe624 1-44
+planning/chatprd/SPEC_FOR_AI_PROTOTYPING.md
+  a49c809582dfe624 1-93
+.taskmaster/config.json
+  a49c809582dfe624 1-44
+CLAUDE.md
+  a49c809582dfe624 1-172
+PLANNING_INDEX.md
+  a49c809582dfe624 1-130
+.taskmaster/tasks/tasks.json
+  a49c809582dfe624 1-1123
+planning/chatprd/AI_CODING_RULES_AND_STANDARDS.md
+  a49c809582dfe624 1-127
+planning/chatprd/SECURITY_PERMISSION_GATE.md
+  a49c809582dfe624 1-118
+planning/local/QA_AND_VERIFICATION_PLAN.md
+  a49c809582dfe624 1-232
+planning/local/TASKMASTER_EXECUTION_PRD.md
+  a49c809582dfe624 1-441
+planning/local/SECURITY_PERMISSION_GATE.md
+  a49c809582dfe624 1-118
+planning/local/LOCAL_REPO_DRAFT_AND_CHECKLIST.md
+  a49c809582dfe624 1-205
+planning/chatprd/IMPLEMENTATION_PLAN.md
+  a49c809582dfe624 1-83
+planning/local/DOC_STACK_REVIEW_NOTES.md
+  a49c809582dfe624 1-109
+planning/chatprd/PRODUCT_BRIEF_FOR_AI_DEVELOPMENT.md
+  a49c809582dfe624 1-66
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "a8fffa42911f3046cb8280b48bfd94ee20515eed",
+  "prompts": {
+    "a49c809582dfe624": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b6bd9a18-e8ae-40f1-ae86-d985d8ef02e0",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "romeoman",
+      "messages": [],
+      "total_additions": 5517,
+      "total_deletions": 0,
+      "accepted_lines": 5517,
+      "overriden_lines": 0
+    }
+  }
+}
