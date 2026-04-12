@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "paths": {
+      "@hap/db": ["./packages/db/src"],
+      "@hap/config": ["./packages/config/src"],
+      "@hap/validators": ["./packages/validators/src"]
+    }
+  },
+  "references": [
+    { "path": "./apps/api" },
+    { "path": "./apps/hubspot-extension" },
+    { "path": "./packages/db" },
+    { "path": "./packages/config" },
+    { "path": "./packages/validators" }
+  ],
+  "exclude": ["node_modules", "dist", "build", "coverage"]
+}
