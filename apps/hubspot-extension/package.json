@@ -1,0 +1,22 @@
+{
+  "name": "@hap/hubspot-extension",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "echo 'Use hs project dev for local HubSpot extension development'",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@hap/config": "workspace:*",
+    "@hap/validators": "workspace:*",
+    "@hubspot/ui-extensions": "latest",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.8.0"
+  }
+}
