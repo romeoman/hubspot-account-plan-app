@@ -1,5 +1,77 @@
-.DS_Store
+# Dependencies
 node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Environment variables
 .env
 .env.*
 !.env.example
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
+*.swp
+*.swo
+*~
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Test coverage
+coverage/
+.nyc_output/
+*.lcov
+
+# Runtime
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Package output
+*.tgz
+
+# Cache
+.cache/
+.turbo/
+.parcel-cache/
+
+# Docker
+docker-data/
+
+# Supabase
+supabase/.branches
+supabase/.temp
+
+# HubSpot
+.hubspot/
+
+# Claude Code
+.claude/*
+!.claude/settings.json
+!.claude/scripts/
+!.claude/skills/
+
+# Taskmaster local state (keep config and docs)
+.taskmaster/tasks/
+
+# Temporary
+*.tmp
+*.temp
