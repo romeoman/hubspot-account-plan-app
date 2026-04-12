@@ -11,7 +11,7 @@ describe("API health endpoint", () => {
     const { default: app } = await import("./index");
     const res = await app.request("/health");
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.status).toBe("ok");
     expect(body.timestamp).toBeDefined();
   });

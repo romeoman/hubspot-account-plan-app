@@ -14,19 +14,18 @@
     "declarationMap": true,
     "sourceMap": true,
     "noUncheckedIndexedAccess": true,
-    "noEmit": true,
     "paths": {
       "@hap/db": ["./packages/db/src"],
       "@hap/config": ["./packages/config/src"],
       "@hap/validators": ["./packages/validators/src"]
     }
   },
+  "files": [],
   "references": [
     { "path": "./apps/api" },
     { "path": "./apps/hubspot-extension" },
     { "path": "./packages/db" },
     { "path": "./packages/config" },
     { "path": "./packages/validators" }
-  ],
-  "exclude": ["node_modules", "dist", "build", "coverage"]
+  ]
 }

@@ -1,5 +1,4 @@
-import { Text } from "@hubspot/ui-extensions";
-import { hubspot } from "@hubspot/ui-extensions";
+import { hubspot, Text } from "@hubspot/ui-extensions";
 
 /**
  * HubSpot CRM Record Tab Extension
@@ -8,9 +7,7 @@ import { hubspot } from "@hubspot/ui-extensions";
  * Uses hubspot.extend() as required by HubSpot UI Extensions SDK.
  * The real implementation will use context hooks for company record data.
  */
-hubspot.extend<"crm.record.tab">(({ context }) => (
-  <Extension context={context} />
-));
+hubspot.extend<"crm.record.tab">(({ context }) => <Extension context={context} />);
 
 const Extension = ({ context }: { context: any }) => {
   return <Text>Signal-First Account Workspace — Loading</Text>;
