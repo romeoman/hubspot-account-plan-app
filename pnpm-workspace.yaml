@@ -1,0 +1,9 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# pnpm 10 blocks lifecycle scripts by default for security.
+# Explicitly allow packages that need postinstall/build scripts.
+onlyBuiltDependencies:
+  - "@biomejs/biome"
+  - "esbuild"

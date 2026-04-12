@@ -1,0 +1,36 @@
+{
+  "name": "hubspot-account-plan-app",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter ./apps/* run dev",
+    "dev:api": "pnpm --filter @hap/api run dev",
+    "dev:extension": "pnpm --filter @hap/hubspot-extension run dev",
+    "build": "pnpm --filter ./apps/* run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "db:generate": "pnpm --filter @hap/db run generate",
+    "db:migrate": "pnpm --filter @hap/db run migrate",
+    "db:studio": "pnpm --filter @hap/db run studio",
+    "typecheck": "tsc --build",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.0",
+    "husky": "^9.1.0",
+    "lint-staged": "^16.0.0",
+    "typescript": "^5.8.0",
+    "vitest": "^4.0.0"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,json,css,md}": [
+      "biome check --write"
+    ]
+  }
+}
