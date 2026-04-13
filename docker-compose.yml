@@ -4,7 +4,7 @@ services:
     container_name: hap-postgres
     restart: unless-stopped
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-hap}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hap_local_dev}
