@@ -1,0 +1,19 @@
+#!/bin/sh
+
+# Auto-push to remote after every commit
+# Skip if: no remote tracking branch, rebase in progress, or explicit opt-out
+
+# Opt out with: SKIP_AUTO_PUSH=1 git commit ...
+[ "$SKIP_AUTO_PUSH" = "1" ] && exit 0
+
+# Skip during rebase/merge (automated commits shouldn't push mid-operation)
+[ -d "$(git rev-parse --git-dir)/rebase-merge" ] && exit 0
+[ -d "$(git rev-parse --git-dir)/rebase-apply" ] && exit 0
+[ -f "$(git rev-parse --git-dir)/MERGE_HEAD" ] && exit 0
+
+# Only push if the current branch has an upstream
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+UPSTREAM=$(git rev-parse --abbrev-ref "@{upstream}" 2>/dev/null) || exit 0
+
+echo "[auto-push] Pushing $BRANCH to origin..."
+git push origin "$BRANCH" --quiet &
