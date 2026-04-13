@@ -245,27 +245,21 @@ TDD is mandatory — failing test first, then implementation.
 
 Commit after each logical unit of work. The `.husky/post-commit` hook auto-pushes to origin. Do not wait for the user to ask for commits.
 
-### 4. Code review before merge
+### 4. PR to main
 
-Use `superpowers:requesting-code-review` to dispatch a code-reviewer subagent before creating a PR. Fix any Critical or Important issues before proceeding.
+Use `superpowers:finishing-a-development-branch` to create a PR from the feature branch to main. Include test results in the PR description. Code review is handled automatically on GitHub (CodeRabbit, etc.).
 
-### 5. PR to main
+### 5. Merge + cleanup
 
-Use `superpowers:finishing-a-development-branch` to create a PR from the feature branch to main. Include test results and review summary in the PR description.
-
-### 6. Merge + cleanup
-
-After PR review passes, merge to main and clean up the worktree.
+After GitHub automated review passes, merge to main and clean up the worktree.
 
 ### Workflow slash commands (in order)
 
-| Step            | Skill                                        | When                 |
-| --------------- | -------------------------------------------- | -------------------- |
-| Start           | `superpowers:using-git-worktrees`            | Before any task      |
-| Implement       | `superpowers:subagent-driven-development`    | During task          |
-| Review          | `superpowers:requesting-code-review`         | After implementation |
-| Handle feedback | `superpowers:receiving-code-review`          | If review has issues |
-| Finish          | `superpowers:finishing-a-development-branch` | After review passes  |
+| Step      | Skill                                        | When                 |
+| --------- | -------------------------------------------- | -------------------- |
+| Start     | `superpowers:using-git-worktrees`            | Before any task      |
+| Implement | `superpowers:subagent-driven-development`    | During task          |
+| Finish    | `superpowers:finishing-a-development-branch` | After all tests pass |
 
 ## When unsure
 
