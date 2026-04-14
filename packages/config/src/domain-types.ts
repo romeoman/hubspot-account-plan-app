@@ -1,0 +1,149 @@
+/**
+ * Domain types for the HubSpot Signal-First Account Workspace.
+ *
+ * These types represent the SHAPE OF THE WIRE between API, domain, and
+ * extension. They intentionally differ from `@hap/db` row types:
+ * - camelCase field names
+ * - `Date` objects (not ISO strings or pg timestamp values)
+ * - parsed jsonb shapes
+ *
+ * Map between DB row types and these domain types in mapper modules; do not
+ * re-export DB row types as the public domain model.
+ */
+
+/**
+ * Top-level eligibility for an account's snapshot.
+ *
+ * - `eligible`: the tenant has permission and the account qualifies
+ * - `ineligible`: account does not qualify (e.g. `hs_is_target_account` false)
+ * - `unconfigured`: tenant has not finished provider/threshold setup
+ */
+export type EligibilityState = "eligible" | "ineligible" | "unconfigured";
+
+/**
+ * Orthogonal render flags that influence how the extension surfaces a snapshot.
+ *
+ * Multiple flags can be true simultaneously (e.g. `stale` + `lowConfidence`),
+ * but fixtures are crafted so each QA fixture has a DISTINCT combination.
+ *
+ * - `stale`: evidence is older than `ThresholdConfig.freshnessMaxDays`
+ * - `degraded`: one or more source adapters failed or returned partial data
+ * - `lowConfidence`: `trustScore` below configured threshold
+ * - `ineligible`: mirrors `EligibilityState === 'ineligible'` for UI convenience
+ * - `restricted`: contains restricted evidence that must NEVER be shown or summarized
+ * - `empty`: no credible reason to contact this account right now
+ */
+export type StateFlags = {
+  stale: boolean;
+  degraded: boolean;
+  lowConfidence: boolean;
+  ineligible: boolean;
+  restricted: boolean;
+  empty: boolean;
+};
+
+/**
+ * Single piece of evidence supporting a reason-to-contact.
+ *
+ * `isRestricted=true` evidence must be filtered out before any UI rendering
+ * or LLM summarization.
+ */
+export type Evidence = {
+  id: string;
+  tenantId: string;
+  source: string;
+  timestamp: Date;
+  /** 0..1 confidence score from the source adapter. */
+  confidence: number;
+  content: string;
+  isRestricted: boolean;
+};
+
+/**
+ * Contact person associated with the account snapshot.
+ *
+ * V1 supports 0..3 people per snapshot. Never fabricate filler contacts.
+ */
+export type Person = {
+  id: string;
+  name: string;
+  title?: string;
+  reasonToTalk: string;
+  /** IDs of `Evidence` rows that support this person's reason-to-talk. */
+  evidenceRefs: string[];
+};
+
+/**
+ * Shape of a rendered account snapshot for a given tenant + company.
+ *
+ * A `Snapshot` is the primary wire-level contract between API and extension.
+ */
+export type Snapshot = {
+  tenantId: string;
+  companyId: string;
+  eligibilityState: EligibilityState;
+  reasonToContact?: string;
+  people: Person[];
+  evidence: Evidence[];
+  stateFlags: StateFlags;
+  /** 0..1 aggregate trust score; undefined when not computed. */
+  trustScore?: number;
+  createdAt: Date;
+};
+
+/**
+ * Threshold configuration applied per tenant/provider.
+ */
+export type ThresholdConfig = {
+  freshnessMaxDays: number;
+  /** 0..1 minimum confidence for evidence to count toward eligibility. */
+  minConfidence: number;
+};
+
+/**
+ * Supported LLM provider families. Customers bring their own API keys.
+ */
+export type LlmProviderType = "anthropic" | "openai" | "gemini" | "openrouter" | "custom";
+
+/**
+ * Tenant-specific LLM provider configuration.
+ *
+ * `apiKeyRef` is an OPAQUE REFERENCE resolved via the encryption layer.
+ * It is never a plaintext key.
+ */
+export type LlmProviderConfig = {
+  provider: LlmProviderType;
+  model: string;
+  apiKeyRef: string;
+  /** Required for `custom` OpenAI-compatible endpoints. */
+  endpointUrl?: string;
+};
+
+/**
+ * Non-LLM provider configuration (e.g. Exa, HubSpot API surfaces, enrichment).
+ */
+export type ProviderConfig = {
+  name: string;
+  enabled: boolean;
+  apiKeyRef: string;
+  thresholds: ThresholdConfig;
+};
+
+/**
+ * Aggregated tenant settings: defaults + provider list.
+ */
+export type TenantSettings = {
+  defaultLlmProvider?: LlmProviderType;
+  thresholds: ThresholdConfig;
+  providers: ProviderConfig[];
+};
+
+/**
+ * Tenant configuration surface. `settings` is optional so legacy callers
+ * that only need `{ tenantId, hubspotPortalId }` continue to compile.
+ */
+export type TenantConfig = {
+  tenantId: string;
+  hubspotPortalId: string;
+  settings?: TenantSettings;
+};
