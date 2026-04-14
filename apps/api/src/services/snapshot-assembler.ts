@@ -35,6 +35,7 @@ import type { ProviderAdapter } from "../adapters/provider-adapter";
 import { type CompanyPropertyFetcher, checkEligibility } from "./eligibility";
 import { type ContactFetcher, fetchContacts, rankContacts, selectPeople } from "./people-selector";
 import { extractDominantSignal, generateReasonText } from "./reason-generator";
+import { createTrustEvaluator, type TrustEvaluator } from "./trust";
 
 export type AssembleSnapshotDeps = {
   db: Database;
@@ -43,6 +44,11 @@ export type AssembleSnapshotDeps = {
   propertyFetcher: CompanyPropertyFetcher;
   contactFetcher: ContactFetcher;
   thresholds: ThresholdConfig;
+  /**
+   * Optional trust evaluator. Defaults to `createTrustEvaluator()` when omitted;
+   * tests may inject a stub to exercise specific suppression paths.
+   */
+  trustEvaluator?: TrustEvaluator;
   /** Optional clock override for deterministic tests. */
   now?: Date;
 };
@@ -91,21 +97,42 @@ export async function assembleSnapshot(
 
   // 2. Fetch signals (eligible path).
   let signals: Evidence[] = [];
-  let degraded = false;
+  let transportDegraded = false;
   try {
     signals = await deps.providerAdapter.fetchSignals(tenantId, companyId);
   } catch {
     // Transport error → mark degraded; continue with empty signal set.
-    degraded = true;
+    transportDegraded = true;
     signals = [];
   }
 
-  // TODO Step 9: applySuppression(signals) — trust scoring + restricted filter.
-  // The input/output shape of this seam is `Evidence[] -> Evidence[]` plus a
-  // boolean `restricted` flag the assembler will read before generating text.
+  // 3. Trust + suppression.
+  //    - restricted rows are stripped before any downstream stage sees them.
+  //    - stale / low-confidence / degraded-source flags flow into final flags.
+  const trust = deps.trustEvaluator ?? createTrustEvaluator();
+  const suppression = trust.applySuppression(signals, deps.thresholds, now);
 
-  // 3. Dominant signal extraction.
-  const dominant = extractDominantSignal(signals, deps.thresholds, now);
+  // Zero-leak: if ANY restricted evidence was present, the response must not
+  // contain any evidence, people, reason, or trustScore derived from ANY
+  // source in this request. The only signal surfaced is `restricted=true`.
+  if (suppression.stateFlags.restricted) {
+    return createSnapshot(tenantId, {
+      companyId,
+      eligibilityState: "eligible",
+      reasonToContact: undefined,
+      people: [],
+      evidence: [],
+      stateFlags: createStateFlags({ restricted: true }),
+      trustScore: undefined,
+      createdAt: now,
+    });
+  }
+
+  // Merge transport-level degraded flag with source-validation degraded flag.
+  const degraded = suppression.stateFlags.degraded || transportDegraded;
+
+  // 4. Dominant signal extraction (from filtered evidence only).
+  const dominant = extractDominantSignal(suppression.filteredEvidence, deps.thresholds, now);
 
   if (!dominant) {
     return createSnapshot(tenantId, {
@@ -113,16 +140,21 @@ export async function assembleSnapshot(
       eligibilityState: "eligible",
       reasonToContact: undefined,
       people: [],
-      evidence: [],
-      stateFlags: createStateFlags({ empty: true, degraded }),
+      evidence: suppression.filteredEvidence,
+      stateFlags: createStateFlags({
+        empty: true,
+        degraded,
+        stale: suppression.stateFlags.stale,
+        lowConfidence: suppression.stateFlags.lowConfidence,
+      }),
       createdAt: now,
     });
   }
 
-  // 4. Reason text.
+  // 5. Reason text.
   const reasonToContact = await generateReasonText(dominant, deps.llmAdapter);
 
-  // 5. Contacts → ranked → selected.
+  // 6. Contacts → ranked → selected.
   const contacts = await fetchContacts({ fetcher: deps.contactFetcher }, { tenantId, companyId });
   const ranked = rankContacts(contacts, dominant);
   const people: Person[] = selectPeople(ranked, dominant);
@@ -132,8 +164,13 @@ export async function assembleSnapshot(
     eligibilityState: "eligible",
     reasonToContact,
     people,
-    evidence: signals,
-    stateFlags: createStateFlags({ degraded }),
+    evidence: suppression.filteredEvidence,
+    stateFlags: createStateFlags({
+      degraded,
+      stale: suppression.stateFlags.stale,
+      lowConfidence: suppression.stateFlags.lowConfidence,
+      empty: false,
+    }),
     createdAt: now,
   });
 }
