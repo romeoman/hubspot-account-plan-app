@@ -13,6 +13,7 @@
     "@hap/db": "workspace:*",
     "@hap/validators": "workspace:*",
     "@hono/node-server": "^1.14.0",
+    "drizzle-orm": "^0.45.0",
     "hono": "^4.7.0"
   },
   "devDependencies": {

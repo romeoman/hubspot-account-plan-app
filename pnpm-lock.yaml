@@ -38,6 +38,9 @@ importers:
       '@hono/node-server':
         specifier: ^1.14.0
         version: 1.19.13(hono@4.12.12)
+      drizzle-orm:
+        specifier: ^0.45.0
+        version: 0.45.2(postgres@3.4.9)
       hono:
         specifier: ^4.7.0
         version: 4.12.12

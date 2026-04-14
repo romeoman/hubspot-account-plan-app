@@ -4,6 +4,10 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
+    // Multiple test files touch the shared Postgres `tenants` table
+    // (packages/db schema tests, apps/api tenant middleware tests).
+    // Run test files sequentially to prevent cross-file DELETE races.
+    fileParallelism: false,
     include: ["**/*.test.ts", "**/*.test.tsx"],
     exclude: [
       "**/node_modules/**",
