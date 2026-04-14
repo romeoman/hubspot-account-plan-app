@@ -1,14 +1,27 @@
-import { hubspot, Text } from "@hubspot/ui-extensions";
+import { type ExtensionPointApiContext, hubspot, Text } from "@hubspot/ui-extensions";
 
 /**
- * HubSpot CRM Record Tab Extension
- * Renders in crm.record.tab on company records.
+ * Props accepted by the root extension component.
  *
- * Uses hubspot.extend() as required by HubSpot UI Extensions SDK.
- * The real implementation will use context hooks for company record data.
+ * The context payload is typed via the HubSpot SDK so downstream code can
+ * safely access `context.crm.objectId`, `context.crm.objectType`, `context.user`, etc.
  */
-hubspot.extend<"crm.record.tab">(({ context }) => <Extension context={context} />);
+type ExtensionProps = {
+  context: ExtensionPointApiContext<"crm.record.tab">;
+};
 
-const Extension = ({ context }: { context: any }) => {
+/**
+ * HubSpot CRM Record Tab Extension root component.
+ *
+ * Exported so tests can render it in isolation via `createRenderer('crm.record.tab')`
+ * without invoking the top-level `hubspot.extend()` registration.
+ */
+export const Extension = (_props: ExtensionProps) => {
   return <Text>Signal-First Account Workspace — Loading</Text>;
 };
+
+/**
+ * Entry point registration. MUST use `hubspot.extend()` — not `export default`.
+ * See CLAUDE.md → "HubSpot UI Extensions patterns".
+ */
+hubspot.extend<"crm.record.tab">(({ context }) => <Extension context={context} />);
