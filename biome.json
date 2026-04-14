@@ -35,7 +35,9 @@
       "!**/build",
       "!**/coverage",
       "!**/.next",
-      "!**/drizzle"
+      "!**/drizzle",
+      "!**/.worktrees",
+      "!**/.taskmaster"
     ]
   }
 }
