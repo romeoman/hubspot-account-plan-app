@@ -189,21 +189,21 @@ Do not introduce V1 scope creep into:
 
 Use these exact ranges. Do not downgrade or guess. Verified via npm registry, Context7, Perplexity, and Exa.
 
-| Package                | Range                      | Critical notes                                                                                   |
-| ---------------------- | -------------------------- | ------------------------------------------------------------------------------------------------ |
-| pnpm                   | `10.33.0` (packageManager) | v10 blocks lifecycle scripts by default. `onlyBuiltDependencies` required in pnpm-workspace.yaml |
-| TypeScript             | `^5.8.0`                   | 6.0 exists but bleeding edge. 5.8 supports Node 22 `nodenext`                                    |
-| Vitest                 | `^4.0.0`                   | `coverage.all` removed. Must add explicit `exclude` patterns for dist/build/etc                  |
-| Biome                  | `^2.4.0`                   | v2 moved `organizeImports` to `assist.actions.source`. Schema URL: `2.0.0/schema.json`           |
-| Drizzle ORM            | `^0.45.0`                  | v1 beta available with `pgTable.withRLS()` — not used in V1 bootstrap                            |
-| Drizzle Kit            | `^0.31.0`                  | Aligns with ORM 0.45                                                                             |
-| Zod                    | `^4.0.0`                   | v4: `z.record()` needs 2 args, `ctx.path` removed, `ZodType` generics simplified                 |
-| lint-staged            | `^16.0.0`                  | Requires Node 20.18+. Pinned deps for security (chalk/debug removed)                             |
-| Hono                   | `^4.7.0`                   | Current 4.9.4. Use `app.request()` for testing (not HTTP server)                                 |
-| @hono/node-server      | `^1.14.0`                  | Current 1.19.11. Guard `serve()` with `NODE_ENV !== "test"` for TDD                              |
-| postgres (postgres.js) | `^3.4.0`                   | Use with `drizzle-orm/postgres-js` driver                                                        |
-| React                  | `^19.0.0`                  | Global JSX namespace removed. Requires `"jsx": "react-jsx"` in tsconfig                          |
-| Node.js                | 22                         | Maintenance LTS                                                                                  |
+| Package                | Range                      | Critical notes                                                                                                   |
+| ---------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| pnpm                   | `10.33.0` (packageManager) | v10 blocks lifecycle scripts by default. `onlyBuiltDependencies` required in pnpm-workspace.yaml                 |
+| TypeScript             | `^5.8.0`                   | 6.0 exists but bleeding edge. 5.8 supports Node 22 `nodenext`                                                    |
+| Vitest                 | `^4.0.0`                   | `coverage.all` removed. Must add explicit `exclude` patterns for dist/build/etc                                  |
+| Biome                  | `^2.4.0`                   | v2 moved `organizeImports` to `assist.actions.source`. Schema URL: `2.0.0/schema.json`                           |
+| Drizzle ORM            | `^0.45.0`                  | v1 beta available with `pgTable.withRLS()` — not used in V1 bootstrap                                            |
+| Drizzle Kit            | `^0.31.0`                  | Aligns with ORM 0.45                                                                                             |
+| Zod                    | `^4.0.0`                   | v4: `z.record()` needs 2 args, `ctx.path` removed, `ZodType` generics simplified                                 |
+| lint-staged            | `^16.0.0`                  | Requires Node 20.18+. Pinned deps for security (chalk/debug removed)                                             |
+| Hono                   | `^4.7.0`                   | Current 4.9.4. Use `app.request()` for testing (not HTTP server)                                                 |
+| @hono/node-server      | `^1.14.0`                  | Current 1.19.11. Guard `serve()` with `NODE_ENV !== "test"` for TDD                                              |
+| postgres (postgres.js) | `^3.4.0`                   | Use with `drizzle-orm/postgres-js` driver                                                                        |
+| React                  | `^18.3.1`                  | Pinned to 18 because `@hubspot/ui-extensions` peer-requires React 18. Revisit when HubSpot SDK supports React 19 |
+| Node.js                | 22                         | Maintenance LTS                                                                                                  |
 
 ## HubSpot UI Extensions patterns
 
