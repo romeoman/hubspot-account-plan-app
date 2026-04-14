@@ -1,6 +1,11 @@
-import { fixtureEligibleStrong } from "@hap/config";
+import { createDatabase, type Database } from "@hap/db";
 import { Hono } from "hono";
+import { createMockLlmAdapter } from "../adapters/mock-llm-adapter";
+import { createMockSignalAdapter } from "../adapters/mock-signal-adapter";
 import type { TenantVariables } from "../middleware/tenant";
+import type { CompanyPropertyFetcher } from "../services/eligibility";
+import type { ContactFetcher } from "../services/people-selector";
+import { assembleSnapshot } from "../services/snapshot-assembler";
 
 type Vars = TenantVariables & { portalId?: string };
 
@@ -13,7 +18,6 @@ function isValidCompanyId(raw: string): boolean {
   const trimmed = raw.trim();
   if (trimmed.length === 0) return false;
   if (trimmed.length > 128) return false;
-  // Allow URL-safe characters only — block control chars and path traversal.
   return /^[A-Za-z0-9._-]+$/.test(trimmed);
 }
 
@@ -22,16 +26,42 @@ function isValidCompanyId(raw: string): boolean {
  *
  * Mounted under `/api/snapshot` in `index.ts`. Full route: `POST /api/snapshot/:companyId`.
  *
- * V1 returns a fixture Snapshot (`fixtureEligibleStrong`) wired with the
- * middleware-resolved `tenantId`. The real assembler (eligibility + trust +
- * people selection + reason generation) lands in Step 8.
+ * V1 pipeline (Step 8):
+ *   eligibility gate → mock signal adapter → dominant signal → reason text
+ *   → mock contact fetcher → ranked people → assembled Snapshot.
  *
  * Tenant safety: `tenantId` is ALWAYS sourced from `c.get('tenantId')` set by
- * the upstream tenant middleware. Body-provided tenantIds are ignored.
+ * the upstream tenant middleware. Body-provided tenantIds are ignored and the
+ * assembler re-stamps evidence with the middleware-resolved tenantId.
  *
- * @todo Step 8: replace `fixtureEligibleStrong` with real snapshot assembler.
+ * @todo Step 9: read per-tenant thresholds from provider_config and pass
+ * through trust + suppression stage.
  */
 export const snapshotRoutes = new Hono<{ Variables: Vars }>();
+
+const DEFAULT_THRESHOLDS = { freshnessMaxDays: 30, minConfidence: 0.5 };
+
+/**
+ * V1 fixture property fetcher — reports any company as an eligible target
+ * account. Step 9 replaces this with a real HubSpot CRM property fetch.
+ */
+const fixturePropertyFetcher: CompanyPropertyFetcher = async () => true;
+
+/**
+ * V1 fixture contact fetcher — returns three ICP-shaped contacts for any
+ * company. Step 9+ replace with a real HubSpot contact association fetch.
+ */
+const fixtureContactFetcher: ContactFetcher = async () => [
+  { id: "contact-1", name: "Alex Champion", title: "VP Engineering" },
+  { id: "contact-2", name: "Jordan Decider", title: "CTO" },
+  { id: "contact-3", name: "Sam Influencer", title: "Head of Platform" },
+];
+
+/** Lazy DB handle so DATABASE_URL changes between tests are respected. */
+function getDb(): Database {
+  const url = process.env.DATABASE_URL ?? "postgresql://hap:hap_local_dev@localhost:5433/hap_dev";
+  return createDatabase(url);
+}
 
 snapshotRoutes.post("/:companyId", async (c) => {
   const rawCompanyId = c.req.param("companyId") ?? "";
@@ -53,10 +83,17 @@ snapshotRoutes.post("/:companyId", async (c) => {
   }
 
   try {
-    const snapshot = fixtureEligibleStrong(tenantId);
-    // Override companyId with the request's companyId so the response reflects
-    // what was asked for (fixture uses a canned id).
-    snapshot.companyId = decoded;
+    const snapshot = await assembleSnapshot(
+      {
+        db: getDb(),
+        providerAdapter: createMockSignalAdapter({ fixture: "strong" }),
+        llmAdapter: createMockLlmAdapter({ style: "short" }),
+        propertyFetcher: fixturePropertyFetcher,
+        contactFetcher: fixtureContactFetcher,
+        thresholds: DEFAULT_THRESHOLDS,
+      },
+      { tenantId, companyId: decoded },
+    );
     return c.json(snapshot, 200);
   } catch (_err) {
     return c.json({ error: "internal_error" }, 500);
