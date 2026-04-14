@@ -36,8 +36,8 @@
       "!**/coverage",
       "!**/.next",
       "!**/drizzle",
-      "!**/.worktrees",
-      "!**/.taskmaster"
+      "!.worktrees",
+      "!.taskmaster"
     ]
   }
 }
