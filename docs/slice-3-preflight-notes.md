@@ -131,7 +131,26 @@ Re-verified: the canonicalization, header name, and 5-minute freshness window Sl
   ```
 - Response: `{ candidates: [{ content: { role: "model", parts: [{ text: "..." }] } }], usageMetadata: {...} }`
 
-**Slice 3 decision:** default model `gemini-2.5-flash` (current stable, fast, low cost). `maxOutputTokens` same budget as Anthropic.
+**Current Gemini text-model inventory (verified 2026-04-15 via Context7):**
+
+| Model ID                        | Tier           | Notes                                                                              |
+| ------------------------------- | -------------- | ---------------------------------------------------------------------------------- |
+| `gemini-3.1-flash-lite-preview` | 3.1 Flash      | Text Flash in the 3.1 family. NO plain `gemini-3.1-flash` exists in the text line. |
+| `gemini-3.1-pro-preview`        | 3.1 Pro        | Highest-quality 3.1 preview                                                        |
+| `gemini-3-flash-preview`        | 3.0 Flash      | Dec 2025 preview, 1,048,576 input / 65,536 output tokens                           |
+| `gemini-2.5-pro`                | 2.5 Pro        | Production stable                                                                  |
+| `gemini-2.5-flash`              | 2.5 Flash      | Production stable baseline                                                         |
+| `gemini-2.5-flash-lite`         | 2.5 Flash-lite | Cheapest stable                                                                    |
+
+`gemini-3.1-flash-image-preview` and `gemini-3.1-flash-live-preview` are image/audio variants — NOT valid defaults for the text-generation next-move adapter.
+
+**Slice 3 decisions:**
+
+- **Default when a tenant hasn't set `llm_config.model_name`:** `gemini-3.1-flash-lite-preview` (Romeo's "Gemini 3.1 Flash" intent; cheapest 3.1 Flash text tier).
+- **Per-tenant model selection is ALREADY supported** by the Slice 1/2 schema (`llm_config.model_name` is a `text` column, written per tenant). The adapter reads it at request time — no hardcoding.
+- **Anthropic default when unset:** `claude-sonnet-4-6`. Per-tenant override via the same `model_name` column.
+- **`generationConfig` defaults:** `maxOutputTokens` ≈ `MAX_NEXT_MOVE_CHARS / 4` rounded up (~70 tokens); `temperature` omitted (model default). Tenants override via `llm_config.settings` jsonb.
+- **Settings / model-picker UI:** OUT OF SCOPE for Slice 3. Slice 3 delivers the backend adapter code that honors whatever `model_name` the DB row carries; a settings UI ships in Slice 4.
 
 ## 8. Environment variables added/removed in Slice 3
 
