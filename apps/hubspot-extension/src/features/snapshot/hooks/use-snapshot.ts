@@ -1,7 +1,8 @@
 import type { Snapshot } from "@hap/config";
 import { eligibilityStateSchema, stateFlagsSchema } from "@hap/validators";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
+import { createHubSpotApiFetcher } from "./api-fetcher";
 
 /**
  * Wire-shape schema for `Snapshot` responses.
@@ -60,20 +61,21 @@ export type SnapshotFetcher = (companyId: string) => Promise<unknown>;
 export type UseSnapshotArgs = {
   companyId: string;
   /**
-   * Transport. REQUIRED — there is no working default in V1 because the
-   * production transport needs a HubSpot-aware fetcher with bearer token
-   * and base URL resolution that is not yet wired (see Slice 2).
+   * Transport. OPTIONAL — when omitted, defaults to the real
+   * `createHubSpotApiFetcher()` which wraps `hubspot.fetch()` and hits
+   * `POST {DEFAULT_API_BASE_URL}/api/snapshot/:companyId`. HubSpot signs
+   * the outbound request server-side; no client-side auth headers are
+   * added or required.
    *
-   * Tests pass a stub; the extension entry point must pass an explicit
-   * fetcher (or one that throws with a clear "not yet wired" message)
-   * so a missing transport surfaces as a loud UI error rather than a
-   * silent 401 against the real API.
+   * Tests and Slice 1 fixture previews still inject a custom fetcher to
+   * return canned snapshots without touching the network.
    *
-   * @todo Slice 2: provide a `createHubSpotFetcher()` factory that reads
-   *   base URL + bearer token from tenant config and sets `x-portal-id`,
-   *   then thread it through the extension entry point.
+   * @todo Slice 3: card-side bundling of this hook into
+   *   `apps/hubspot-project`'s card output. The HubSpot CLI bundler does
+   *   NOT resolve pnpm workspace deps, so shipping this module requires
+   *   a pre-bundle / inline step before `hs project upload` succeeds.
    */
-  fetcher: SnapshotFetcher;
+  fetcher?: SnapshotFetcher;
 };
 
 export type UseSnapshotState = {
@@ -120,6 +122,13 @@ export function useSnapshot({ companyId, fetcher }: UseSnapshotArgs): UseSnapsho
   const [error, setError] = useState<Error | undefined>(undefined);
   const [refetchTick, setRefetchTick] = useState<number>(0);
 
+  // Memoize the default production fetcher so the effect below doesn't see
+  // a new function identity on every render (which would re-fire the fetch
+  // in an infinite loop). When a caller injects a fetcher, we use theirs
+  // as-is and trust them to keep its identity stable themselves.
+  const defaultFetcher = useMemo<SnapshotFetcher>(() => createHubSpotApiFetcher(), []);
+  const activeFetcher: SnapshotFetcher = fetcher ?? defaultFetcher;
+
   // `refetchTick` is an intentional escape hatch that re-runs the effect
   // when the caller invokes `refetch()`. Biome cannot infer this intent.
   // biome-ignore lint/correctness/useExhaustiveDependencies: refetchTick is the refetch trigger
@@ -140,7 +149,7 @@ export function useSnapshot({ companyId, fetcher }: UseSnapshotArgs): UseSnapsho
     setError(undefined);
     setSnapshot(null);
 
-    fetcher(companyId)
+    activeFetcher(companyId)
       .then((raw) => {
         if (cancelled) return;
         const parsed = wireSnapshotSchema.safeParse(raw);
@@ -161,7 +170,7 @@ export function useSnapshot({ companyId, fetcher }: UseSnapshotArgs): UseSnapsho
     return () => {
       cancelled = true;
     };
-  }, [fetcher, companyId, refetchTick]);
+  }, [activeFetcher, companyId, refetchTick]);
 
   const refetch = useCallback(() => {
     setRefetchTick((tick) => tick + 1);
