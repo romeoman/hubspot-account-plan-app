@@ -1,6 +1,7 @@
-import { Text } from "@hubspot/ui-extensions";
+import { Alert, Text } from "@hubspot/ui-extensions";
 import { createRenderer } from "@hubspot/ui-extensions/testing";
 import { describe, expect, it, vi } from "vitest";
+import { collectAllText } from "./features/snapshot/components/__tests__/test-utils";
 import { Extension } from "./index";
 
 /**
@@ -29,7 +30,7 @@ describe("HubSpot crm.record.tab extension smoke test", () => {
     expect(renderer.find(Text).text).toBe("Loading…");
   });
 
-  it("renders the Loaded placeholder when properties + snapshot resolve", async () => {
+  it("renders the loaded snapshot via SnapshotStateRenderer when properties + snapshot resolve", async () => {
     const renderer = createRenderer("crm.record.tab");
     const fetchCrmObjectProperties = vi.fn(async () => ({
       name: "Acme Inc",
@@ -70,8 +71,82 @@ describe("HubSpot crm.record.tab extension smoke test", () => {
       );
 
       await renderer.waitFor(() => {
-        expect(renderer.find(Text).text).toBe("Loaded");
+        expect(collectAllText(renderer.getRootNode())).toContain("Placeholder reason.");
       });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("renders the restricted empty view when the snapshot is restricted (zero-leak at the extension root)", async () => {
+    const renderer = createRenderer("crm.record.tab");
+    const fetchCrmObjectProperties = vi.fn(async () => ({
+      name: "Acme Inc",
+      domain: "acme.test",
+      hs_is_target_account: "true",
+    }));
+
+    // Booby-trapped restricted snapshot: the wire carries a reason, a person,
+    // and evidence. The UI must drop all three.
+    const restrictedSnapshot = {
+      tenantId: "tenant-1",
+      companyId: String(renderer.mocks.context.crm.objectId),
+      eligibilityState: "eligible" as const,
+      reasonToContact: "SECRET-WIRE-REASON",
+      people: [
+        {
+          id: "p-leak",
+          name: "WIRE-LEAK-NAME",
+          reasonToTalk: "WIRE-LEAK-TALK",
+          evidenceRefs: ["e-leak"],
+        },
+      ],
+      evidence: [
+        {
+          id: "e-leak",
+          tenantId: "tenant-1",
+          source: "WIRE-LEAK-SOURCE",
+          timestamp: "2026-04-01T00:00:00.000Z",
+          confidence: 0.99,
+          content: "WIRE-LEAK-CONTENT",
+          isRestricted: true,
+        },
+      ],
+      stateFlags: {
+        stale: false,
+        degraded: false,
+        lowConfidence: false,
+        ineligible: false,
+        restricted: true,
+        empty: false,
+      },
+      trustScore: 0.99,
+      createdAt: "2026-04-10T12:00:00.000Z",
+    };
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(
+        async () => new Response(JSON.stringify(restrictedSnapshot), { status: 200 }),
+      );
+
+    try {
+      renderer.render(
+        <Extension
+          context={renderer.mocks.context}
+          fetchCrmObjectProperties={fetchCrmObjectProperties}
+        />,
+      );
+
+      await renderer.waitFor(() => {
+        expect(collectAllText(renderer.getRootNode()).toLowerCase()).toContain("no data available");
+      });
+      const out = collectAllText(renderer.getRootNode());
+      expect(out).not.toContain("SECRET-WIRE-REASON");
+      expect(out).not.toContain("WIRE-LEAK-NAME");
+      expect(out).not.toContain("WIRE-LEAK-TALK");
+      expect(out).not.toContain("WIRE-LEAK-SOURCE");
+      expect(out).not.toContain("WIRE-LEAK-CONTENT");
+      expect(renderer.findAll(Alert).length).toBe(0);
     } finally {
       fetchSpy.mockRestore();
     }

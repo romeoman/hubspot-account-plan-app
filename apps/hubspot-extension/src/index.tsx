@@ -4,6 +4,7 @@ import {
   hubspot,
   Text,
 } from "@hubspot/ui-extensions";
+import { SnapshotStateRenderer } from "./features/snapshot/components/snapshot-state-renderer";
 import { useCompanyContext } from "./features/snapshot/hooks/use-company-context";
 import { useSnapshot } from "./features/snapshot/hooks/use-snapshot";
 
@@ -25,10 +26,12 @@ type ExtensionProps = {
 /**
  * HubSpot CRM Record Tab Extension root component.
  *
- * Step 10 wires in the `useCompanyContext` + `useSnapshot` hooks but does not
- * yet render the state-specific UI — that is Step 11. For now the component
- * renders a minimal placeholder per lifecycle state so QA can assert that the
- * wiring is correct end-to-end.
+ * Step 11 wires the hooks' `snapshot` into `SnapshotStateRenderer`, which
+ * selects the correct QA state view (eligible / empty / ineligible /
+ * restricted / unconfigured) and stacks any warning banners
+ * (stale / degraded / low-confidence). Loading and error states remain
+ * simple `Text` placeholders — those are transport-level UI, not
+ * snapshot-render decisions.
  */
 export const Extension = ({ context, fetchCrmObjectProperties }: ExtensionProps) => {
   const company = useCompanyContext(context, fetchCrmObjectProperties);
@@ -53,7 +56,7 @@ export const Extension = ({ context, fetchCrmObjectProperties }: ExtensionProps)
     return <Text>Error</Text>;
   }
 
-  return <Text>Loaded</Text>;
+  return <SnapshotStateRenderer snapshot={snapshotState.snapshot} />;
 };
 
 /**
