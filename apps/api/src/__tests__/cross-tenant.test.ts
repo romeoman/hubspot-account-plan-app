@@ -132,7 +132,7 @@ describe("cross-tenant: DB layer", () => {
       snapshotId: snapA.id,
       source: "hubspot",
       timestamp: new Date(),
-      confidence: "0.9",
+      confidence: 0.9,
       content: "A-only evidence",
       isRestricted: false,
     });
@@ -141,7 +141,7 @@ describe("cross-tenant: DB layer", () => {
       snapshotId: snapB.id,
       source: "hubspot",
       timestamp: new Date(),
-      confidence: "0.9",
+      confidence: 0.9,
       content: "B-only evidence",
       isRestricted: false,
     });
@@ -244,7 +244,8 @@ describe("cross-tenant: eligibility cache", () => {
     const resultA = await checkEligibility(
       {
         db,
-        fetcher: async (_cid, prop) => {
+        fetcher: async (tid, _cid, prop) => {
+          expect(tid).toBe(tA.id);
           expect(prop).toBe(DEFAULT_ELIGIBILITY_PROPERTY);
           return true;
         },
@@ -342,54 +343,64 @@ describe("cross-tenant: config-resolver cache", () => {
 
 describe("cross-tenant: snapshot route", () => {
   it("response tenantId is middleware-resolved and body-spoofed tenantId is ignored", async () => {
+    // Restore env after the test so we don't bleed state into siblings.
+    const prevNode = process.env.NODE_ENV;
+    const prevDb = process.env.DATABASE_URL;
     process.env.NODE_ENV = "test";
     process.env.DATABASE_URL = DATABASE_URL;
+    try {
+      const tA = await seedTenant("A");
+      const tB = await seedTenant("B");
 
-    const tA = await seedTenant("A");
-    const tB = await seedTenant("B");
+      // Fresh module import so env is picked up.
+      const mod = await import("../index");
+      const app = mod.default;
 
-    // Fresh module import so env is picked up.
-    const mod = await import("../index");
-    const app = mod.default;
+      const resA = await app.request("/api/snapshot/co-xyz", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer anything",
+          "x-test-portal-id": tA.hubspotPortalId,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ tenantId: tB.id, companyId: "co-xyz" }),
+      });
+      expect(resA.status).toBe(200);
+      const bodyA = (await resA.json()) as {
+        tenantId: string;
+        evidence: Array<{ tenantId: string }>;
+      };
+      expect(bodyA.tenantId).toBe(tA.id);
+      expect(bodyA.tenantId).not.toBe(tB.id);
+      for (const ev of bodyA.evidence) {
+        expect(ev.tenantId).toBe(tA.id);
+      }
 
-    const resA = await app.request("/api/snapshot/co-xyz", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer anything",
-        "x-test-portal-id": tA.hubspotPortalId,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ tenantId: tB.id, companyId: "co-xyz" }),
-    });
-    expect(resA.status).toBe(200);
-    const bodyA = (await resA.json()) as {
-      tenantId: string;
-      evidence: Array<{ tenantId: string }>;
-    };
-    expect(bodyA.tenantId).toBe(tA.id);
-    expect(bodyA.tenantId).not.toBe(tB.id);
-    for (const ev of bodyA.evidence) {
-      expect(ev.tenantId).toBe(tA.id);
-    }
-
-    // And tenant B gets its own response with B's id — not a cached A result.
-    const resB = await app.request("/api/snapshot/co-xyz", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer anything",
-        "x-test-portal-id": tB.hubspotPortalId,
-        "Content-Type": "application/json",
-      },
-    });
-    expect(resB.status).toBe(200);
-    const bodyB = (await resB.json()) as {
-      tenantId: string;
-      evidence: Array<{ tenantId: string }>;
-    };
-    expect(bodyB.tenantId).toBe(tB.id);
-    expect(bodyB.tenantId).not.toBe(tA.id);
-    for (const ev of bodyB.evidence) {
-      expect(ev.tenantId).toBe(tB.id);
+      // And tenant B gets its own response with B's id — not a cached A result.
+      const resB = await app.request("/api/snapshot/co-xyz", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer anything",
+          "x-test-portal-id": tB.hubspotPortalId,
+          "Content-Type": "application/json",
+        },
+      });
+      expect(resB.status).toBe(200);
+      const bodyB = (await resB.json()) as {
+        tenantId: string;
+        evidence: Array<{ tenantId: string }>;
+      };
+      expect(bodyB.tenantId).toBe(tB.id);
+      expect(bodyB.tenantId).not.toBe(tA.id);
+      for (const ev of bodyB.evidence) {
+        expect(ev.tenantId).toBe(tB.id);
+      }
+    } finally {
+      // Restore original env so sibling test files aren't tainted.
+      if (prevNode === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = prevNode;
+      if (prevDb === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDb;
     }
   });
 });

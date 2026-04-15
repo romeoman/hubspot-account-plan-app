@@ -62,6 +62,9 @@ beforeEach(async () => {
 
 afterAll(async () => {
   clearEligibilityCache();
+  // Drop the last suite's seed rows so a shared local DB doesn't accumulate
+  // state between full-suite runs.
+  await db.delete(tenants).where(like(tenants.hubspotPortalId, `${PORTAL_PREFIX}%`));
 });
 
 describe("checkEligibility", () => {
@@ -75,7 +78,7 @@ describe("checkEligibility", () => {
     );
 
     expect(result).toEqual({ eligible: true, reason: "eligible" });
-    expect(fetcher).toHaveBeenCalledWith("company-1", DEFAULT_ELIGIBILITY_PROPERTY);
+    expect(fetcher).toHaveBeenCalledWith(tenant.id, "company-1", DEFAULT_ELIGIBILITY_PROPERTY);
   });
 
   it("returns eligible for string 'true'", async () => {
@@ -148,7 +151,7 @@ describe("checkEligibility", () => {
     );
 
     expect(result).toEqual({ eligible: true, reason: "eligible" });
-    expect(fetcher).toHaveBeenCalledWith("company-1", "custom_target_flag");
+    expect(fetcher).toHaveBeenCalledWith(tenant.id, "company-1", "custom_target_flag");
   });
 
   it("caches results within TTL — fetcher called once across repeated calls", async () => {

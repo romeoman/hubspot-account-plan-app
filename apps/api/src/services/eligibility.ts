@@ -37,11 +37,20 @@ export type EligibilityResult = {
 /**
  * Injectable property fetcher.
  *
- * Implementations must resolve the value of `propertyName` for `companyId`.
- * They SHOULD return `null`/`undefined` for missing values and MAY throw for
- * transport errors — the service treats both cases as `unconfigured`.
+ * Implementations must resolve the value of `propertyName` for `companyId`
+ * SCOPED TO `tenantId`. The tenantId is required because HubSpot company IDs
+ * are portal-scoped — without it, a shared fetcher has no reliable way to
+ * choose the right portal/token, which is exactly how cross-tenant reads
+ * sneak in.
+ *
+ * Implementations SHOULD return `null`/`undefined` for missing values and MAY
+ * throw for transport errors — the service treats both cases as `unconfigured`.
  */
-export type CompanyPropertyFetcher = (companyId: string, propertyName: string) => Promise<unknown>;
+export type CompanyPropertyFetcher = (
+  tenantId: string,
+  companyId: string,
+  propertyName: string,
+) => Promise<unknown>;
 
 export type CheckEligibilityDeps = {
   db: Database;
@@ -150,7 +159,7 @@ export async function checkEligibility(
 
   let reason: EligibilityReason;
   try {
-    const raw = await fetcher(companyId, propertyName);
+    const raw = await fetcher(tenantId, companyId, propertyName);
     reason = classify(raw);
   } catch {
     // Fail-safe: transport errors never bubble up to callers.
