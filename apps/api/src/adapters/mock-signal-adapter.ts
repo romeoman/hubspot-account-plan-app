@@ -19,7 +19,26 @@ import type { ProviderAdapter } from "./provider-adapter";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export type MockSignalFixture = "strong" | "stale" | "degraded" | "empty";
+export type MockSignalFixture =
+  | "strong"
+  | "stale"
+  | "degraded"
+  | "empty"
+  | "lowconf"
+  | "restricted";
+
+export const MOCK_SIGNAL_FIXTURES: readonly MockSignalFixture[] = [
+  "strong",
+  "stale",
+  "degraded",
+  "empty",
+  "lowconf",
+  "restricted",
+];
+
+export function isMockSignalFixture(v: unknown): v is MockSignalFixture {
+  return typeof v === "string" && (MOCK_SIGNAL_FIXTURES as readonly string[]).includes(v);
+}
 
 export interface MockSignalAdapterOptions {
   fixture?: MockSignalFixture;
@@ -30,6 +49,9 @@ export interface MockSignalAdapterOptions {
  * fixture family. `tenantId` on every returned row is always the caller's
  * tenantId — NEVER the one baked into the fixture factory — so cross-tenant
  * isolation is guaranteed at this boundary.
+ *
+ * Each fixture is designed so the trust evaluator (`services/trust.ts`) sets
+ * the matching `stateFlags.*` when run against `DEFAULT_THRESHOLDS`.
  *
  * Default fixture: `'strong'`.
  */
@@ -52,6 +74,10 @@ export function createMockSignalAdapter(opts: MockSignalAdapterOptions = {}): Pr
           return buildDegraded(tenantId);
         case "strong":
           return buildStrong(tenantId);
+        case "lowconf":
+          return buildLowConf(tenantId);
+        case "restricted":
+          return buildRestricted(tenantId);
       }
     },
   };
@@ -94,12 +120,53 @@ function buildStale(tenantId: string): Evidence[] {
 }
 
 function buildDegraded(tenantId: string): Evidence[] {
+  // Empty source fails trust.ts `validateSource()` (regex requires a leading
+  // alphanumeric), which sets stateFlags.degraded.
   return [
     createEvidence(tenantId, {
       id: "ev-degraded-1",
-      source: "hubspot",
+      source: "",
       confidence: 0.7,
-      content: "Partial data: news adapter timed out.",
+      content: "Partial data: source attribution missing.",
+    }),
+  ];
+}
+
+function buildLowConf(tenantId: string): Evidence[] {
+  // All confidences below DEFAULT_THRESHOLDS.minConfidence (0.5) → trust
+  // evaluator sets stateFlags.lowConfidence.
+  return [
+    createEvidence(tenantId, {
+      id: "ev-lowconf-1",
+      source: "hubspot",
+      confidence: 0.3,
+      content: "Weak engagement signal.",
+    }),
+    createEvidence(tenantId, {
+      id: "ev-lowconf-2",
+      source: "news",
+      confidence: 0.25,
+      content: "Tangential mention in industry blog.",
+    }),
+  ];
+}
+
+function buildRestricted(tenantId: string): Evidence[] {
+  // Mixed: one restricted row triggers the zero-leak short-circuit in the
+  // assembler regardless of any other rows in the batch.
+  return [
+    createEvidence(tenantId, {
+      id: "ev-restricted-1",
+      source: "internal",
+      confidence: 0.95,
+      content: "REDACTED — permission-restricted source.",
+      isRestricted: true,
+    }),
+    createEvidence(tenantId, {
+      id: "ev-restricted-2",
+      source: "hubspot",
+      confidence: 0.88,
+      content: "This row would be visible if not for the restricted sibling.",
     }),
   ];
 }

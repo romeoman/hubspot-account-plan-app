@@ -2,7 +2,11 @@ import type { ThresholdConfig } from "@hap/config";
 import { createDatabase, type Database } from "@hap/db";
 import { Hono } from "hono";
 import { createMockLlmAdapter } from "../adapters/mock-llm-adapter";
-import { createMockSignalAdapter } from "../adapters/mock-signal-adapter";
+import {
+  createMockSignalAdapter,
+  isMockSignalFixture,
+  type MockSignalFixture,
+} from "../adapters/mock-signal-adapter";
 import { getProviderConfig } from "../lib/config-resolver";
 import type { TenantVariables } from "../middleware/tenant";
 import type { CompanyPropertyFetcher } from "../services/eligibility";
@@ -74,10 +78,31 @@ async function resolveThresholds(db: Database, tenantId: string): Promise<Thresh
 }
 
 /**
- * V1 fixture property fetcher — reports any company as an eligible target
- * account. Step 9 replaces this with a real HubSpot CRM property fetch.
+ * V1 fixture property fetchers. Selected via `?eligibility=` query param so
+ * the route can produce the eligible / ineligible / unconfigured snapshot
+ * shapes end-to-end. Slice 2 replaces these with a real HubSpot CRM property
+ * fetch (one fetcher, gating value comes from real CRM data).
  */
-const fixturePropertyFetcher: CompanyPropertyFetcher = async () => true;
+const eligiblePropertyFetcher: CompanyPropertyFetcher = async () => true;
+const ineligiblePropertyFetcher: CompanyPropertyFetcher = async () => false;
+const unconfiguredPropertyFetcher: CompanyPropertyFetcher = async () => undefined;
+
+type EligibilityMode = "eligible" | "ineligible" | "unconfigured";
+const ELIGIBILITY_MODES: readonly EligibilityMode[] = ["eligible", "ineligible", "unconfigured"];
+function isEligibilityMode(v: unknown): v is EligibilityMode {
+  return typeof v === "string" && (ELIGIBILITY_MODES as readonly string[]).includes(v);
+}
+
+function pickPropertyFetcher(mode: EligibilityMode): CompanyPropertyFetcher {
+  switch (mode) {
+    case "ineligible":
+      return ineligiblePropertyFetcher;
+    case "unconfigured":
+      return unconfiguredPropertyFetcher;
+    case "eligible":
+      return eligiblePropertyFetcher;
+  }
+}
 
 /**
  * V1 fixture contact fetcher — returns three ICP-shaped contacts for any
@@ -114,15 +139,24 @@ snapshotRoutes.post("/:companyId", async (c) => {
     return c.json({ error: "unauthorized" }, 401);
   }
 
+  // V1 fixture selectors. Default behavior unchanged: eligible + strong.
+  // Invalid values silently fall back to defaults so callers can't induce
+  // 4xx noise with typos. Slice 2 removes both selectors when real adapters
+  // and a real property fetcher land.
+  const stateParam = c.req.query("state");
+  const fixture: MockSignalFixture = isMockSignalFixture(stateParam) ? stateParam : "strong";
+  const eligibilityParam = c.req.query("eligibility");
+  const mode: EligibilityMode = isEligibilityMode(eligibilityParam) ? eligibilityParam : "eligible";
+
   try {
     const db = getDb();
     const thresholds = await resolveThresholds(db, tenantId);
     const snapshot = await assembleSnapshot(
       {
         db,
-        providerAdapter: createMockSignalAdapter({ fixture: "strong" }),
+        providerAdapter: createMockSignalAdapter({ fixture }),
         llmAdapter: createMockLlmAdapter({ style: "short" }),
-        propertyFetcher: fixturePropertyFetcher,
+        propertyFetcher: pickPropertyFetcher(mode),
         contactFetcher: fixtureContactFetcher,
         thresholds,
       },
