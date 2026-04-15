@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, like } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -12,8 +12,14 @@ const DATABASE_URL =
 const sql = postgres(DATABASE_URL, { max: 4 });
 const db = drizzle(sql, { schema });
 
+// Per-file portal prefix keeps this suite's cleanup from racing with other
+// DB-backed test files (cross-tenant.test.ts, snapshot-route.test.ts) that
+// run in parallel under vitest's default file-pool. Without scoping, an
+// unscoped DELETE FROM tenants would wipe rows the sibling suites rely on.
+const PORTAL_PREFIX = `schematest-${randomUUID().slice(0, 8)}-`;
+
 function portalId() {
-  return `portal-${randomUUID().slice(0, 8)}`;
+  return `${PORTAL_PREFIX}${randomUUID().slice(0, 8)}`;
 }
 
 function required<T>(value: T | undefined, label: string): T {
@@ -33,8 +39,8 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  // Clean slate — cascade deletes children
-  await sql`DELETE FROM tenants`;
+  // Scoped cleanup — cascade deletes only this suite's tenants.
+  await db.delete(tenants).where(like(tenants.hubspotPortalId, `${PORTAL_PREFIX}%`));
 });
 
 describe("schema: tenants", () => {
@@ -246,10 +252,16 @@ describe("schema: provider_config + llm_config unique constraints", () => {
       enabled: true,
     });
 
+    const t1Id = required(t1, "t1").id;
+    const t2Id = required(t2, "t2").id;
+    // Scope query to this test's two tenants — sibling parallel test files
+    // also create provider_config rows with providerName="exa".
     const rows = await db
       .select()
       .from(providerConfig)
-      .where(and(eq(providerConfig.providerName, "exa")));
+      .where(
+        and(eq(providerConfig.providerName, "exa"), inArray(providerConfig.tenantId, [t1Id, t2Id])),
+      );
     expect(rows).toHaveLength(2);
   });
 });
