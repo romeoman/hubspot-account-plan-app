@@ -35,7 +35,7 @@ import type {
   ThresholdConfig,
 } from "@hap/config";
 import { type Database, llmConfig, providerConfig, tenants } from "@hap/db";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { decryptProviderKey } from "./encryption";
 
 /** Cache TTL: 5 minutes. Matches eligibility-service TTL for consistency. */
@@ -53,8 +53,27 @@ function isLlmProviderType(v: unknown): v is LlmProviderType {
   return typeof v === "string" && (LLM_PROVIDER_TYPES as readonly string[]).includes(v);
 }
 
-type ProviderCacheEntry = { value: ProviderConfig | null; expiresAt: number };
-type LlmCacheEntry = { value: LlmProviderConfig | null; expiresAt: number };
+/**
+ * Cached row shape — the `apiKeyEncrypted` ciphertext is fine to keep in
+ * memory for the TTL window, but the decrypted plaintext is NOT. Caches
+ * therefore store the raw row and decrypt on demand inside each call so
+ * plaintext only lives for the duration of a single function execution.
+ */
+type ProviderRow = {
+  providerName: string;
+  enabled: boolean;
+  apiKeyEncrypted: string | null;
+  thresholds: unknown;
+};
+type LlmRow = {
+  providerName: string;
+  modelName: string;
+  apiKeyEncrypted: string | null;
+  endpointUrl: string | null;
+};
+
+type ProviderCacheEntry = { row: ProviderRow | null; expiresAt: number };
+type LlmCacheEntry = { row: LlmRow | null; expiresAt: number };
 
 const providerCache = new Map<string, ProviderCacheEntry>();
 const llmCache = new Map<string, LlmCacheEntry>();
@@ -127,46 +146,46 @@ export async function getProviderConfig(
   const currentTime = now();
   const key = buildProviderKey(args.tenantId, args.providerName);
 
+  let row: ProviderRow | null;
   const cached = providerCache.get(key);
   if (cached && cached.expiresAt > currentTime) {
-    return cached.value;
+    row = cached.row;
+  } else {
+    const rows = await deps.db
+      .select({
+        providerName: providerConfig.providerName,
+        enabled: providerConfig.enabled,
+        apiKeyEncrypted: providerConfig.apiKeyEncrypted,
+        thresholds: providerConfig.thresholds,
+      })
+      .from(providerConfig)
+      .where(
+        and(
+          eq(providerConfig.tenantId, args.tenantId),
+          eq(providerConfig.providerName, args.providerName),
+        ),
+      )
+      .limit(1);
+    row = rows[0] ?? null;
+    providerCache.set(key, {
+      row,
+      expiresAt: currentTime + CONFIG_RESOLVER_CACHE_TTL_MS,
+    });
   }
 
-  const rows = await deps.db
-    .select({
-      providerName: providerConfig.providerName,
-      enabled: providerConfig.enabled,
-      apiKeyEncrypted: providerConfig.apiKeyEncrypted,
-      thresholds: providerConfig.thresholds,
-    })
-    .from(providerConfig)
-    .where(
-      and(
-        eq(providerConfig.tenantId, args.tenantId),
-        eq(providerConfig.providerName, args.providerName),
-      ),
-    )
-    .limit(1);
+  if (!row) return null;
 
-  let value: ProviderConfig | null = null;
-  const row = rows[0];
-  if (row) {
-    const apiKeyRef = row.apiKeyEncrypted
-      ? decryptProviderKey(args.tenantId, row.apiKeyEncrypted)
-      : "";
-    value = {
-      name: row.providerName,
-      enabled: row.enabled,
-      apiKeyRef,
-      thresholds: parseThresholds(row.thresholds),
-    };
-  }
-
-  providerCache.set(key, {
-    value,
-    expiresAt: currentTime + CONFIG_RESOLVER_CACHE_TTL_MS,
-  });
-  return value;
+  // Decrypt at point of use — the cache holds ciphertext only. The plaintext
+  // returned here lives only for the caller's own scope.
+  const apiKeyRef = row.apiKeyEncrypted
+    ? decryptProviderKey(args.tenantId, row.apiKeyEncrypted)
+    : "";
+  return {
+    name: row.providerName,
+    enabled: row.enabled,
+    apiKeyRef,
+    thresholds: parseThresholds(row.thresholds),
+  };
 }
 
 /**
@@ -192,62 +211,65 @@ export async function getLlmConfig(
   const currentTime = now();
   const key = buildLlmKey(args.tenantId);
 
+  let chosen: LlmRow | null;
   const cached = llmCache.get(key);
   if (cached && cached.expiresAt > currentTime) {
-    return cached.value;
-  }
+    chosen = cached.row;
+  } else {
+    // Look up tenant default (if set) and all llm_config rows in one pair of queries.
+    const tenantRows = await deps.db
+      .select({ settings: tenants.settings })
+      .from(tenants)
+      .where(eq(tenants.id, args.tenantId))
+      .limit(1);
 
-  // Look up tenant default (if set) and all llm_config rows in one pair of queries.
-  const tenantRows = await deps.db
-    .select({ settings: tenants.settings })
-    .from(tenants)
-    .where(eq(tenants.id, args.tenantId))
-    .limit(1);
-
-  let defaultProvider: LlmProviderType | undefined;
-  const tenantSettings = tenantRows[0]?.settings;
-  if (tenantSettings && typeof tenantSettings === "object" && !Array.isArray(tenantSettings)) {
-    const raw = (tenantSettings as Record<string, unknown>).defaultLlmProvider;
-    if (isLlmProviderType(raw)) defaultProvider = raw;
-  }
-
-  const rows = await deps.db
-    .select({
-      providerName: llmConfig.providerName,
-      modelName: llmConfig.modelName,
-      apiKeyEncrypted: llmConfig.apiKeyEncrypted,
-      endpointUrl: llmConfig.endpointUrl,
-    })
-    .from(llmConfig)
-    .where(eq(llmConfig.tenantId, args.tenantId));
-
-  let chosen = rows[0];
-  if (defaultProvider) {
-    const match = rows.find((r) => r.providerName === defaultProvider);
-    if (match) chosen = match;
-  }
-
-  let value: LlmProviderConfig | null = null;
-  if (chosen) {
-    if (!isLlmProviderType(chosen.providerName)) {
-      // Defensive: unknown provider string in DB — skip rather than crash.
-      value = null;
-    } else {
-      const apiKeyRef = chosen.apiKeyEncrypted
-        ? decryptProviderKey(args.tenantId, chosen.apiKeyEncrypted)
-        : "";
-      value = {
-        provider: chosen.providerName,
-        model: chosen.modelName,
-        apiKeyRef,
-        endpointUrl: chosen.endpointUrl ?? undefined,
-      };
+    let defaultProvider: LlmProviderType | undefined;
+    const tenantSettings = tenantRows[0]?.settings;
+    if (tenantSettings && typeof tenantSettings === "object" && !Array.isArray(tenantSettings)) {
+      const raw = (tenantSettings as Record<string, unknown>).defaultLlmProvider;
+      if (isLlmProviderType(raw)) defaultProvider = raw;
     }
+
+    const rows = await deps.db
+      .select({
+        providerName: llmConfig.providerName,
+        modelName: llmConfig.modelName,
+        apiKeyEncrypted: llmConfig.apiKeyEncrypted,
+        endpointUrl: llmConfig.endpointUrl,
+      })
+      .from(llmConfig)
+      .where(eq(llmConfig.tenantId, args.tenantId))
+      // Deterministic selection — without orderBy, Postgres returns rows in
+      // physical order which can change after VACUUM, replication, or any
+      // table-level mutation.
+      .orderBy(asc(llmConfig.id));
+
+    let pick = rows[0] ?? null;
+    if (defaultProvider) {
+      const match = rows.find((r) => r.providerName === defaultProvider);
+      if (match) pick = match;
+    }
+    chosen = pick;
+    llmCache.set(key, {
+      row: chosen,
+      expiresAt: currentTime + CONFIG_RESOLVER_CACHE_TTL_MS,
+    });
   }
 
-  llmCache.set(key, {
-    value,
-    expiresAt: currentTime + CONFIG_RESOLVER_CACHE_TTL_MS,
-  });
-  return value;
+  if (!chosen) return null;
+  if (!isLlmProviderType(chosen.providerName)) {
+    // Defensive: unknown provider string in DB — skip rather than crash.
+    return null;
+  }
+
+  // Decrypt at point of use — cache holds ciphertext only.
+  const apiKeyRef = chosen.apiKeyEncrypted
+    ? decryptProviderKey(args.tenantId, chosen.apiKeyEncrypted)
+    : "";
+  return {
+    provider: chosen.providerName,
+    model: chosen.modelName,
+    apiKeyRef,
+    endpointUrl: chosen.endpointUrl ?? undefined,
+  };
 }

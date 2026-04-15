@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createDatabase, llmConfig, providerConfig, tenants } from "@hap/db";
 import { eq, like } from "drizzle-orm";
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import {
   CONFIG_RESOLVER_CACHE_TTL_MS,
   clearConfigResolverCache,
@@ -87,14 +87,13 @@ describe("getProviderConfig", () => {
       settings: {},
     });
 
-    const spyDb = {
-      select: vi.fn(db.select.bind(db)),
-    } as unknown as typeof db;
-    // We use the real db for the first call (to populate cache), then wrap.
+    // Real db for the first call (populates the cache).
     const first = await getProviderConfig({ db }, { tenantId: tenant.id, providerName: "exa" });
     expect(first).not.toBeNull();
 
-    // Second call with a spy DB that would throw if touched.
+    // Second call with an exploding proxy that throws on any property access.
+    // If the resolver hits the DB, the throw makes the test fail loudly —
+    // this is the actual cache assertion.
     const exploding = new Proxy(
       {},
       {
@@ -109,7 +108,6 @@ describe("getProviderConfig", () => {
       { tenantId: tenant.id, providerName: "exa" },
     );
     expect(second).toEqual(first);
-    void spyDb;
   });
 
   it("refetches after TTL expiry via injected clock", async () => {
