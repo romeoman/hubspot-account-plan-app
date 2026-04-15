@@ -100,8 +100,16 @@ export async function assembleSnapshot(
   let transportDegraded = false;
   try {
     signals = await deps.providerAdapter.fetchSignals(tenantId, companyId);
-  } catch {
+  } catch (err) {
     // Transport error → mark degraded; continue with empty signal set.
+    // Log with context so prod incidents are debuggable. Evidence content is
+    // never echoed — only adapter name + tenant + company + error message.
+    console.warn("snapshot_assembler.signal_adapter_failed", {
+      tenantId,
+      companyId,
+      adapter: deps.providerAdapter.name,
+      error: err instanceof Error ? err.message : String(err),
+    });
     transportDegraded = true;
     signals = [];
   }

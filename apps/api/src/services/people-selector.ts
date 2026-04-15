@@ -58,7 +58,15 @@ export async function fetchContacts(
 ): Promise<RawContact[]> {
   try {
     return await deps.fetcher(args.tenantId, args.companyId);
-  } catch {
+  } catch (err) {
+    // Empty-state preferred over bluffing, but the failure itself must be
+    // visible in logs. No contact content is echoed — only tenant + company
+    // + error message so the silent `[]` path is diagnosable.
+    console.warn("people_selector.contact_fetcher_failed", {
+      tenantId: args.tenantId,
+      companyId: args.companyId,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return [];
   }
 }
