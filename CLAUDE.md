@@ -203,6 +203,7 @@ Use these exact ranges. Do not downgrade or guess. Verified via npm registry, Co
 | @hono/node-server      | `^1.14.0`                  | Current 1.19.11. Guard `serve()` with `NODE_ENV !== "test"` for TDD                                              |
 | postgres (postgres.js) | `^3.4.0`                   | Use with `drizzle-orm/postgres-js` driver                                                                        |
 | React                  | `^18.3.1`                  | Pinned to 18 because `@hubspot/ui-extensions` peer-requires React 18. Revisit when HubSpot SDK supports React 19 |
+| @hubspot/ui-extensions | `^0.13.0`                  | Never `latest` — peer-pins React 18, breaking SDK release would silently break the extension on next install     |
 | Node.js                | 22                         | Maintenance LTS                                                                                                  |
 
 ## HubSpot UI Extensions patterns
