@@ -23,6 +23,7 @@ packages/*/src/**/*.d.ts.map
 .env
 .env.*
 !.env.example
+!.env.test.example
 
 # IDE
 .vscode/
