@@ -448,4 +448,126 @@ describe("assembleSnapshot", () => {
     expect(serialized).not.toContain("SECRET_PAYLOAD");
     expect(serialized).not.toContain("restricted.example");
   });
+
+  it("populates nextMove on eligible path when a real (non-mock) LLM adapter is wired (Step 13)", async () => {
+    const tenantId = await seedTenant();
+    const { createLlmAdapter, wrapWithGuards } = await import("../../adapters/llm/factory");
+    const { RateLimiter } = await import("../../lib/rate-limiter");
+    // Step 13 makes TWO LLM calls: (1) reason rewrite, (2) next-move.
+    // The fake fetch returns a distinct payload on each call so we can
+    // assert both end up in the snapshot.
+    let call = 0;
+    const fakeFetch: typeof fetch = async () => {
+      call += 1;
+      const content =
+        call === 1
+          ? "Reason rewritten by LLM."
+          : "Draft an intro email referencing the funding round.";
+      return new Response(
+        JSON.stringify({
+          choices: [{ message: { content } }],
+          usage: { prompt_tokens: 7, completion_tokens: 4 },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+    const inner = createLlmAdapter(
+      { provider: "openai", model: "gpt-4o-mini", apiKeyRef: "sk-test" },
+      { fetch: fakeFetch },
+    );
+    const llmAdapter = wrapWithGuards(inner, {
+      tenantId,
+      correlationId: "corr-step13",
+      rateLimiter: new RateLimiter(),
+    });
+
+    const snap = await assembleSnapshot(
+      {
+        db,
+        providerAdapter: createMockSignalAdapter({ fixture: "strong" }),
+        llmAdapter,
+        propertyFetcher: ELIGIBLE,
+        contactFetcher: threeContacts,
+        thresholds: THRESHOLDS,
+        correlationId: "corr-step13",
+      },
+      { tenantId, companyId: "co-nextmove" },
+    );
+
+    expect(snap.eligibilityState).toBe("eligible");
+    expect(snap.reasonToContact).toBe("Reason rewritten by LLM.");
+    expect(snap.nextMove).toBe("Draft an intro email referencing the funding round.");
+  });
+
+  it("skips nextMove when the adapter is the mock fallback (cost-saving, Step 13)", async () => {
+    const tenantId = await seedTenant();
+    const snap = await assembleSnapshot(
+      {
+        db,
+        providerAdapter: createMockSignalAdapter({ fixture: "strong" }),
+        llmAdapter: createMockLlmAdapter(),
+        propertyFetcher: ELIGIBLE,
+        contactFetcher: threeContacts,
+        thresholds: THRESHOLDS,
+      },
+      { tenantId, companyId: "co-nextmove-mock" },
+    );
+    expect(snap.eligibilityState).toBe("eligible");
+    expect(snap.nextMove).toBeUndefined();
+  });
+
+  it("restricted snapshot never carries a nextMove (Step 13 zero-leak)", async () => {
+    const tenantId = await seedTenant();
+    // Real-ish LLM adapter is wired but the restricted short-circuit runs
+    // before any LLM stage, so no fetch is actually invoked. The
+    // assertion we care about is that `nextMove` is absent from the
+    // serialized snapshot payload.
+    const { createLlmAdapter, wrapWithGuards } = await import("../../adapters/llm/factory");
+    const { RateLimiter } = await import("../../lib/rate-limiter");
+    const fakeFetch: typeof fetch = async () =>
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: "SHOULD NOT APPEAR" } }],
+          usage: { prompt_tokens: 1, completion_tokens: 1 },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    const inner = createLlmAdapter(
+      { provider: "openai", model: "gpt-4o-mini", apiKeyRef: "sk-test" },
+      { fetch: fakeFetch },
+    );
+    const llmAdapter = wrapWithGuards(inner, {
+      tenantId,
+      rateLimiter: new RateLimiter(),
+    });
+
+    const restrictedRow: Evidence = createEvidence(tenantId, {
+      id: "exa:https://restricted.example/secret",
+      source: "restricted.example",
+      confidence: 0.9,
+      content: "SHOULD_NOT_LEAK",
+      timestamp: new Date(),
+      isRestricted: true,
+    });
+    const stub: ProviderAdapter = {
+      name: "stub-restricted-nextmove",
+      async fetchSignals() {
+        return [restrictedRow];
+      },
+    };
+    const snap = await assembleSnapshot(
+      {
+        db,
+        providerAdapter: stub,
+        llmAdapter,
+        propertyFetcher: ELIGIBLE,
+        contactFetcher: threeContacts,
+        thresholds: THRESHOLDS,
+      },
+      { tenantId, companyId: "co-restricted-nextmove" },
+    );
+    expect(snap.stateFlags.restricted).toBe(true);
+    expect(snap.nextMove).toBeUndefined();
+    expect(JSON.stringify(snap)).not.toContain("SHOULD NOT APPEAR");
+  });
 });

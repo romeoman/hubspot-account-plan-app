@@ -35,6 +35,7 @@ import type { ProviderAdapter } from "../adapters/provider-adapter";
 import { type CompanyPropertyFetcher, checkEligibility } from "./eligibility";
 import { dedupEvidence } from "./hygiene/dedup";
 import { sweepStaleness } from "./hygiene/staleness-sweeper";
+import { generateNextMove } from "./next-move";
 import { type ContactFetcher, fetchContacts, rankContacts, selectPeople } from "./people-selector";
 import { extractDominantSignal, generateReasonText } from "./reason-generator";
 import { createTrustEvaluator, type TrustEvaluator } from "./trust";
@@ -63,6 +64,12 @@ export type AssembleSnapshotDeps = {
   blockList?: string[];
   /** Optional clock override for deterministic tests. */
   now?: Date;
+  /**
+   * Optional correlation ID forwarded to downstream LLM observability on
+   * the next-move stage. When the assembler is called from the snapshot
+   * route this is the request correlation ID; tests may omit it.
+   */
+  correlationId?: string;
 };
 
 export type AssembleSnapshotArgs = {
@@ -205,7 +212,7 @@ export async function assembleSnapshot(
   const ranked = rankContacts(contacts, dominant);
   const people: Person[] = selectPeople(ranked, dominant);
 
-  return createSnapshot(tenantId, {
+  const assembled = createSnapshot(tenantId, {
     companyId,
     eligibilityState: "eligible",
     reasonToContact,
@@ -219,4 +226,26 @@ export async function assembleSnapshot(
     }),
     createdAt: now,
   });
+
+  // 7. Next-move recommendation (Step 13). Best-effort — never blocks
+  //    the snapshot response. Skipped when no LLM adapter is wired OR the
+  //    resolved adapter is the mock fallback: running a real LLM call for
+  //    a mock-only tenant burns budget for zero product value (Slice 3
+  //    removes the mock fallback entirely).
+  //
+  //    The zero-leak short-circuit lives inside `generateNextMove`; the
+  //    assembler does not duplicate those checks so there is exactly one
+  //    audited boundary.
+  if (deps.llmAdapter && deps.llmAdapter.provider !== "mock-llm") {
+    const nextMove = await generateNextMove({
+      snapshot: assembled,
+      llmAdapter: deps.llmAdapter,
+      correlationId: deps.correlationId,
+    });
+    if (nextMove !== null) {
+      assembled.nextMove = nextMove;
+    }
+  }
+
+  return assembled;
 }

@@ -20,18 +20,19 @@
  * - `ZodType` generics simplified to `ZodType<Output, Input>`.
  */
 
-import type {
-  EligibilityState,
-  Evidence,
-  LlmProviderConfig,
-  LlmProviderType,
-  Person,
-  ProviderConfig,
-  Snapshot,
-  StateFlags,
-  TenantConfig,
-  TenantSettings,
-  ThresholdConfig,
+import {
+  type EligibilityState,
+  type Evidence,
+  type LlmProviderConfig,
+  type LlmProviderType,
+  MAX_NEXT_MOVE_CHARS,
+  type Person,
+  type ProviderConfig,
+  type Snapshot,
+  type StateFlags,
+  type TenantConfig,
+  type TenantSettings,
+  type ThresholdConfig,
 } from "@hap/config";
 import { z } from "zod";
 
@@ -77,6 +78,7 @@ export const snapshotSchema = z.object({
   evidence: z.array(evidenceSchema),
   stateFlags: stateFlagsSchema,
   trustScore: z.number().min(0).max(1).optional(),
+  nextMove: z.string().max(MAX_NEXT_MOVE_CHARS).optional(),
   createdAt: z.date(),
 }) satisfies z.ZodType<Snapshot>;
 

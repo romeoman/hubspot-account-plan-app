@@ -2,6 +2,7 @@ import type { Snapshot } from "@hap/config";
 import { Button, Flex, Heading, Text } from "@hubspot/ui-extensions";
 import { useCallback, useMemo, useState } from "react";
 import { EvidenceDrillIn } from "./evidence-drill-in";
+import { NextMoveCard } from "./next-move-card";
 
 /**
  * Renders an eligible snapshot: reason-to-contact heading + 0..3 clickable
@@ -62,6 +63,8 @@ export function EligibleView({ snapshot }: { snapshot: Snapshot }) {
       {snapshot.people.length === 0 ? (
         <Text variant="microcopy">No contacts available for this reason.</Text>
       ) : null}
+
+      <NextMoveCard snapshot={snapshot} />
 
       {openEvidence !== null ? (
         <EvidenceDrillIn
