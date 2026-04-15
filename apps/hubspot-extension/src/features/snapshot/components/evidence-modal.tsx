@@ -30,14 +30,20 @@ function formatConfidence(c: number): string {
 export function EvidenceModal({ evidence, open, onClose }: EvidenceModalProps) {
   if (!open) return null;
 
+  // Last leak boundary: even if a caller slips a restricted row into the
+  // `evidence` prop, the modal must not render its source / content / id.
+  // Stripping here means a future regression (or test misuse) cannot leak
+  // restricted material to the user.
+  const visible = evidence.filter((ev) => ev.isRestricted === false);
+
   return (
     <Modal id="evidence-modal" title="Evidence" onClose={onClose} aria-label="Evidence details">
       <ModalBody>
-        {evidence.length === 0 ? (
+        {visible.length === 0 ? (
           <Text>No evidence to display.</Text>
         ) : (
           <Flex direction="column" gap="sm">
-            {evidence.map((ev) => (
+            {visible.map((ev) => (
               <Flex key={ev.id} direction="column" gap="xs">
                 <Text format={{ fontWeight: "bold" }}>{ev.source}</Text>
                 <Text variant="microcopy">

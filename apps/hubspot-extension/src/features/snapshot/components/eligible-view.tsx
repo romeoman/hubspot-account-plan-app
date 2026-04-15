@@ -25,10 +25,18 @@ export function EligibleView({ snapshot }: { snapshot: Snapshot }) {
   const openPerson = openPersonId
     ? (snapshot.people.find((p) => p.id === openPersonId) ?? null)
     : null;
+  // Defense in depth: backend assembler already strips restricted rows in the
+  // restricted-state branch, but `EligibleView` runs only on non-restricted
+  // snapshots where individual `isRestricted: true` rows must STILL be
+  // suppressed. Filter both undefined refs AND restricted rows here so the
+  // modal never sees them, even if a future code path slips one through.
   const openEvidence = openPerson
     ? openPerson.evidenceRefs
         .map((id) => evidenceById.get(id))
-        .filter((ev): ev is (typeof snapshot.evidence)[number] => ev !== undefined)
+        .filter(
+          (ev): ev is (typeof snapshot.evidence)[number] =>
+            ev !== undefined && ev.isRestricted === false,
+        )
     : [];
 
   const handleClose = useCallback(() => setOpenPersonId(null), []);
