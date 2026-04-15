@@ -197,3 +197,20 @@ The following are explicitly out of scope for Slice 1. Each has a matching `@tod
 `docker-compose.yml` runs Postgres 16 on host port `5433` (remapped from the container's `5432`) to avoid conflicts with a host-installed Postgres. This remap is intentional; see commit `cea2a8f`.
 
 Cross-tenant tests do NOT rely on a seed init SQL file. The Postgres official image only runs `/docker-entrypoint-initdb.d/*.sql` on first start (empty data dir), which is unreliable for a volume that persists across `docker compose down`. Instead, each test file creates its own isolated tenants with a unique `PORTAL_PREFIX` per run and cleans them up via `beforeEach` + FK cascades. This pattern is already used in `tenant.test.ts`, `snapshot-route.test.ts`, and the new `cross-tenant.test.ts`.
+
+---
+
+## 11. Migration
+
+Slice 1 used a base64 encryption stub for `provider_config.api_key_encrypted` and `llm_config.api_key_encrypted`. Those rows existed only in dev/test fixtures. Slice 2 introduces AES-256-GCM (Step 3) and DOES NOT migrate any pre-existing ciphertext — dev/test rows are wiped and reseeded with proper ciphertext during Step 3's test setup. Production deployments do not yet hold any provider credentials, so there is no production migration path. If a Slice 1 environment somehow contains real ciphertext, it must be re-issued: rotate the provider key with the upstream provider, then write the new key through the Slice 2 encryption.
+
+### Slice 2 Step 2 schema additions
+
+Migration `packages/db/drizzle/0003_broad_ben_urich.sql` adds four columns to both `provider_config` and `llm_config`:
+
+- `key_version integer NOT NULL DEFAULT 1` — rotation counter for the upcoming AES-256-GCM envelope (`v{N}:iv:tag:payload`).
+- `rate_limit_config jsonb` (nullable) — per-tenant rate-limit shape owned by callers.
+- `allow_list jsonb` (nullable) — permitted source identifiers/hostnames.
+- `block_list jsonb` (nullable) — denied source identifiers/hostnames.
+
+Existing rows get `key_version=1` automatically. The three jsonb columns are nullable with no backfill, preserving the Slice 1 "feature off unless configured" semantics.
