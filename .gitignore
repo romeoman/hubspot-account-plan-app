@@ -12,6 +12,13 @@ build/
 out/
 *.tsbuildinfo
 
+# Stray TS build artifacts that occasionally leak into src/ when tsc is run
+# without the right --build context (proper outDir is dist/).
+packages/*/src/**/*.js
+packages/*/src/**/*.d.ts
+packages/*/src/**/*.js.map
+packages/*/src/**/*.d.ts.map
+
 # Environment variables
 .env
 .env.*
