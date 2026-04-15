@@ -6,7 +6,11 @@ import {
 } from "@hubspot/ui-extensions";
 import { SnapshotStateRenderer } from "./features/snapshot/components/snapshot-state-renderer";
 import { useCompanyContext } from "./features/snapshot/hooks/use-company-context";
-import { useSnapshot } from "./features/snapshot/hooks/use-snapshot";
+import {
+  type SnapshotFetcher,
+  useSnapshot,
+  v1UnwiredFetcher,
+} from "./features/snapshot/hooks/use-snapshot";
 
 /**
  * Props accepted by the root extension component.
@@ -21,6 +25,13 @@ import { useSnapshot } from "./features/snapshot/hooks/use-snapshot";
 type ExtensionProps = {
   context: ExtensionPointApiContext<"crm.record.tab">;
   fetchCrmObjectProperties: ExtensionPointApiActions<"crm.record.tab">["fetchCrmObjectProperties"];
+  /**
+   * Optional snapshot transport override. Tests inject a stub. In V1
+   * production wiring the entry point passes `v1UnwiredFetcher` so a
+   * missing transport surfaces as a loud, identifiable error rather than
+   * a silent 401 against the real API.
+   */
+  snapshotFetcher?: SnapshotFetcher;
 };
 
 /**
@@ -33,9 +44,19 @@ type ExtensionProps = {
  * simple `Text` placeholders — those are transport-level UI, not
  * snapshot-render decisions.
  */
-export const Extension = ({ context, fetchCrmObjectProperties }: ExtensionProps) => {
+export const Extension = ({
+  context,
+  fetchCrmObjectProperties,
+  snapshotFetcher = v1UnwiredFetcher,
+}: ExtensionProps) => {
   const company = useCompanyContext(context, fetchCrmObjectProperties);
-  const snapshotState = useSnapshot({ companyId: company.companyId });
+  // V1 default is `v1UnwiredFetcher`: the dev preview surfaces a loud
+  // error instead of silently 401'ing against the real API. Slice 2
+  // swaps in the real HubSpot-aware fetcher with bearer + base URL.
+  const snapshotState = useSnapshot({
+    companyId: company.companyId,
+    fetcher: snapshotFetcher,
+  });
 
   if (company.loading || snapshotState.loading) {
     return <Text>Loading…</Text>;

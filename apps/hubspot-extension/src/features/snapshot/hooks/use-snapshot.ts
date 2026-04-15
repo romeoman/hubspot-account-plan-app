@@ -60,13 +60,20 @@ export type SnapshotFetcher = (companyId: string) => Promise<unknown>;
 export type UseSnapshotArgs = {
   companyId: string;
   /**
-   * Optional transport. Tests inject a stub; when omitted, the hook defaults
-   * to a plain `fetch` call against `/api/snapshot/:companyId`.
+   * Transport. REQUIRED — there is no working default in V1 because the
+   * production transport needs a HubSpot-aware fetcher with bearer token
+   * and base URL resolution that is not yet wired (see Slice 2).
    *
-   * @todo Slice 2: swap the default for a HubSpot-aware fetcher that reads
-   *   base URL + bearer token from tenant config and sets `x-portal-id`.
+   * Tests pass a stub; the extension entry point must pass an explicit
+   * fetcher (or one that throws with a clear "not yet wired" message)
+   * so a missing transport surfaces as a loud UI error rather than a
+   * silent 401 against the real API.
+   *
+   * @todo Slice 2: provide a `createHubSpotFetcher()` factory that reads
+   *   base URL + bearer token from tenant config and sets `x-portal-id`,
+   *   then thread it through the extension entry point.
    */
-  fetcher?: SnapshotFetcher;
+  fetcher: SnapshotFetcher;
 };
 
 export type UseSnapshotState = {
@@ -81,23 +88,19 @@ export type UseSnapshotState = {
 };
 
 /**
- * Default fetcher for `POST /api/snapshot/:companyId`.
- *
- * The production wiring (auth header, base URL) is deferred; this default
- * only exists so the hook works in a dev preview where the API is on the
- * same origin. Tests should always inject an explicit `fetcher`.
+ * Explicit "not wired yet" fetcher. The extension entry point passes this
+ * in V1 so a dev preview surfaces a loud, identifiable error rather than
+ * silently 401'ing against the real API. Slice 2 swaps it for the
+ * HubSpot-aware fetcher.
  */
-async function defaultFetcher(companyId: string): Promise<unknown> {
-  const encoded = encodeURIComponent(companyId);
-  const response = await fetch(`/api/snapshot/${encoded}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: "{}",
-  });
-  if (!response.ok) {
-    throw new Error(`snapshot-fetch-failed:${response.status}`);
-  }
-  return response.json();
+export const SLICE2_TRANSPORT_NOT_WIRED = "snapshot-fetcher-not-wired";
+
+export function v1UnwiredFetcher(): Promise<never> {
+  return Promise.reject(
+    new Error(
+      `${SLICE2_TRANSPORT_NOT_WIRED}: useSnapshot was called without a real fetcher. Slice 2 will provide createHubSpotFetcher().`,
+    ),
+  );
 }
 
 /**
@@ -111,10 +114,7 @@ async function defaultFetcher(companyId: string): Promise<unknown> {
  *                              loading=false
  *   refetch()                → returns to loading=true and re-invokes fetcher
  */
-export function useSnapshot({
-  companyId,
-  fetcher = defaultFetcher,
-}: UseSnapshotArgs): UseSnapshotState {
+export function useSnapshot({ companyId, fetcher }: UseSnapshotArgs): UseSnapshotState {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | undefined>(undefined);
@@ -124,6 +124,17 @@ export function useSnapshot({
   // when the caller invokes `refetch()`. Biome cannot infer this intent.
   // biome-ignore lint/correctness/useExhaustiveDependencies: refetchTick is the refetch trigger
   useEffect(() => {
+    // Guard: don't fire a fetch with an empty companyId. The companion
+    // `useCompanyContext` may emit an empty id during its initial loading
+    // tick — we'd otherwise send a throwaway request that the route
+    // immediately rejects as `invalid_company_id`.
+    if (companyId.length === 0) {
+      setLoading(true);
+      setError(undefined);
+      setSnapshot(null);
+      return;
+    }
+
     let cancelled = false;
     setLoading(true);
     setError(undefined);

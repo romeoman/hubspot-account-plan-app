@@ -124,7 +124,7 @@ describe("useSnapshot", () => {
     expect(parsed.error).not.toBeNull();
   });
 
-  it("exposes a refetch function that re-runs the fetcher", async () => {
+  it("exposes a refetch function that ACTUALLY re-runs the fetcher", async () => {
     const renderer = createRenderer("crm.record.tab");
     let call = 0;
     const fetcher = vi.fn(async () => {
@@ -132,16 +132,18 @@ describe("useSnapshot", () => {
       return { ...VALID_WIRE_SNAPSHOT, reasonToContact: `call-${call}` };
     });
 
+    // Capture refetch in module scope so the test can invoke it directly.
+    let capturedRefetch: (() => void) | null = null;
+
     function RefetchProbe({ companyId }: { companyId: string }) {
       const state = useSnapshot({ companyId, fetcher });
+      capturedRefetch = state.refetch;
       return (
         <Text>
           {JSON.stringify({
             loading: state.loading,
             reason: state.snapshot?.reasonToContact ?? null,
-            refetchIsFn: typeof state.refetch === "function",
           })}
-          {/* surface refetch via a trigger hook on mount is handled by the hook internals */}
         </Text>
       );
     }
@@ -152,9 +154,16 @@ describe("useSnapshot", () => {
       expect(parsed.loading).toBe(false);
       expect(parsed.reason).toBe("call-1");
     });
-    // Assert fetcher was called at least once and refetch exists.
     expect(fetcher).toHaveBeenCalledTimes(1);
-    const parsed = JSON.parse(renderer.find(Text).text ?? "{}");
-    expect(parsed.refetchIsFn).toBe(true);
+
+    // Trigger the refetch and assert the fetcher fires again with new content.
+    if (!capturedRefetch) throw new Error("refetch was not captured");
+    (capturedRefetch as () => void)();
+    await renderer.waitFor(() => {
+      const parsed = JSON.parse(renderer.find(Text).text ?? "{}");
+      expect(parsed.loading).toBe(false);
+      expect(parsed.reason).toBe("call-2");
+    });
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
 });

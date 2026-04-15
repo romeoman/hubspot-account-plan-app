@@ -58,24 +58,19 @@ describe("HubSpot crm.record.tab extension smoke test", () => {
       trustScore: 0.9,
       createdAt: "2026-04-10T12:00:00.000Z",
     };
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockImplementation(async () => new Response(JSON.stringify(validSnapshot), { status: 200 }));
+    const snapshotFetcher = vi.fn(async () => validSnapshot);
 
-    try {
-      renderer.render(
-        <Extension
-          context={renderer.mocks.context}
-          fetchCrmObjectProperties={fetchCrmObjectProperties}
-        />,
-      );
+    renderer.render(
+      <Extension
+        context={renderer.mocks.context}
+        fetchCrmObjectProperties={fetchCrmObjectProperties}
+        snapshotFetcher={snapshotFetcher}
+      />,
+    );
 
-      await renderer.waitFor(() => {
-        expect(collectAllText(renderer.getRootNode())).toContain("Placeholder reason.");
-      });
-    } finally {
-      fetchSpy.mockRestore();
-    }
+    await renderer.waitFor(() => {
+      expect(collectAllText(renderer.getRootNode())).toContain("Placeholder reason.");
+    });
   });
 
   it("renders the restricted empty view when the snapshot is restricted (zero-leak at the extension root)", async () => {
@@ -123,33 +118,26 @@ describe("HubSpot crm.record.tab extension smoke test", () => {
       trustScore: 0.99,
       createdAt: "2026-04-10T12:00:00.000Z",
     };
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockImplementation(
-        async () => new Response(JSON.stringify(restrictedSnapshot), { status: 200 }),
-      );
+    const snapshotFetcher = vi.fn(async () => restrictedSnapshot);
 
-    try {
-      renderer.render(
-        <Extension
-          context={renderer.mocks.context}
-          fetchCrmObjectProperties={fetchCrmObjectProperties}
-        />,
-      );
+    renderer.render(
+      <Extension
+        context={renderer.mocks.context}
+        fetchCrmObjectProperties={fetchCrmObjectProperties}
+        snapshotFetcher={snapshotFetcher}
+      />,
+    );
 
-      await renderer.waitFor(() => {
-        expect(collectAllText(renderer.getRootNode()).toLowerCase()).toContain("no data available");
-      });
-      const out = collectAllText(renderer.getRootNode());
-      expect(out).not.toContain("SECRET-WIRE-REASON");
-      expect(out).not.toContain("WIRE-LEAK-NAME");
-      expect(out).not.toContain("WIRE-LEAK-TALK");
-      expect(out).not.toContain("WIRE-LEAK-SOURCE");
-      expect(out).not.toContain("WIRE-LEAK-CONTENT");
-      expect(renderer.findAll(Alert).length).toBe(0);
-    } finally {
-      fetchSpy.mockRestore();
-    }
+    await renderer.waitFor(() => {
+      expect(collectAllText(renderer.getRootNode()).toLowerCase()).toContain("no data available");
+    });
+    const out = collectAllText(renderer.getRootNode());
+    expect(out).not.toContain("SECRET-WIRE-REASON");
+    expect(out).not.toContain("WIRE-LEAK-NAME");
+    expect(out).not.toContain("WIRE-LEAK-TALK");
+    expect(out).not.toContain("WIRE-LEAK-SOURCE");
+    expect(out).not.toContain("WIRE-LEAK-CONTENT");
+    expect(renderer.findAll(Alert).length).toBe(0);
   });
 
   it("renders the Error placeholder when the snapshot fetch fails", async () => {
@@ -159,23 +147,20 @@ describe("HubSpot crm.record.tab extension smoke test", () => {
       domain: "acme.test",
       hs_is_target_account: "true",
     }));
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockImplementation(async () => new Response("boom", { status: 500 }));
+    const snapshotFetcher = vi.fn(async () => {
+      throw new Error("boom-500");
+    });
 
-    try {
-      renderer.render(
-        <Extension
-          context={renderer.mocks.context}
-          fetchCrmObjectProperties={fetchCrmObjectProperties}
-        />,
-      );
+    renderer.render(
+      <Extension
+        context={renderer.mocks.context}
+        fetchCrmObjectProperties={fetchCrmObjectProperties}
+        snapshotFetcher={snapshotFetcher}
+      />,
+    );
 
-      await renderer.waitFor(() => {
-        expect(renderer.find(Text).text).toBe("Error");
-      });
-    } finally {
-      fetchSpy.mockRestore();
-    }
+    await renderer.waitFor(() => {
+      expect(renderer.find(Text).text).toBe("Error");
+    });
   });
 });
