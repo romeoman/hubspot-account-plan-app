@@ -6,7 +6,7 @@
  * {@link fetchSignals} throws a clear deferral error so operators see it
  * immediately instead of hitting silent failures.
  *
- * Blocker: requires `HUBSPOT_PRIVATE_APP_TOKEN` to be provisioned in the
+ * Blocker: requires `HUBSPOT_DEV_PORTAL_TOKEN` to be provisioned in the
  * environment (Step 14 will need it anyway for the seed script). Once
  * provisioned, Slice 3 will wire this adapter to
  * {@link ../../lib/hubspot-client.HubSpotClient} and ship a real
@@ -15,7 +15,7 @@
  * @todo Slice 3: implement HubSpot enrichment via
  *   HubSpotClient.getCompanyProperties + associated content fetch (follow the
  *   {@link ./exa.ExaAdapter} pattern; record cassette with real
- *   HUBSPOT_PRIVATE_APP_TOKEN).
+ *   HUBSPOT_DEV_PORTAL_TOKEN).
  */
 
 import type { Evidence } from "@hap/config";
@@ -38,7 +38,7 @@ export class HubSpotEnrichmentAdapter implements ProviderAdapter {
     void this.client;
     return Promise.reject(
       new Error(
-        "Slice 3: real HubSpot enrichment adapter not yet implemented; needs HUBSPOT_PRIVATE_APP_TOKEN + cassette recording.",
+        "Slice 3: real HubSpot enrichment adapter not yet implemented; needs HUBSPOT_DEV_PORTAL_TOKEN + cassette recording.",
       ),
     );
   }

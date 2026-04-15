@@ -8,7 +8,7 @@ restricted-evidence suppression all behave correctly end-to-end.
 
 ## Prerequisites
 
-1. `HUBSPOT_PRIVATE_APP_TOKEN` is set in the **main repo root** `.env`
+1. `HUBSPOT_DEV_PORTAL_TOKEN` is set in the **main repo root** `.env`
    (worktrees inherit it via `vitest.setup.ts`'s dotenv resolver).
    - Required scopes: `crm.objects.companies.read`,
      `crm.objects.companies.write`, `crm.objects.contacts.read`,

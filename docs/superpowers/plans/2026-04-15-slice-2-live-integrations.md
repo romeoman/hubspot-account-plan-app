@@ -286,7 +286,7 @@ Build the security gate. Nothing else ships before this merges and passes indepe
 - Decide base branch by file presence, not commit-message grep. Probe `main` first: `git show main:apps/api/src/lib/encryption.ts >/dev/null 2>&1 && git show main:apps/api/src/adapters/llm-adapter.ts >/dev/null 2>&1`. If both succeed, use `main` as base. If either fails, use `feature/slice-1-core-domain` as the stacked base and record in the preflight report that Slice 2 is stacked on an unmerged Slice 1.
 - Create worktree from the chosen base: `git worktree add .worktrees/slice-2 -b feature/slice-2-live-integrations <base>`
 - Verify Docker Postgres healthy on :5433
-- Update `.env.test.example` (committed) and `.env.test.local` (gitignored) with: `HUBSPOT_CLIENT_SECRET` (for signed-request verification), `HUBSPOT_PRIVATE_APP_TOKEN` (for server-to-HubSpot calls; private-app model) OR `HUBSPOT_OAUTH_REFRESH_TOKEN` + `HUBSPOT_CLIENT_ID` (OAuth model — pick ONE and document), `HUBSPOT_TEST_PORTAL_ID`, `ALLOW_TEST_AUTH=true` (test-only), `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`), `EXA_API_KEY`, `ROOT_KEK` (32 random bytes, base64). Matching additions to the Zod env validator.
+- Update `.env.test.example` (committed) and `.env.test.local` (gitignored) with: `HUBSPOT_CLIENT_SECRET` (for signed-request verification), `HUBSPOT_DEV_PORTAL_TOKEN` (for server-to-HubSpot calls; private-app model) OR `HUBSPOT_OAUTH_REFRESH_TOKEN` + `HUBSPOT_CLIENT_ID` (OAuth model — pick ONE and document), `HUBSPOT_TEST_PORTAL_ID`, `ALLOW_TEST_AUTH=true` (test-only), `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`), `EXA_API_KEY`, `ROOT_KEK` (32 random bytes, base64). Matching additions to the Zod env validator.
 - Confirm HubSpot app configuration: `permittedUrls` in the extension manifest points at the API origin so `hubspot.fetch()` is allowed. Document the current manifest path + values in the preflight report.
 - Run current-docs verification (Context7 or HubSpot docs site) for: UI extensions signed-request spec, `hubspot.fetch()`, private-app token flow (if chosen), OAuth refresh flow (if chosen), Drizzle 0.45, Hono 4.7. Record the version/URL checked for each.
 - Verify `pnpm install && pnpm test && pnpm lint && pnpm typecheck` in worktree green
@@ -506,7 +506,7 @@ Build the security gate. Nothing else ships before this merges and passes indepe
 - Verify `pnpm test && pnpm typecheck`
 - Commit: `feat(adapters): add Exa, HubSpot enrichment, and news signal adapters`
 
-> Slice 1 had only the ProviderAdapter interface and a single mock — no real provider adapters shipped. Step 9 ships the factory + real Exa adapter; HubSpot enrichment and news are scaffolded with `@todo Slice 3` stubs that throw on call. HubSpot enrichment is blocked on `HUBSPOT_PRIVATE_APP_TOKEN` provisioning (Step 14 will need it anyway). News is blocked on choosing a news provider + provisioning its key.
+> Slice 1 had only the ProviderAdapter interface and a single mock — no real provider adapters shipped. Step 9 ships the factory + real Exa adapter; HubSpot enrichment and news are scaffolded with `@todo Slice 3` stubs that throw on call. HubSpot enrichment is blocked on `HUBSPOT_DEV_PORTAL_TOKEN` provisioning (Step 14 will need it anyway). News is blocked on choosing a news provider + provisioning its key.
 
 ### 10. Hygiene — Dedup + Staleness Sweeper + Trust Allow-List
 
@@ -717,3 +717,20 @@ Execute these commands to validate the task is complete:
 9. **Auto-commit workflow**: each task completion triggers a commit. Post-commit hook auto-pushes to `origin/feature/slice-2-live-integrations`. When all 16 steps pass, create PR to main for CodeRabbit review.
 
 10. **Slice 3 scope** (not this slice): richer hygiene (canonical URL normalization, ML-based dedup), real Redis cache wiring, SOC 2-style audit logging, broader account-planning surfaces — all Slice 3 or later. Any Slice 2 finding that can't be fixed here is converted to `@todo Slice 3` with an issue link before PR.
+
+---
+
+## Post-Slice 2 — Slice 3 Auth Migration (required before multi-portal)
+
+After Slice 2 shipped we realized the chosen `auth.type: "static"` + `distribution: "private"` model is installable on the dev portal only. For the product goal ("any portal can install"), Slice 3 must migrate the app to `auth.type: "oauth"` with `distribution: "marketplace"` (or allowlisted private OAuth for pilot).
+
+This migration is scoped and planned in `docs/security/SECURITY.md` §16. Key points:
+
+- Slice 2's security foundation (AES-256-GCM per-tenant encryption + tenants table + config-resolver + HubSpot signed-request verification for extension→backend) is UNCHANGED. The migration is a different token source, not a rewrite.
+- `HUBSPOT_DEV_PORTAL_TOKEN` env var is the dev-only bridge; Slice 3 removes it entirely.
+- Per-tenant `access_token` + `refresh_token` land in new encrypted columns on `tenants` (or a sibling table).
+- New endpoints `GET /oauth/install` + `GET /oauth/callback` implement the HubSpot OAuth 2.0 authorization-code flow.
+- `hubspot-client.ts` constructor takes a `tenantId`; reads/refreshes per-tenant tokens.
+- `seed-hubspot-test-portal.ts` pivots to post-install tokens (no env var).
+
+Slice 3's first priority is this migration — after it lands, the four stub LLM adapters (Anthropic, Gemini, OpenRouter, custom), the two stub signal adapters (HubSpot enrichment, news), the replay nonce store, and the startup health-check are the remaining Slice 3 scope.

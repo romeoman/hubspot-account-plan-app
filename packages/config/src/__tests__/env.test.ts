@@ -9,7 +9,7 @@ import { loadEnv } from "../env";
  *   - ROOT_KEK (base64; decodes to exactly 32 bytes)
  *
  * Optional (not required at startup, but typed if present):
- *   - HUBSPOT_PRIVATE_APP_TOKEN
+ *   - HUBSPOT_DEV_PORTAL_TOKEN
  *   - OPENAI_API_KEY
  *   - EXA_API_KEY
  *   - ALLOW_TEST_AUTH (literal "true" enables)
@@ -37,12 +37,12 @@ describe("loadEnv: happy path", () => {
   it("passes through optional vars when present", () => {
     const env = loadEnv({
       ...VALID_ENV,
-      HUBSPOT_PRIVATE_APP_TOKEN: "pat-xyz",
+      HUBSPOT_DEV_PORTAL_TOKEN: "pat-xyz",
       OPENAI_API_KEY: "sk-test",
       EXA_API_KEY: "exa-test",
       ALLOW_TEST_AUTH: "true",
     });
-    expect(env.HUBSPOT_PRIVATE_APP_TOKEN).toBe("pat-xyz");
+    expect(env.HUBSPOT_DEV_PORTAL_TOKEN).toBe("pat-xyz");
     expect(env.OPENAI_API_KEY).toBe("sk-test");
     expect(env.EXA_API_KEY).toBe("exa-test");
     expect(env.ALLOW_TEST_AUTH).toBe("true");
@@ -50,7 +50,7 @@ describe("loadEnv: happy path", () => {
 
   it("optional vars are undefined when absent", () => {
     const env = loadEnv(VALID_ENV);
-    expect(env.HUBSPOT_PRIVATE_APP_TOKEN).toBeUndefined();
+    expect(env.HUBSPOT_DEV_PORTAL_TOKEN).toBeUndefined();
     expect(env.OPENAI_API_KEY).toBeUndefined();
     expect(env.EXA_API_KEY).toBeUndefined();
     expect(env.ALLOW_TEST_AUTH).toBeUndefined();

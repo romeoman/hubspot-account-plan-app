@@ -46,3 +46,22 @@ cd "$TMP" && hs project upload
 ## Slice 3 follow-up
 
 `@todo Slice 3` — file an issue against `@hubspot/cli` reproducing the worktree upload failure with a minimal repro, and remove this indirection if/when the CLI handles worktrees correctly.
+
+## Slice 3 auth migration (required before multi-portal distribution)
+
+The current `app-hsmeta.json` declares `auth.type: "static"` + `distribution: "private"`. HubSpot only lets this be installed on the **dev portal that created it** — it cannot be published or installed on customer portals.
+
+For multi-portal / marketplace distribution, Slice 3 migrates to:
+
+```json
+"auth": {
+  "type": "oauth",
+  "redirectUrls": ["https://<api-origin>/oauth/callback"],
+  "requiredScopes": [...]
+},
+"distribution": "marketplace"   // or "private" with allowlist for pilot
+```
+
+Full migration plan + DB schema + endpoint design: see `docs/security/SECURITY.md` §16.
+
+`@todo Slice 3`: migrate `app-hsmeta.json` to OAuth + marketplace distribution once the pilot allowlist or marketplace listing is ready.

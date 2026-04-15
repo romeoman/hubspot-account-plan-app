@@ -11,30 +11,30 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HubSpotClient } from "../hubspot-client";
 
-const ORIGINAL_TOKEN = process.env.HUBSPOT_PRIVATE_APP_TOKEN;
+const ORIGINAL_TOKEN = process.env.HUBSPOT_DEV_PORTAL_TOKEN;
 
 beforeEach(() => {
-  process.env.HUBSPOT_PRIVATE_APP_TOKEN = "pat-test-abc-123";
+  process.env.HUBSPOT_DEV_PORTAL_TOKEN = "pat-test-abc-123";
 });
 
 afterEach(() => {
   if (ORIGINAL_TOKEN === undefined) {
-    delete process.env.HUBSPOT_PRIVATE_APP_TOKEN;
+    delete process.env.HUBSPOT_DEV_PORTAL_TOKEN;
   } else {
-    process.env.HUBSPOT_PRIVATE_APP_TOKEN = ORIGINAL_TOKEN;
+    process.env.HUBSPOT_DEV_PORTAL_TOKEN = ORIGINAL_TOKEN;
   }
   vi.restoreAllMocks();
 });
 
 describe("HubSpotClient", () => {
-  it("constructor throws when HUBSPOT_PRIVATE_APP_TOKEN is missing", () => {
-    delete process.env.HUBSPOT_PRIVATE_APP_TOKEN;
-    expect(() => new HubSpotClient()).toThrowError(/HUBSPOT_PRIVATE_APP_TOKEN/);
+  it("constructor throws when HUBSPOT_DEV_PORTAL_TOKEN is missing", () => {
+    delete process.env.HUBSPOT_DEV_PORTAL_TOKEN;
+    expect(() => new HubSpotClient()).toThrowError(/HUBSPOT_DEV_PORTAL_TOKEN/);
   });
 
-  it("constructor throws when HUBSPOT_PRIVATE_APP_TOKEN is empty string", () => {
-    process.env.HUBSPOT_PRIVATE_APP_TOKEN = "";
-    expect(() => new HubSpotClient()).toThrowError(/HUBSPOT_PRIVATE_APP_TOKEN/);
+  it("constructor throws when HUBSPOT_DEV_PORTAL_TOKEN is empty string", () => {
+    process.env.HUBSPOT_DEV_PORTAL_TOKEN = "";
+    expect(() => new HubSpotClient()).toThrowError(/HUBSPOT_DEV_PORTAL_TOKEN/);
   });
 
   it("getCompanyProperties calls fetch with Bearer token and parses properties", async () => {

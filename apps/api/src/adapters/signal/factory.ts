@@ -16,7 +16,7 @@
  *    throws a clear `Slice 3: real <provider> adapter not yet implemented`
  *    error. Tenants can ALREADY configure these providers in
  *    `provider_config`; Slice 3 ships the bodies once the required credentials
- *    are available (HUBSPOT_PRIVATE_APP_TOKEN, chosen news provider key).
+ *    are available (HUBSPOT_DEV_PORTAL_TOKEN, chosen news provider key).
  *
  * Guardrails: {@link wrapSignalWithGuards} returns a new {@link ProviderAdapter}
  * whose `fetchSignals()` is rate-limited (token bucket, per-tenant × provider)
@@ -44,7 +44,7 @@ export interface SignalFactoryDeps {
   /**
    * Injected HubSpot client. When omitted, the HubSpot enrichment branch
    * constructs a new {@link HubSpotClient} — which reads the env-held
-   * `HUBSPOT_PRIVATE_APP_TOKEN`. Tests MUST inject a stub to avoid the env
+   * `HUBSPOT_DEV_PORTAL_TOKEN`. Tests MUST inject a stub to avoid the env
    * read in unit tests.
    */
   hubspotClient?: HubSpotClient;
@@ -89,7 +89,7 @@ export function createSignalAdapter(
     case "hubspot-enrichment": {
       // Tests MUST inject a client. Production wiring constructs one lazily
       // from the env — the client itself throws at construction if
-      // HUBSPOT_PRIVATE_APP_TOKEN is missing, which surfaces a misconfigured
+      // HUBSPOT_DEV_PORTAL_TOKEN is missing, which surfaces a misconfigured
       // deploy loudly at first adapter call.
       const client = deps?.hubspotClient;
       if (!client) {

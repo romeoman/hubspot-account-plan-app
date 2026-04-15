@@ -188,13 +188,13 @@ describe("seed-hubspot-test-portal", () => {
     it("throws a clear error when token is missing and not dry-run", async () => {
       await expect(
         runSeed([], {
-          env: {}, // no HUBSPOT_PRIVATE_APP_TOKEN
+          env: {}, // no HUBSPOT_DEV_PORTAL_TOKEN
           clientFactory: () => stubClient(),
           log: () => {
             /* noop */
           },
         }),
-      ).rejects.toThrow(/HUBSPOT_PRIVATE_APP_TOKEN/);
+      ).rejects.toThrow(/HUBSPOT_DEV_PORTAL_TOKEN/);
     });
 
     it("live run calls searchCompaniesByMarker and executes the plan when token is present", async () => {
@@ -205,7 +205,7 @@ describe("seed-hubspot-test-portal", () => {
       });
       const log: string[] = [];
       const { plan, results } = await runSeed([], {
-        env: { HUBSPOT_PRIVATE_APP_TOKEN: "pat-test" },
+        env: { HUBSPOT_DEV_PORTAL_TOKEN: "pat-test" },
         clientFactory: () => client,
         log: (s) => log.push(s),
       });

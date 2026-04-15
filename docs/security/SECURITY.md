@@ -357,7 +357,7 @@ The backend makes authenticated calls to HubSpot's CRM v3 API — today only fro
 ### 14.1 Credential model (Slice 2)
 
 - **Type**: HubSpot **Private App Access Token**, provisioned at the Slice 2 test portal (`147062576`) → Settings → Integrations → Private Apps.
-- **Env var**: `HUBSPOT_PRIVATE_APP_TOKEN` (optional per `packages/config/src/env.ts`; required by Step 9 onward).
+- **Env var**: `HUBSPOT_DEV_PORTAL_TOKEN` (optional per `packages/config/src/env.ts`; required by Step 9 onward).
 - **Required scopes (Slice 2)**:
   - `crm.objects.companies.read`
   - `crm.objects.contacts.read`
@@ -368,7 +368,7 @@ The backend makes authenticated calls to HubSpot's CRM v3 API — today only fro
 
 `apps/api/src/lib/hubspot-client.ts` exposes a `HubSpotClient` class:
 
-- Constructor reads `HUBSPOT_PRIVATE_APP_TOKEN` via `loadEnv()`. Throws if missing — Slice 2 Steps 4–8 never instantiate the client; Step 9 does, and missing credentials fail loudly at that point rather than silently bypassing enrichment.
+- Constructor reads `HUBSPOT_DEV_PORTAL_TOKEN` via `loadEnv()`. Throws if missing — Slice 2 Steps 4–8 never instantiate the client; Step 9 does, and missing credentials fail loudly at that point rather than silently bypassing enrichment.
 - `getCompanyProperties(companyId, properties[])` hits `GET https://api.hubapi.com/crm/v3/objects/companies/{id}` with `Authorization: Bearer <token>`. Errors are surfaced as `hubspot: <status> <statusText>` — the token is never included in the error message.
 
 ### 14.3 OAuth (Slice 3+)
@@ -384,7 +384,7 @@ Independent review of commits `9fbccc5` (provider config + env validator), `2b47
 ### 15.1 Advisory dispositions
 
 - **A1 — Replay window within freshness bound** (`hubspot-signature.ts`). Within the 5-minute freshness window the same `(body, signature, timestamp)` triple can be replayed. Defense-in-depth fix is a nonce store with 5-minute TTL keyed on the signature hash. **Disposition:** `@todo Slice 3` marker added at the freshness constant; Slice 3 wires Redis-backed nonce tracking on top of the Step 6 cache adapter.
-- **A2 — `HubSpotClient` token validation deferred to first call** (`hubspot-client.ts`). Missing `HUBSPOT_PRIVATE_APP_TOKEN` throws only when the class is first instantiated. **Disposition:** `@todo Slice 3` marker added at the class declaration; Step 9 (Exa + HubSpot signal adapters) adds a startup health-check that instantiates the client once, surfacing missing credentials at process start.
+- **A2 — `HubSpotClient` token validation deferred to first call** (`hubspot-client.ts`). Missing `HUBSPOT_DEV_PORTAL_TOKEN` throws only when the class is first instantiated. **Disposition:** `@todo Slice 3` marker added at the class declaration; Step 9 (Exa + HubSpot signal adapters) adds a startup health-check that instantiates the client once, surfacing missing credentials at process start.
 - **A3 — `safeEquals` unequal-length branch timing** (`hubspot-signature.ts`). When the inbound and expected signatures differ in length, the implementation runs `timingSafeEqual` against a zero-padded buffer sized to the inbound (attacker-controlled) length. The branch is distinguishable in wall time from the equal-length path but does not leak the expected signature — the expected length is the public 44-char base64 of SHA-256, and the timing reveals only the length the attacker already supplied. Risk is low and bounded; documented here for future readers.
 - **A4 — HKDF salt as plaintext constant** (`kek.ts`). The salt `"hap-tenant-kek-v1"` is a correct design choice per RFC 5869 (HKDF salt is non-secret; per-tenant binding lives in `info`). Recorded so a future reviewer does not "fix" it to a random or per-tenant salt — that change would invalidate every existing ciphertext. An invariant comment was added at the constant declaration.
 
@@ -395,3 +395,51 @@ Independent review of commits `9fbccc5` (provider config + env validator), `2b47
 - This audit section appended to `SECURITY.md`. ✅
 
 Phase 2 may proceed.
+
+## 16. Slice 3 Auth Migration — `static + private` → `oauth + marketplace`
+
+### 16.1 Current state (Slice 2 shipped)
+
+Slice 2's HubSpot developer app is configured `auth.type: "static"`, `distribution: "private"` — a single-portal app installable ONLY on the dev portal that created it (`man-digital-development [dev account] 146425426`). Server-to-HubSpot calls (Step 9 enrichment adapter + Step 14 seed script) read a long-lived token from the env var `HUBSPOT_DEV_PORTAL_TOKEN`. This is a **dev-only bridge**, not the production auth model.
+
+Verified limitations (HubSpot docs + Exa research, 2026-04-15):
+
+- `auth.type: "static"` + `distribution: "private"` cannot be installed on any portal other than the dev portal. HubSpot docs verbatim: "used when you want to limit your app distribution to a single authorized account only."
+- Legacy private apps (`Settings → Integrations → Private Apps`) are a separate, older model, being superseded by the Developer Platform. They are also single-portal by design.
+- For any-portal install the app must be `auth.type: "oauth"` with `distribution: "marketplace"` (public, unlimited installs post-listing; cap 25 pre-listing) OR `distribution: "private"` + OAuth (allowlist, max 10 installs — 100 for Solution Partners).
+
+### 16.2 Target state (Slice 3 delivers)
+
+- `apps/hubspot-project/src/app/app-hsmeta.json`: `auth.type: "oauth"`, `distribution: "marketplace"` (or `"private"` with allowlist for pilot), add `redirectUrls` pointing at the installed-app OAuth callback on the API origin.
+- New API endpoints: `GET /oauth/install` (redirects to HubSpot's authorize URL with `client_id`, scopes, `redirect_uri`) and `GET /oauth/callback` (receives `code`, exchanges for `access_token` + `refresh_token` via `POST https://api.hubspot.com/oauth/2026-03/token`, stores tokens encrypted per-tenant).
+- New DB column(s) on `tenants` (or a sibling `tenant_hubspot_oauth` table): encrypted `hubspot_access_token`, encrypted `hubspot_refresh_token`, `access_token_expires_at`, `hub_id`, `scopes[]`. Encryption uses the Slice 2 AES-256-GCM envelope (Step 3) — infrastructure is already in place.
+- `apps/api/src/lib/hubspot-client.ts` refactor: constructor takes a `tenantId`, reads the per-tenant access_token from DB, auto-refreshes on 401/expiry using the refresh_token, swaps the bearer header per request. `HUBSPOT_DEV_PORTAL_TOKEN` env var is retired.
+- `scripts/seed-hubspot-test-portal.ts`: user first installs the app into their test portal via the install flow (one-click on HubSpot's side); seed script then reads the stored tenant token and proceeds. No env-variable token path.
+- `packages/config/src/env.ts`: `HUBSPOT_DEV_PORTAL_TOKEN` removed from the schema. `HUBSPOT_CLIENT_ID` + `HUBSPOT_CLIENT_SECRET` stay (they drive OAuth + the existing Step 4 signed-request verification).
+
+### 16.3 Why this is Slice 3, not Slice 2
+
+- The OAuth install flow is a sizable architectural piece on its own — endpoints, redirect handling, state+CSRF, refresh-token rotation, DB schema, error UX.
+- The Slice 2 security foundation (AES-256-GCM envelope, per-tenant encryption, `tenants` table with FK cascades, config-resolver caching, HubSpot signature verification for the extension→backend direction) is ALREADY correct for multi-tenant. The migration is a different TOKEN SOURCE, not a rewrite.
+- `hubspot-signature.ts` (Step 4) is unchanged by this migration — it verifies extension→backend requests using `HUBSPOT_CLIENT_SECRET`, which is the same in both auth models.
+- Slice 2 with `static + private` gives a working single-portal test harness for validating domain logic (hygiene, drill-in, next-move, trust evaluation, cross-tenant isolation at the DB + factory layer) BEFORE pivoting auth.
+
+### 16.4 Migration checklist (Slice 3)
+
+- [ ] `app-hsmeta.json`: swap `auth.type` to `"oauth"`, add `redirectUrls`, pick `distribution` (`"marketplace"` for public, `"private"` for pilot/allowlist).
+- [ ] Re-upload the project via `pnpm tsx scripts/hs-project-upload.ts`. HubSpot provisions the OAuth config (same `client_id`/`client_secret`).
+- [ ] Add DB migration: `tenants.hubspot_access_token_encrypted`, `tenants.hubspot_refresh_token_encrypted`, `tenants.hubspot_token_expires_at`, `tenants.hubspot_hub_id`, `tenants.hubspot_scopes`. (Or a sibling table if we want a 1:many relation for multi-install-per-tenant scenarios.)
+- [ ] `GET /oauth/install` endpoint — builds HubSpot authorize URL with state (CSRF-signed via the Slice 2 `HUBSPOT_CLIENT_SECRET`), redirects.
+- [ ] `GET /oauth/callback` endpoint — verifies state, calls HubSpot token exchange, encrypts + stores per-tenant, redirects to a success page.
+- [ ] `hubspot-client.ts` refactor as above. Tests updated.
+- [ ] `seed-hubspot-test-portal.ts` refactor to use post-install tenant token. Tests updated.
+- [ ] Remove `HUBSPOT_DEV_PORTAL_TOKEN` from `.env.example`, the Zod validator, and `docs/qa/slice-2-walkthrough.md`.
+- [ ] New cross-tenant isolation tests: token refresh does not leak across tenants; token exchange errors do not leak codes/secrets to logs.
+- [ ] New security audit pass covering OAuth flow (CSRF, token storage, refresh race conditions, 401 loops).
+
+### 16.5 Acceptance criteria for completing the migration
+
+- Two tenants can install the app into two different HubSpot portals and use it independently. Cross-tenant tests prove isolation at both the DB and the HubSpot-client levels.
+- `HUBSPOT_DEV_PORTAL_TOKEN` grep returns zero hits in `apps/`, `packages/`, and `scripts/`.
+- Security audit PASS on the OAuth flow.
+- Deployable to `distribution: "marketplace"` (listing submission is a separate business step, but the CODE is ready for it).

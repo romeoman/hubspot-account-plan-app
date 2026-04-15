@@ -16,7 +16,7 @@
  *   pnpm tsx scripts/seed-hubspot-test-portal.ts
  *   pnpm tsx scripts/seed-hubspot-test-portal.ts --portal 147062576
  *
- * Auth: reads `HUBSPOT_PRIVATE_APP_TOKEN` from the environment (the same
+ * Auth: reads `HUBSPOT_DEV_PORTAL_TOKEN` from the environment (the same
  * dotenv-at-main-repo-root resolution used by `vitest.setup.ts`). The script
  * throws a clear error if the token is missing.
  *
@@ -34,7 +34,7 @@
  *     https://developers.hubspot.com/docs/api-reference/latest/crm/objects/companies/update-company
  *
  * NEVER run without `--dry-run` in CI. The real run happens on a human
- * operator's machine after they paste `HUBSPOT_PRIVATE_APP_TOKEN` into
+ * operator's machine after they paste `HUBSPOT_DEV_PORTAL_TOKEN` into
  * the main repo-root `.env`. See `docs/qa/slice-2-walkthrough.md`.
  */
 
@@ -371,7 +371,7 @@ export function parseArgs(argv: readonly string[]): SeedCliOptions {
 
 /**
  * Entry point. Exported for the test harness so we can stub the client.
- * Throws when `HUBSPOT_PRIVATE_APP_TOKEN` is missing and `--dry-run` is NOT
+ * Throws when `HUBSPOT_DEV_PORTAL_TOKEN` is missing and `--dry-run` is NOT
  * set; dry-run mode does not require the token.
  */
 export async function runSeed(
@@ -403,10 +403,10 @@ export async function runSeed(
     return { plan };
   }
 
-  const token = env.HUBSPOT_PRIVATE_APP_TOKEN;
+  const token = env.HUBSPOT_DEV_PORTAL_TOKEN;
   if (!token || token.length === 0) {
     throw new Error(
-      "seed-hubspot-test-portal: HUBSPOT_PRIVATE_APP_TOKEN is not set; required for live seeding. Rerun with --dry-run to preview without credentials.",
+      "seed-hubspot-test-portal: HUBSPOT_DEV_PORTAL_TOKEN is not set; required for live seeding. Rerun with --dry-run to preview without credentials.",
     );
   }
 

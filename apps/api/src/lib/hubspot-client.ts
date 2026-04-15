@@ -1,23 +1,35 @@
 /**
- * Server-side HubSpot CRM client.
+ * Server-side HubSpot CRM client — Slice 2 dev-only bridge.
  *
- * Holds the backend-only credential (`HUBSPOT_PRIVATE_APP_TOKEN`) used by
- * Slice 2 Step 9's signal/HubSpot-enrichment adapter to fetch CRM properties
- * on behalf of a tenant. The token NEVER reaches the UI extension or the
- * inbound request — it is resolved from the environment at client
- * construction time.
+ * DEV-ONLY, SINGLE-PORTAL. This client reads `HUBSPOT_DEV_PORTAL_TOKEN` from
+ * the environment — a long-lived, single-portal legacy private-app token. It
+ * exists ONLY because Slice 2's app is configured `auth.type: "static"` +
+ * `distribution: "private"`, which per HubSpot docs is installable on the
+ * dev portal only.
+ *
+ * Slice 3 replaces this entirely:
+ *   - App switches to `auth.type: "oauth"` + `distribution: "marketplace"`
+ *     (or `"private"` with allowlist for pilot).
+ *   - Each install yields per-tenant access_token + refresh_token, stored
+ *     encrypted in the `tenants` table via the Slice 2 AES-256-GCM envelope.
+ *   - Constructor takes a `tenantId`, reads that tenant's token, refreshes
+ *     on 401 using the refresh_token, swaps the bearer per request.
+ *   - `HUBSPOT_DEV_PORTAL_TOKEN` env var is REMOVED.
+ *
+ * See `docs/security/SECURITY.md` §16 for the full migration plan.
+ *
+ * The token NEVER reaches the UI extension or the inbound request — it is
+ * resolved from the environment at client construction time only.
  *
  * Slice 2 scope:
- *   - Private-app token only (Slice 2 test portal 147062576).
  *   - Required scopes: `crm.objects.companies.read`, `crm.objects.contacts.read`.
  *   - Step 14 seed extends writes: `crm.objects.companies.write`,
- *     `crm.objects.contacts.write`, `crm.schemas.companies.write` (for the
- *     `hap_seed_marker` custom property the seed script uses for idempotency).
+ *     `crm.objects.contacts.write` (write scopes granted on the dev portal's
+ *     private-app settings page).
  *
- * OAuth refresh-token flow is deferred to Slice 3+ (marketplace distribution).
- *
- * @todo Slice 3: OAuth refresh-token flow when the app is distributed via the
- *   HubSpot marketplace; swap in per-install token storage and auto-refresh.
+ * @todo Slice 3: replace `HUBSPOT_DEV_PORTAL_TOKEN` env-var path with
+ *   per-tenant OAuth tokens from the `tenants` table (encrypted via
+ *   Step 3 AES-256-GCM). See SECURITY.md §16.
  */
 
 import { loadEnv } from "@hap/config";
@@ -50,7 +62,7 @@ interface HubSpotObjectResponse {
 /**
  * @todo Slice 3 (security audit advisory A2): add a startup health-check in
  * `apps/api/src/index.ts` that instantiates `HubSpotClient` once when the
- * Step 9 enrichment adapter ships, so a missing `HUBSPOT_PRIVATE_APP_TOKEN`
+ * Step 9 enrichment adapter ships, so a missing `HUBSPOT_DEV_PORTAL_TOKEN`
  * fails loud at process start instead of latent-until-first-call.
  */
 export class HubSpotClient {
@@ -58,10 +70,10 @@ export class HubSpotClient {
 
   constructor() {
     const env = loadEnv();
-    const token = env.HUBSPOT_PRIVATE_APP_TOKEN;
+    const token = env.HUBSPOT_DEV_PORTAL_TOKEN;
     if (!token || token.length === 0) {
       throw new Error(
-        "HubSpotClient: HUBSPOT_PRIVATE_APP_TOKEN is not set; required for server-to-HubSpot calls (Step 9 onward).",
+        "HubSpotClient: HUBSPOT_DEV_PORTAL_TOKEN is not set; required for server-to-HubSpot calls (Step 9 onward).",
       );
     }
     this.token = token;

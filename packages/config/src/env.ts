@@ -12,7 +12,7 @@
  *   - ROOT_KEK               base64-encoded 32-byte key (AES-256 key-encryption key).
  *
  * Optional vars (typed-through when present, do not fail startup if missing):
- *   - HUBSPOT_PRIVATE_APP_TOKEN  Step 9+ — private-app token for dev loops.
+ *   - HUBSPOT_DEV_PORTAL_TOKEN  Step 9+ — private-app token for dev loops.
  *   - OPENAI_API_KEY             cassette recording only.
  *   - EXA_API_KEY                cassette recording only.
  *   - ALLOW_TEST_AUTH            test bypass; must be literal "true" to enable.
@@ -71,7 +71,7 @@ const envSchema = z.object({
 
   // Empty strings (common from unset vars in .env files) are coerced to
   // undefined so optional presence checks work intuitively.
-  HUBSPOT_PRIVATE_APP_TOKEN: z.preprocess(emptyToUndef, z.string().min(1).optional()),
+  HUBSPOT_DEV_PORTAL_TOKEN: z.preprocess(emptyToUndef, z.string().min(1).optional()),
   OPENAI_API_KEY: z.preprocess(emptyToUndef, z.string().min(1).optional()),
   EXA_API_KEY: z.preprocess(emptyToUndef, z.string().min(1).optional()),
   ALLOW_TEST_AUTH: z.preprocess(emptyToUndef, z.literal("true").optional()),
