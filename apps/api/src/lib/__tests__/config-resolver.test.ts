@@ -136,8 +136,9 @@ describe("getProviderConfig", () => {
     // Advance past TTL.
     t += CONFIG_RESOLVER_CACHE_TTL_MS + 1;
 
-    // Delete the row so the refetch returns null — proves cache expired.
-    await db.delete(providerConfig);
+    // Delete THIS tenant's row only. An unscoped delete would race with
+    // parallel test files that seed their own provider_config rows.
+    await db.delete(providerConfig).where(eq(providerConfig.tenantId, tenant.id));
 
     const second = await getProviderConfig(
       { db, now },

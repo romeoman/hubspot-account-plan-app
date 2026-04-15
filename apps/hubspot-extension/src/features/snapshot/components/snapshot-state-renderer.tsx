@@ -41,7 +41,10 @@ export default function SnapshotStateRenderer({ snapshot }: { snapshot: Snapshot
 
   const { stateFlags } = snapshot;
 
-  // Compute the stale age from the snapshot's newest evidence timestamp.
+  // Compute the stale age from the snapshot's OLDEST evidence timestamp
+  // (matches `staleAgeDays` below). Using the oldest means if any single
+  // row is stale, the warning reflects the worst-case age — the most honest
+  // signal for a "one or more sources are stale" user story.
   // If no evidence is present, fall back to 0 (the warning still renders
   // because the `stale` flag is true, but it shows "0 days"; real snapshots
   // are never stale+empty per the fixture contract).
