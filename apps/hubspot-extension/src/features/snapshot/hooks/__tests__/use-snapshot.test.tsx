@@ -1,6 +1,7 @@
-import { Text } from "@hubspot/ui-extensions";
+import { hubspot, Text } from "@hubspot/ui-extensions";
 import { createRenderer } from "@hubspot/ui-extensions/testing";
 import { describe, expect, it, vi } from "vitest";
+import { DEFAULT_API_BASE_URL } from "../api-fetcher";
 import { useSnapshot } from "../use-snapshot";
 
 /**
@@ -165,5 +166,55 @@ describe("useSnapshot", () => {
       expect(parsed.reason).toBe("call-2");
     });
     expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses the real hubspot.fetch()-backed default fetcher when none is injected", async () => {
+    // Step 11 anti-regression: with no fetcher passed, useSnapshot must
+    // call through to `createHubSpotApiFetcher()` which hits
+    // `POST {DEFAULT_API_BASE_URL}/api/snapshot/:companyId` via
+    // `hubspot.fetch()`. This binds the hook's production default to the
+    // same origin that `app-hsmeta.json` whitelists in permittedUrls.fetch.
+    const fetchSpy = vi.spyOn(hubspot, "fetch").mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      json: async () => VALID_WIRE_SNAPSHOT,
+    } as unknown as Response);
+
+    function DefaultProbe({ companyId }: { companyId: string }) {
+      const state = useSnapshot({ companyId });
+      return (
+        <Text>
+          {JSON.stringify({
+            loading: state.loading,
+            hasSnapshot: state.snapshot !== null,
+            error: state.error ? state.error.message : null,
+          })}
+        </Text>
+      );
+    }
+
+    const renderer = createRenderer("crm.record.tab");
+    renderer.render(<DefaultProbe companyId="company-99" />);
+
+    await renderer.waitFor(() => {
+      const parsed = JSON.parse(renderer.find(Text).text ?? "{}");
+      expect(parsed.loading).toBe(false);
+    });
+
+    const parsed = JSON.parse(renderer.find(Text).text ?? "{}");
+    expect(parsed.error).toBeNull();
+    expect(parsed.hasSnapshot).toBe(true);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const call = fetchSpy.mock.calls[0];
+    if (!call) throw new Error("hubspot.fetch was not called");
+    const [url, options] = call;
+    expect(url).toBe(`${DEFAULT_API_BASE_URL}/api/snapshot/company-99`);
+    expect((options as { method: string }).method).toBe("POST");
+    // Anti-regression: never send client-side auth headers.
+    expect((options as { headers?: unknown }).headers).toBeUndefined();
+
+    fetchSpy.mockRestore();
   });
 });

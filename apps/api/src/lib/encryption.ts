@@ -1,75 +1,143 @@
 /**
- * Provider-key encryption (V1 stub).
+ * Provider-key encryption — AES-256-GCM with a tenant-derived KEK.
  *
- * V1 uses a tenant-bound base64 encoding. This is NOT cryptographically
- * secure — its only purpose is to:
- *   1. Keep plaintext provider secrets out of logs and dumps by accident
- *   2. Prevent cross-tenant key swapping (tenant A's ciphertext cannot be
- *      decrypted under tenant B) — so the interface enforces tenant binding
- *      today and Slice 2 can swap in real crypto without breaking callers.
+ * Envelope format (colon-separated, all segments base64url):
+ *   v{KEY_VERSION}:{iv}:{tag}:{ciphertext}
  *
- * The string-in / string-out contract (throws on failure) is stable: Slice 2
- * will replace this with AES-256-GCM using a tenant-derived KEK plus envelope
- * encryption.
+ *   - `v1`      — current envelope version. Rotation bumps this.
+ *   - `iv`      — 12 random bytes per encryption (GCM standard).
+ *   - `tag`     — 16-byte GCM authentication tag.
+ *   - `ciphertext` — AES-256-GCM ciphertext of the UTF-8 plaintext.
  *
- * @todo Slice 2: replace with AES-256-GCM using tenant-derived KEK + envelope encryption. See docs/security/SECURITY.md (TBD).
+ * Tenant binding is structural: the KEK is derived from `(ROOT_KEK, tenantId)`
+ * via HKDF-SHA256 ({@link deriveTenantKek}). A ciphertext produced for tenant
+ * A cannot be decrypted by tenant B — GCM's tag will not verify under B's
+ * KEK, and `createDecipheriv.final()` throws. We propagate that as a generic
+ * "authentication failed" error without leaking plaintext fragments, the
+ * tenantId of either party, or the ciphertext envelope.
+ *
+ * Public API (stable across Slice 1 → Slice 2):
+ *   - `encryptProviderKey(tenantId, plaintext) -> ciphertext`
+ *   - `decryptProviderKey(tenantId, ciphertext) -> plaintext`
+ *
+ * Rotation: when the key-derivation parameters change (salt, HKDF family,
+ * root key), introduce a new `KEY_VERSION` constant and accept both in
+ * `decryptProviderKey` during the rollover. See
+ * `docs/security/SECURITY.md` §Key Management.
  */
 
-const DELIMITER = ":";
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { loadEnv } from "@hap/config";
+import { deriveTenantKek } from "./kek";
+
+/** Current envelope version. Bump on rotation; `decryptProviderKey` accepts
+ * all versions known to this module. */
+const KEY_VERSION = 1;
+const SUPPORTED_VERSIONS: ReadonlySet<number> = new Set([KEY_VERSION]);
+
+const IV_BYTES = 12;
+const TAG_BYTES = 16;
 
 /**
- * Encrypt a provider key, tenant-bound.
- *
- * V1: returns `base64("<tenantId>:<plaintext>")`.
- *
- * @param tenantId - tenant UUID the secret belongs to
- * @param plaintext - provider key / secret
- * @returns ciphertext string (opaque — do not parse)
- * @todo Slice 2: replace with AES-256-GCM using tenant-derived KEK + envelope encryption. See docs/security/SECURITY.md (TBD).
+ * Lazily-resolved 32-byte root KEK. Resolved on first use to avoid crashing
+ * import-time for tooling that doesn't need encryption (e.g. typegen scripts).
+ * Once resolved, cached for the process lifetime — the env is immutable.
  */
-export function encryptProviderKey(tenantId: string, plaintext: string): string {
-  const payload = `${tenantId}${DELIMITER}${plaintext}`;
-  return Buffer.from(payload, "utf8").toString("base64");
+let rootKekCache: Buffer | null = null;
+function getRootKek(): Buffer {
+  if (rootKekCache) return rootKekCache;
+  const env = loadEnv();
+  // env.ROOT_KEK is validated as base64 → 32 bytes by the Zod schema, but we
+  // re-decode here rather than trust a length assumption.
+  const buf = Buffer.from(env.ROOT_KEK, "base64");
+  if (buf.length !== 32) {
+    throw new Error("encryption: ROOT_KEK must decode to 32 bytes");
+  }
+  rootKekCache = buf;
+  return buf;
 }
 
 /**
- * Decrypt a provider key, verifying tenant binding.
+ * TEST-ONLY hook to clear the cached ROOT_KEK (so a test that mutates
+ * process.env.ROOT_KEK can force a re-read). Not exported from the package.
+ * @internal
+ */
+export function __resetEncryptionCacheForTests(): void {
+  rootKekCache = null;
+}
+
+/**
+ * Encrypt a plaintext secret for a specific tenant.
  *
- * V1: base64-decodes and verifies the `<tenantId>:` prefix matches the caller.
- * Throws `Error('decryption: tenant mismatch')` if the ciphertext was issued
- * for a different tenant. This prevents cross-tenant key reuse even at the
- * stub level.
+ * @param tenantId - tenant UUID that owns the secret. Binds the ciphertext
+ *   to this tenant via HKDF; a different tenantId will not decrypt it.
+ * @param plaintext - UTF-8 string to encrypt. Empty strings are allowed.
+ * @returns `v1:{iv}:{tag}:{ciphertext}` envelope, all base64url.
+ */
+export function encryptProviderKey(tenantId: string, plaintext: string): string {
+  const kek = deriveTenantKek(getRootKek(), tenantId);
+  const iv = randomBytes(IV_BYTES);
+  const cipher = createCipheriv("aes-256-gcm", kek, iv);
+  const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return [
+    `v${KEY_VERSION}`,
+    iv.toString("base64url"),
+    tag.toString("base64url"),
+    ciphertext.toString("base64url"),
+  ].join(":");
+}
+
+/**
+ * Decrypt a ciphertext produced by {@link encryptProviderKey}.
  *
- * @param tenantId - tenant UUID expected to own the secret
- * @param ciphertext - string produced by {@link encryptProviderKey}
- * @returns plaintext
- * @throws on malformed ciphertext or tenant mismatch
- * @todo Slice 2: replace with AES-256-GCM using tenant-derived KEK + envelope encryption. See docs/security/SECURITY.md (TBD).
+ * @param tenantId - tenant UUID expected to own the ciphertext. MUST match
+ *   the tenantId used at encryption time; otherwise the GCM tag will not
+ *   verify and this throws.
+ * @param ciphertext - `v{N}:{iv}:{tag}:{ciphertext}` envelope.
+ * @throws on malformed envelope, unknown key version, or authentication
+ *   failure (wrong tenant / tampered bytes / Slice 1 legacy). Errors do NOT
+ *   leak plaintext fragments, tenantIds, or the offending ciphertext.
  */
 export function decryptProviderKey(tenantId: string, ciphertext: string): string {
-  let decoded: string;
+  const parts = ciphertext.split(":");
+  if (parts.length !== 4) {
+    throw new Error("decryption: malformed ciphertext envelope");
+  }
+  const [versionTag, ivB64, tagB64, payloadB64] = parts as [string, string, string, string];
+
+  const vMatch = versionTag.match(/^v(\d+)$/);
+  if (!vMatch) {
+    throw new Error("decryption: malformed ciphertext envelope");
+  }
+  const version = Number.parseInt(vMatch[1] as string, 10);
+  if (!SUPPORTED_VERSIONS.has(version)) {
+    throw new Error(`decryption: unknown key version (v${version})`);
+  }
+
+  let iv: Buffer;
+  let tag: Buffer;
+  let payload: Buffer;
   try {
-    const buf = Buffer.from(ciphertext, "base64");
-    // Reject inputs that don't round-trip cleanly as base64.
-    if (buf.toString("base64").replace(/=+$/u, "") !== ciphertext.replace(/=+$/u, "")) {
-      throw new Error("decryption: malformed ciphertext");
-    }
-    decoded = buf.toString("utf8");
-  } catch (err) {
-    if (err instanceof Error && err.message.startsWith("decryption:")) throw err;
-    throw new Error("decryption: malformed ciphertext");
+    iv = Buffer.from(ivB64, "base64url");
+    tag = Buffer.from(tagB64, "base64url");
+    payload = Buffer.from(payloadB64, "base64url");
+  } catch {
+    throw new Error("decryption: malformed ciphertext envelope");
+  }
+  if (iv.length !== IV_BYTES || tag.length !== TAG_BYTES) {
+    throw new Error("decryption: malformed ciphertext envelope");
   }
 
-  const idx = decoded.indexOf(DELIMITER);
-  if (idx < 0) {
-    throw new Error("decryption: malformed ciphertext");
+  const kek = deriveTenantKek(getRootKek(), tenantId);
+  const decipher = createDecipheriv("aes-256-gcm", kek, iv);
+  decipher.setAuthTag(tag);
+  try {
+    const plain = Buffer.concat([decipher.update(payload), decipher.final()]);
+    return plain.toString("utf8");
+  } catch {
+    // Collapse all GCM failures to a single opaque message — do NOT include
+    // the tenantId, the ciphertext, or any plaintext fragment.
+    throw new Error("decryption: authentication failed");
   }
-
-  const embeddedTenant = decoded.slice(0, idx);
-  const plaintext = decoded.slice(idx + DELIMITER.length);
-
-  if (embeddedTenant !== tenantId) {
-    throw new Error("decryption: tenant mismatch");
-  }
-  return plaintext;
 }

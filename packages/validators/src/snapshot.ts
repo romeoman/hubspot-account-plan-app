@@ -20,18 +20,19 @@
  * - `ZodType` generics simplified to `ZodType<Output, Input>`.
  */
 
-import type {
-  EligibilityState,
-  Evidence,
-  LlmProviderConfig,
-  LlmProviderType,
-  Person,
-  ProviderConfig,
-  Snapshot,
-  StateFlags,
-  TenantConfig,
-  TenantSettings,
-  ThresholdConfig,
+import {
+  type EligibilityState,
+  type Evidence,
+  type LlmProviderConfig,
+  type LlmProviderType,
+  MAX_NEXT_MOVE_CHARS,
+  type Person,
+  type ProviderConfig,
+  type Snapshot,
+  type StateFlags,
+  type TenantConfig,
+  type TenantSettings,
+  type ThresholdConfig,
 } from "@hap/config";
 import { z } from "zod";
 
@@ -77,6 +78,15 @@ export const snapshotSchema = z.object({
   evidence: z.array(evidenceSchema),
   stateFlags: stateFlagsSchema,
   trustScore: z.number().min(0).max(1).optional(),
+  // Reject whitespace-only strings so the UI's "have a recommendation"
+  // gate matches what the schema accepts (CodeRabbit minor on
+  // packages/validators/src/snapshot.ts:81). `z.string().min(1)` after
+  // the optional() chain keeps the field optional but bans empty content.
+  nextMove: z
+    .string()
+    .max(MAX_NEXT_MOVE_CHARS)
+    .refine((s) => s.trim().length > 0, "nextMove must not be whitespace-only")
+    .optional(),
   createdAt: z.date(),
 }) satisfies z.ZodType<Snapshot>;
 
@@ -105,6 +115,10 @@ export const providerConfigSchema = z.object({
   enabled: z.boolean(),
   apiKeyRef: z.string().min(1),
   thresholds: thresholdConfigSchema,
+  // Slice 2 Step 10 hygiene — per-provider domain allow/block lists stored
+  // in `provider_config.{allow_list,block_list}` jsonb columns.
+  allowList: z.array(z.string()).optional(),
+  blockList: z.array(z.string()).optional(),
 }) satisfies z.ZodType<ProviderConfig>;
 
 export const tenantSettingsSchema = z.object({

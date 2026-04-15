@@ -33,6 +33,9 @@ import type { Database } from "@hap/db";
 import type { LlmAdapter } from "../adapters/llm-adapter";
 import type { ProviderAdapter } from "../adapters/provider-adapter";
 import { type CompanyPropertyFetcher, checkEligibility } from "./eligibility";
+import { dedupEvidence } from "./hygiene/dedup";
+import { sweepStaleness } from "./hygiene/staleness-sweeper";
+import { generateNextMove } from "./next-move";
 import { type ContactFetcher, fetchContacts, rankContacts, selectPeople } from "./people-selector";
 import { extractDominantSignal, generateReasonText } from "./reason-generator";
 import { createTrustEvaluator, type TrustEvaluator } from "./trust";
@@ -49,8 +52,24 @@ export type AssembleSnapshotDeps = {
    * tests may inject a stub to exercise specific suppression paths.
    */
   trustEvaluator?: TrustEvaluator;
+  /**
+   * Optional per-provider allow-list of source domains. Passed through to
+   * the trust evaluator's {@link TrustEvaluator.applyAllowBlockLists} hook
+   * AFTER dedup + staleness but BEFORE the trust suppression flow. Subdomain
+   * matching via `endsWith` is the responsibility of that method. Restricted
+   * state still short-circuits earlier.
+   */
+  allowList?: string[];
+  /** Optional per-provider block-list; block always wins over allow. */
+  blockList?: string[];
   /** Optional clock override for deterministic tests. */
   now?: Date;
+  /**
+   * Optional correlation ID forwarded to downstream LLM observability on
+   * the next-move stage. When the assembler is called from the snapshot
+   * route this is the request correlation ID; tests may omit it.
+   */
+  correlationId?: string;
 };
 
 export type AssembleSnapshotArgs = {
@@ -116,16 +135,16 @@ export async function assembleSnapshot(
     signals = [];
   }
 
-  // 3. Trust + suppression.
-  //    - restricted rows are stripped before any downstream stage sees them.
-  //    - stale / low-confidence / degraded-source flags flow into final flags.
   const trust = deps.trustEvaluator ?? createTrustEvaluator();
-  const suppression = trust.applySuppression(signals, deps.thresholds, now);
 
-  // Zero-leak: if ANY restricted evidence was present, the response must not
-  // contain any evidence, people, reason, or trustScore derived from ANY
-  // source in this request. The only signal surfaced is `restricted=true`.
-  if (suppression.stateFlags.restricted) {
+  // 3a. Restricted-state zero-leak SHORT-CIRCUIT — runs BEFORE any hygiene
+  //     stage so no restricted row can leak into dedup / staleness /
+  //     allow-block logs, caches, or intermediate buffers. If ANY restricted
+  //     evidence was present, the response must not contain any evidence,
+  //     people, reason, or trustScore derived from ANY source in this
+  //     request. The only signal surfaced is `restricted=true`.
+  const hasRestricted = signals.some((ev) => ev.isRestricted === true);
+  if (hasRestricted) {
     return createSnapshot(tenantId, {
       companyId,
       eligibilityState: "eligible",
@@ -138,8 +157,32 @@ export async function assembleSnapshot(
     });
   }
 
+  // 3b. Hygiene: dedup → staleness classification → per-provider allow/block.
+  //     - dedup collapses cross-provider duplicates.
+  //     - sweepStaleness CLASSIFIES rows into fresh/stale. We pass both
+  //       forward to applySuppression (Slice 1 contract: stale rows are
+  //       SUPPRESSED via flag, not dropped from `filteredEvidence`). We do,
+  //       however, track `sawStale` defensively so the flag still fires even
+  //       if allow/block drops every stale row afterward.
+  //     - allow/block runs on the deduped set — the tenant's explicit
+  //       domain policy applies uniformly regardless of age.
+  //     All stages are order-preserving within the survivor set.
+  const deduped = dedupEvidence(signals);
+  const swept = sweepStaleness(deduped, deps.thresholds, () => now);
+  const sawStale = swept.stale.length > 0;
+  const afterAllowBlock = trust.applyAllowBlockLists(deduped, {
+    allow: deps.allowList,
+    block: deps.blockList,
+  });
+
+  // 3c. Trust + suppression. `restricted` cannot fire here — we already
+  //     returned above. Remaining flags (lowConfidence / degraded / empty)
+  //     come from this call.
+  const suppression = trust.applySuppression(afterAllowBlock, deps.thresholds, now);
+
   // Merge transport-level degraded flag with source-validation degraded flag.
   const degraded = suppression.stateFlags.degraded || transportDegraded;
+  const stale = suppression.stateFlags.stale || sawStale;
 
   // 4. Dominant signal extraction (from filtered evidence only).
   const dominant = extractDominantSignal(suppression.filteredEvidence, deps.thresholds, now);
@@ -154,7 +197,7 @@ export async function assembleSnapshot(
       stateFlags: createStateFlags({
         empty: true,
         degraded,
-        stale: suppression.stateFlags.stale,
+        stale,
         lowConfidence: suppression.stateFlags.lowConfidence,
       }),
       createdAt: now,
@@ -169,7 +212,7 @@ export async function assembleSnapshot(
   const ranked = rankContacts(contacts, dominant);
   const people: Person[] = selectPeople(ranked, dominant);
 
-  return createSnapshot(tenantId, {
+  const assembled = createSnapshot(tenantId, {
     companyId,
     eligibilityState: "eligible",
     reasonToContact,
@@ -177,10 +220,42 @@ export async function assembleSnapshot(
     evidence: suppression.filteredEvidence,
     stateFlags: createStateFlags({
       degraded,
-      stale: suppression.stateFlags.stale,
+      stale,
       lowConfidence: suppression.stateFlags.lowConfidence,
       empty: false,
     }),
     createdAt: now,
   });
+
+  // 7. Next-move recommendation (Step 13). Best-effort — never blocks
+  //    the snapshot response. Skipped when no LLM adapter is wired OR the
+  //    resolved adapter is the mock fallback: running a real LLM call for
+  //    a mock-only tenant burns budget for zero product value (Slice 3
+  //    removes the mock fallback entirely).
+  //
+  //    The zero-leak short-circuit lives inside `generateNextMove`; the
+  //    assembler does not duplicate those checks so there is exactly one
+  //    audited boundary.
+  if (deps.llmAdapter && deps.llmAdapter.provider !== "mock-llm") {
+    // Best-effort — MUST NOT block the snapshot response. If the LLM call
+    // throws (network error, rate limit, malformed response, etc), we log
+    // via observability (already wrapped inside generateNextMove) and leave
+    // `assembled.nextMove` undefined. The card then hides gracefully in the UI.
+    try {
+      const nextMove = await generateNextMove({
+        snapshot: assembled,
+        llmAdapter: deps.llmAdapter,
+        correlationId: deps.correlationId,
+      });
+      if (nextMove !== null) {
+        assembled.nextMove = nextMove;
+      }
+    } catch {
+      // Swallow. generateNextMove's own failure path also returns null on
+      // thrown errors, so this is defense-in-depth for any error that
+      // escapes the wrapper.
+    }
+  }
+
+  return assembled;
 }

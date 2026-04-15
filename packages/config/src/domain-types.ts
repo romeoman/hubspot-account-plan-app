@@ -74,6 +74,15 @@ export type Person = {
 };
 
 /**
+ * Maximum allowed length (characters) of a `Snapshot.nextMove` string.
+ *
+ * The backend truncates LLM output to this cap in
+ * `apps/api/src/services/next-move.ts` and the Zod validator enforces the
+ * same bound, so frontend + backend cannot drift on the wire contract.
+ */
+export const MAX_NEXT_MOVE_CHARS = 280;
+
+/**
  * Shape of a rendered account snapshot for a given tenant + company.
  *
  * A `Snapshot` is the primary wire-level contract between API and extension.
@@ -88,6 +97,12 @@ export type Snapshot = {
   stateFlags: StateFlags;
   /** 0..1 aggregate trust score; undefined when not computed. */
   trustScore?: number;
+  /**
+   * Optional one-line recommended next action (Slice 2 Step 13). Generated
+   * only for eligible snapshots; null/undefined for restricted, ineligible,
+   * or empty. Length is capped at {@link MAX_NEXT_MOVE_CHARS}.
+   */
+  nextMove?: string;
   createdAt: Date;
 };
 
@@ -127,6 +142,18 @@ export type ProviderConfig = {
   enabled: boolean;
   apiKeyRef: string;
   thresholds: ThresholdConfig;
+  /**
+   * Optional per-provider allow-list of source domains. When non-empty,
+   * only evidence whose `source` matches one of these entries (subdomain
+   * match via `endsWith`) flows past the hygiene stage.
+   */
+  allowList?: string[];
+  /**
+   * Optional per-provider block-list of source domains. When non-empty,
+   * any evidence whose `source` matches one of these entries (subdomain
+   * match via `endsWith`) is dropped. Block always wins over allow.
+   */
+  blockList?: string[];
 };
 
 /**

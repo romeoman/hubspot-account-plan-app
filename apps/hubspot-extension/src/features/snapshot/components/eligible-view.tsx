@@ -1,12 +1,14 @@
 import type { Snapshot } from "@hap/config";
 import { Button, Flex, Heading, Text } from "@hubspot/ui-extensions";
 import { useCallback, useMemo, useState } from "react";
-import { EvidenceModal } from "./evidence-modal";
+import { EvidenceDrillIn } from "./evidence-drill-in";
+import { NextMoveCard } from "./next-move-card";
 
 /**
  * Renders an eligible snapshot: reason-to-contact heading + 0..3 clickable
- * people. Clicking a person opens the `EvidenceModal` filtered to the
- * evidence rows referenced by that person's `evidenceRefs`.
+ * people. Clicking a person opens the Slice 2 `EvidenceDrillIn` panel,
+ * scoped to the first non-restricted evidence row referenced by that
+ * person's `evidenceRefs`.
  *
  * Hard invariant: we render `snapshot.people.length` items, never more —
  * no filler / placeholder contacts.
@@ -29,8 +31,8 @@ export function EligibleView({ snapshot }: { snapshot: Snapshot }) {
   // restricted-state branch, but `EligibleView` runs only on non-restricted
   // snapshots where individual `isRestricted: true` rows must STILL be
   // suppressed. Filter both undefined refs AND restricted rows here so the
-  // modal never sees them, even if a future code path slips one through.
-  const openEvidence = openPerson
+  // drill-in never sees them, even if a future code path slips one through.
+  const visibleEvidence = openPerson
     ? openPerson.evidenceRefs
         .map((id) => evidenceById.get(id))
         .filter(
@@ -38,6 +40,10 @@ export function EligibleView({ snapshot }: { snapshot: Snapshot }) {
             ev !== undefined && ev.isRestricted === false,
         )
     : [];
+
+  // Slice 2 drill-in is per-evidence, not per-list. Pick the first visible
+  // row; if none exist, the drill-in is not mounted at all.
+  const openEvidence = visibleEvidence[0] ?? null;
 
   const handleClose = useCallback(() => setOpenPersonId(null), []);
 
@@ -58,7 +64,15 @@ export function EligibleView({ snapshot }: { snapshot: Snapshot }) {
         <Text variant="microcopy">No contacts available for this reason.</Text>
       ) : null}
 
-      <EvidenceModal evidence={openEvidence} open={openPerson !== null} onClose={handleClose} />
+      <NextMoveCard snapshot={snapshot} />
+
+      {openEvidence !== null ? (
+        <EvidenceDrillIn
+          evidence={openEvidence}
+          isRestricted={snapshot.stateFlags.restricted}
+          onClose={handleClose}
+        />
+      ) : null}
     </Flex>
   );
 }

@@ -1,10 +1,10 @@
 /**
  * Provider adapter interface (signals / evidence sources).
  *
- * V1 ships with a single mock implementation ({@link ./mock-signal-adapter})
- * that returns fixture-backed Evidence arrays. Real adapters for Exa, HubSpot
- * enrichment, news sources, etc. land in Slice 2 — see
- * `@todo Slice 2` markers across this file and siblings.
+ * Slice 2 Step 9 ships the real {@link ./signal/exa.ExaAdapter} + the
+ * {@link ./signal/factory.createSignalAdapter} factory; HubSpot enrichment and
+ * news are scaffolded as Slice 3 deferral stubs. The Slice 1
+ * {@link ./mock-signal-adapter} remains as the route-level fallback.
  *
  * Contract expectations for ALL implementations:
  *  - `fetchSignals` MUST tag every returned Evidence with the caller-supplied
@@ -12,10 +12,6 @@
  *  - Adapters MUST be config-driven. No hardcoded provider keys, thresholds,
  *    or install-time assumptions live in adapter code — those are resolved via
  *    `config-resolver` using per-tenant `provider_config` rows.
- *
- * @todo Slice 2: add real adapters (Exa, HubSpot enrichment, news). The
- * adapter factory pattern (one factory function per provider, accepting a
- * resolved {@link ProviderConfig}) is locked so the interface does not change.
  */
 
 import type { Evidence } from "@hap/config";

@@ -9,4 +9,5 @@
  * - `factories`: tenant-aware constructors + 8 distinct QA fixtures.
  */
 export * from "./domain-types";
+export * from "./env";
 export * from "./factories";

@@ -1,6 +1,11 @@
 packages:
   - "apps/*"
   - "packages/*"
+  # apps/hubspot-project/ is excluded — it is a HubSpot developer-project
+  # tree managed by `hs project`, not a pnpm-buildable workspace package.
+  # HubSpot's upload rejects projects that contain a workspace package.json
+  # + node_modules at the project root.
+  - "!apps/hubspot-project"
 
 # pnpm 10 blocks lifecycle scripts by default for security.
 # Explicitly allow packages that need postinstall/build scripts.

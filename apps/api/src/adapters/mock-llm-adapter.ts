@@ -6,12 +6,11 @@
  *  - `long`: multi-line response
  *  - `error`: rejects so downstream error handling can be exercised
  *
- * Usage counts are naive char-based estimates — good enough for V1 tests;
- * Slice 2 adapters return real provider usage.
- *
- * @todo Slice 2: replace with provider-specific adapter factories
- * (anthropic, openai, gemini, openrouter, custom) driven by the resolved
- * `LlmProviderConfig` for the caller's tenant.
+ * Usage counts are naive char-based estimates — good enough for V1 tests
+ * and for Slice 2's fallback path in snapshot-assembler. Real provider
+ * adapters live in `apps/api/src/adapters/llm/` (Step 8). Slice 3 removes
+ * the assembler's mock-fallback path entirely once every tenant has a
+ * provisioned `llm_config` row.
  */
 
 import type { LlmAdapter, LlmOptions, LlmResponse } from "./llm-adapter";

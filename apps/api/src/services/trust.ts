@@ -78,10 +78,30 @@ export type SuppressionResult = {
   warnings: string[];
 };
 
+export type AllowBlockLists = {
+  allow?: string[];
+  block?: string[];
+};
+
 export interface TrustEvaluator {
   evaluateFreshness(evidence: Evidence, thresholds: ThresholdConfig, now?: Date): FreshnessResult;
   evaluateConfidence(evidence: Evidence, thresholds: ThresholdConfig): ConfidenceResult;
   validateSource(evidence: Evidence): SourceValidationResult;
+  /**
+   * Apply per-provider allow/block lists to an Evidence[].
+   *
+   * - `block` runs first: any `evidence.source` ending with a blocked entry
+   *   (subdomain match, e.g. `news.example.com` blocked by `example.com`) is
+   *   dropped.
+   * - `allow` runs second: if provided (and non-empty), only evidence whose
+   *   source matches (via the same `endsWith` rule) is kept.
+   * - Both empty / missing → no-op.
+   * - Block ALWAYS wins over allow.
+   *
+   * Restricted-state short-circuit is the CALLER's responsibility. This
+   * method operates purely on the array it's given.
+   */
+  applyAllowBlockLists(evidence: Evidence[], lists: AllowBlockLists): Evidence[];
   applySuppression(
     evidence: Evidence[],
     thresholds: ThresholdConfig,
@@ -152,6 +172,38 @@ export function createTrustEvaluator(): TrustEvaluator {
     return { isValid: true };
   }
 
+  function applyAllowBlockLists(evidence: Evidence[], lists: AllowBlockLists): Evidence[] {
+    // Normalize once: trim + lowercase patterns and drop empties. Without trim
+    // a stray whitespace in tenant config ("example.com " → stored verbatim
+    // in jsonb) would silently fail to match anything and exclude all
+    // evidence on an allow-list — a false-positive suppression.
+    const normalize = (xs: readonly string[] | undefined): string[] =>
+      xs
+        ?.filter((s): s is string => typeof s === "string")
+        .map((s) => s.trim().toLowerCase())
+        .filter((s) => s.length > 0) ?? [];
+    const block = normalize(lists.block);
+    const allow = normalize(lists.allow);
+    if (block.length === 0 && allow.length === 0) return evidence;
+
+    // Dot-prefix guard: `example.com` must match `news.example.com` but NOT
+    // `malicious-example.com`. Exact match + `.`-boundary suffix is safe.
+    const matches = (source: string, patterns: string[]): boolean => {
+      const src = source.toLowerCase();
+      return patterns.some((p) => src === p || src.endsWith(`.${p}`));
+    };
+
+    const out: Evidence[] = [];
+    for (const ev of evidence) {
+      const source = typeof ev.source === "string" ? ev.source : "";
+      // Block always wins.
+      if (block.length > 0 && matches(source, block)) continue;
+      if (allow.length > 0 && !matches(source, allow)) continue;
+      out.push(ev);
+    }
+    return out;
+  }
+
   function applySuppression(
     evidence: Evidence[],
     thresholds: ThresholdConfig,
@@ -214,6 +266,7 @@ export function createTrustEvaluator(): TrustEvaluator {
     evaluateFreshness,
     evaluateConfidence,
     validateSource,
+    applyAllowBlockLists,
     applySuppression,
   };
 }

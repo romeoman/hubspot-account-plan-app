@@ -1,0 +1,10 @@
+{
+  "uid": "hap_signal_workspace_card",
+  "type": "card",
+  "config": {
+    "name": "Account Signal",
+    "location": "crm.record.tab",
+    "entrypoint": "/app/cards/SignalCard.tsx",
+    "objectTypes": ["companies"]
+  }
+}
