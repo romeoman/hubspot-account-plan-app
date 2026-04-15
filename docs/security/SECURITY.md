@@ -223,12 +223,14 @@ Existing rows get `key_version=1` automatically. The three jsonb columns are nul
 
 Every ciphertext written by `apps/api/src/lib/encryption.ts` uses the format:
 
-```
+```text
 v{KEY_VERSION}:{iv}:{tag}:{ciphertext}
 ```
 
-- All four segments are **base64url**-encoded (RFC 4648 §5, no padding).
-- `KEY_VERSION` is a decimal integer. Current: `1`.
+- The leading `v{KEY_VERSION}` is a literal `v` followed by a decimal
+  integer (current: `1`) — NOT base64url. Only `iv`, `tag`, and
+  `ciphertext` are base64url-encoded (RFC 4648 §5, no padding).
+- `iv` is **12 random bytes** (GCM standard; generated per call via `crypto.randomBytes`).
 - `iv` is **12 random bytes** (GCM standard; generated per call via `crypto.randomBytes`).
 - `tag` is the **16-byte** AES-GCM authentication tag.
 - `ciphertext` is AES-256-GCM of the UTF-8 plaintext.
@@ -241,7 +243,7 @@ The envelope is parsed defensively: any input with fewer than 4 colon-separated 
 
 Per-tenant Key Encryption Keys are derived at each encrypt/decrypt call:
 
-```
+```text
 tenantKek = HKDF-SHA256(
   ikm    = ROOT_KEK,                // 32 raw bytes from env
   salt   = "hap-tenant-kek-v1",     // constant per-app namespace
@@ -297,15 +299,15 @@ Re-verified against HubSpot's official docs on 2026-04-15 via Context7 (`/websit
 - Source: https://developers.hubspot.com/docs/apps/developer-platform/build-apps/authentication/request-validation
 - Source: https://developers.hubspot.com/docs/apps/developer-platform/add-features/ui-extensions/fetching-data
 
-| Field                   | Value                                                 |
-| ----------------------- | ----------------------------------------------------- | --------------- | ---------- |
-| Signature header        | `X-HubSpot-Signature-v3`                              |
-| Timestamp header        | `X-HubSpot-Request-Timestamp` (ms since epoch)        |
-| HMAC input (raw string) | `method + decodeURIComponent(uri) + body + timestamp` |
-| HMAC algorithm          | HMAC-SHA256 using `HUBSPOT_CLIENT_SECRET` as the key  |
-| Encoding                | Base64 (standard, not URL-safe)                       |
-| Freshness window        | 5 minutes (`300000 ms`). Reject if `                  | now - timestamp | > 300000`. |
-| Comparison              | `crypto.timingSafeEqual` over equal-length buffers    |
+| Field                   | Value                                                                    |
+| ----------------------- | ------------------------------------------------------------------------ |
+| Signature header        | `X-HubSpot-Signature-v3`                                                 |
+| Timestamp header        | `X-HubSpot-Request-Timestamp` (ms since epoch)                           |
+| HMAC input (raw string) | `method + decodeURIComponent(uri) + body + timestamp`                    |
+| HMAC algorithm          | HMAC-SHA256 using `HUBSPOT_CLIENT_SECRET` as the key                     |
+| Encoding                | Base64 (standard, not URL-safe)                                          |
+| Freshness window        | 5 minutes (`300000 ms`). Reject if `Math.abs(now − timestamp) > 300000`. |
+| Comparison              | `crypto.timingSafeEqual` over equal-length buffers                       |
 
 The raw `uri` used for hashing matches Hono's `c.req.url`, which already includes protocol + host + path + query, in line with HubSpot's reference Node.js implementation (`https://${hostname}${url}`).
 

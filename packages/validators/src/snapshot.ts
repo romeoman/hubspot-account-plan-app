@@ -78,7 +78,15 @@ export const snapshotSchema = z.object({
   evidence: z.array(evidenceSchema),
   stateFlags: stateFlagsSchema,
   trustScore: z.number().min(0).max(1).optional(),
-  nextMove: z.string().max(MAX_NEXT_MOVE_CHARS).optional(),
+  // Reject whitespace-only strings so the UI's "have a recommendation"
+  // gate matches what the schema accepts (CodeRabbit minor on
+  // packages/validators/src/snapshot.ts:81). `z.string().min(1)` after
+  // the optional() chain keeps the field optional but bans empty content.
+  nextMove: z
+    .string()
+    .max(MAX_NEXT_MOVE_CHARS)
+    .refine((s) => s.trim().length > 0, "nextMove must not be whitespace-only")
+    .optional(),
   createdAt: z.date(),
 }) satisfies z.ZodType<Snapshot>;
 

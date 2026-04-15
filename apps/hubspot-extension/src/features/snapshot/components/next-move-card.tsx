@@ -18,8 +18,12 @@ export function NextMoveCard({ snapshot }: { snapshot: Snapshot }) {
   if (snapshot.eligibilityState === "ineligible") return null;
   if (snapshot.stateFlags.empty) return null;
 
-  const move = snapshot.nextMove;
-  if (typeof move !== "string" || move.trim().length === 0) return null;
+  const raw = snapshot.nextMove;
+  if (typeof raw !== "string") return null;
+  // Render the trimmed value so the gate decision and what users see
+  // agree (CodeRabbit minor on next-move-card.tsx:27).
+  const move = raw.trim();
+  if (move.length === 0) return null;
 
   return (
     <Tile>
