@@ -1,19 +1,24 @@
-import type { ThresholdConfig } from "@hap/config";
+import type { LlmProviderConfig, ThresholdConfig } from "@hap/config";
 import { createDatabase, type Database } from "@hap/db";
 import { Hono } from "hono";
+import { createLlmAdapter, wrapWithGuards } from "../adapters/llm/factory";
+import type { LlmAdapter } from "../adapters/llm-adapter";
 import { createMockLlmAdapter } from "../adapters/mock-llm-adapter";
 import {
   createMockSignalAdapter,
   isMockSignalFixture,
   type MockSignalFixture,
 } from "../adapters/mock-signal-adapter";
-import { DEFAULT_THRESHOLDS, getProviderConfig } from "../lib/config-resolver";
+import { DEFAULT_THRESHOLDS, getLlmConfig, getProviderConfig } from "../lib/config-resolver";
+import { withObservability } from "../lib/observability";
+import { getProcessRateLimiter } from "../lib/rate-limiter";
+import type { CorrelationVariables } from "../middleware/correlation";
 import type { TenantVariables } from "../middleware/tenant";
 import type { CompanyPropertyFetcher } from "../services/eligibility";
 import type { ContactFetcher } from "../services/people-selector";
 import { assembleSnapshot } from "../services/snapshot-assembler";
 
-type Vars = TenantVariables & { portalId?: string };
+type Vars = TenantVariables & CorrelationVariables & { portalId?: string };
 
 /**
  * Normalize + validate companyId. Returns the trimmed value when valid, or
@@ -75,6 +80,53 @@ async function resolveThresholds(db: Database, tenantId: string): Promise<Thresh
     // Resolver failure must not break the snapshot path — fall back to defaults.
   }
   return DEFAULT_THRESHOLDS;
+}
+
+/**
+ * Resolve the LLM adapter for a tenant.
+ *
+ * 1. Look up the tenant's default `llm_config` row via the resolver.
+ * 2. If present, build the real provider adapter via {@link createLlmAdapter}
+ *    and wrap with rate-limiter + observability so every outbound call is
+ *    structured-logged and correlation-ID-traced.
+ * 3. If absent, fall back to the Slice 1 mock adapter. This preserves
+ *    existing-fixture behavior for tenants that predate the Slice 2 seed
+ *    script (Step 14). A structured `outcome=fallback` log line is emitted so
+ *    operators can see when a fallback fires. Slice 3 removes this fallback
+ *    once every tenant has a provisioned LLM row.
+ */
+async function resolveLlmAdapter(
+  db: Database,
+  tenantId: string,
+  correlationId: string | undefined,
+): Promise<LlmAdapter> {
+  let cfg: LlmProviderConfig | null = null;
+  try {
+    cfg = await getLlmConfig({ db }, { tenantId });
+  } catch {
+    cfg = null;
+  }
+
+  if (!cfg) {
+    await withObservability(
+      async () => undefined,
+      {
+        tenantId,
+        provider: "mock",
+        operation: "llm.complete",
+        correlationId,
+      },
+      () => ({ tokenUsage: { inputTokens: 0, outputTokens: 0 } }),
+    );
+    return createMockLlmAdapter({ style: "short" });
+  }
+
+  const real = createLlmAdapter(cfg);
+  return wrapWithGuards(real, {
+    tenantId,
+    correlationId,
+    rateLimiter: getProcessRateLimiter(),
+  });
 }
 
 /**
@@ -172,11 +224,13 @@ snapshotRoutes.post("/:companyId", async (c) => {
   try {
     const db = getDb();
     const thresholds = await resolveThresholds(db, tenantId);
+    const correlationId = c.get("correlationId");
+    const llmAdapter = await resolveLlmAdapter(db, tenantId, correlationId);
     const snapshot = await assembleSnapshot(
       {
         db,
         providerAdapter: createMockSignalAdapter({ fixture }),
-        llmAdapter: createMockLlmAdapter({ style: "short" }),
+        llmAdapter,
         propertyFetcher: pickPropertyFetcher(mode),
         contactFetcher: fixtureContactFetcher,
         thresholds,

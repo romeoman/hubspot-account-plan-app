@@ -486,6 +486,8 @@ Build the security gate. Nothing else ships before this merges and passes indepe
 - Verify `pnpm test && pnpm typecheck`
 - Commit: `feat(adapters): complete LLM adapter set with Gemini, OpenRouter, and factory`
 
+> **Scope adjustment (recorded during execution, 2026-04-15):** Slice 1's Anthropic/OpenAI/custom adapters did not actually exist — only the interface + mock did. Step 8 ships the factory + real OpenAI adapter; Anthropic/Gemini/OpenRouter/custom are scaffolded with `@todo Slice 3` stubs that throw on call. Tenants can already configure those providers (the config schema accepts them); Slice 3 ships the actual provider bodies.
+
 ### 9. Signal Adapters + Factory (Taskmaster 7.6)
 
 - **Task ID**: signal-adapters

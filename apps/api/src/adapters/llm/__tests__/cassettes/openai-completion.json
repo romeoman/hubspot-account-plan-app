@@ -1,0 +1,44 @@
+{
+  "_comment": "Recorded cassette for OpenAI chat completions. Scrubbed of API keys before commit. Shape matches https://platform.openai.com/docs/api-reference/chat/create as of 2026-04-15. Replayed by apps/api/src/adapters/llm/__tests__/openai.test.ts via fetch injection.",
+  "_recordedAt": "2026-04-15",
+  "request": {
+    "url": "https://api.openai.com/v1/chat/completions",
+    "method": "POST",
+    "headers": {
+      "Authorization": "Bearer [REDACTED]",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "model": "gpt-4o-mini",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Reply with the word OK and nothing else."
+        }
+      ],
+      "max_tokens": 256,
+      "temperature": 0.7
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "id": "chatcmpl-cassette-0001",
+      "object": "chat.completion",
+      "created": 1744732800,
+      "model": "gpt-4o-mini-2024-07-18",
+      "choices": [
+        {
+          "index": 0,
+          "message": { "role": "assistant", "content": "OK" },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 14,
+        "completion_tokens": 1,
+        "total_tokens": 15
+      }
+    }
+  }
+}

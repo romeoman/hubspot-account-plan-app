@@ -156,6 +156,74 @@ describe("assembleSnapshot", () => {
     expect(snap.tenantId).toBe(tenantId);
   });
 
+  it("uses a factory-built OpenAI adapter when one is injected (Step 8)", async () => {
+    const tenantId = await seedTenant();
+    // Simulate route-level wiring: the route resolves the tenant's llm_config,
+    // builds an OpenAI adapter via the factory with an injected fake fetch,
+    // wraps it with rate-limiter + observability, and passes the resulting
+    // adapter into the assembler. The assembler uses it verbatim (it does
+    // not care whether the adapter is mock or real).
+    const { createLlmAdapter, wrapWithGuards } = await import("../../adapters/llm/factory");
+    const { RateLimiter } = await import("../../lib/rate-limiter");
+    const fakeFetch: typeof fetch = async () =>
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: "Factory-built OpenAI said hi." } }],
+          usage: { prompt_tokens: 7, completion_tokens: 4 },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    const inner = createLlmAdapter(
+      { provider: "openai", model: "gpt-4o-mini", apiKeyRef: "sk-test" },
+      { fetch: fakeFetch },
+    );
+    const llmAdapter = wrapWithGuards(inner, {
+      tenantId,
+      correlationId: "corr-step8",
+      rateLimiter: new RateLimiter(),
+    });
+
+    const snap = await assembleSnapshot(
+      {
+        db,
+        providerAdapter: createMockSignalAdapter({ fixture: "strong" }),
+        llmAdapter,
+        propertyFetcher: ELIGIBLE,
+        contactFetcher: threeContacts,
+        thresholds: THRESHOLDS,
+      },
+      { tenantId, companyId: "co-openai" },
+    );
+
+    expect(snap.eligibilityState).toBe("eligible");
+    expect(snap.reasonToContact).toBe("Factory-built OpenAI said hi.");
+  });
+
+  it("falls back to template reason when no llmAdapter is supplied (route fallback path)", async () => {
+    const tenantId = await seedTenant();
+    // Mirrors the route's "no llm_config row" path where resolveLlmAdapter
+    // would have returned the mock adapter. Here we omit it entirely to
+    // exercise the reason-generator's template-only branch — Slice 3 Step 14
+    // seeds a real LLM row for every tenant and this fallback goes away.
+    const snap = await assembleSnapshot(
+      {
+        db,
+        providerAdapter: createMockSignalAdapter({ fixture: "strong" }),
+        // no llmAdapter
+        propertyFetcher: ELIGIBLE,
+        contactFetcher: threeContacts,
+        thresholds: THRESHOLDS,
+      },
+      { tenantId, companyId: "co-fallback" },
+    );
+
+    expect(snap.eligibilityState).toBe("eligible");
+    expect(snap.reasonToContact).toBeDefined();
+    // Template shape: "<source> reported: <content>". No LLM rewrite.
+    expect(snap.reasonToContact ?? "").toMatch(/ reported: /);
+    expect(snap.tenantId).toBe(tenantId);
+  });
+
   it("never leaks tenantId — uses caller arg, never anything else", async () => {
     const tenantId = await seedTenant();
     // A signal adapter whose internal fixture uses a different tenantId baked in
