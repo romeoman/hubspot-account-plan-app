@@ -283,3 +283,94 @@ The envelope prefix makes mixed-version state observable at all times: an operat
 Encryption and decryption errors are structured exceptions, not console side-effects. Callers that log them (today: none in Slice 1; Slice 2 routes/middleware will) must log the **caller's tenantId** (i.e. the `tenantId` passed to `decryptProviderKey`), **not** any fragment of the ciphertext or any parsed plaintext. This makes cross-tenant decrypt attempts visible in logs — tenant B reading tenant A's ciphertext fails with `decryption: authentication failed`, and the log line ties the failed attempt to tenant B's context.
 
 Error messages are deliberately opaque: they never include the tenantId of either party, the envelope version, the IV, or any plaintext fragment. Tests (`encryption.test.ts` "rejects ciphertext encrypted under a different tenant") assert this non-leak property explicitly.
+
+---
+
+## 13. HubSpot Auth (Slice 2 Step 4)
+
+Slice 2 replaces the Slice 1 bearer-token middleware (`API_TOKENS` env map) with HubSpot's v3 request-signature verification. The new middleware lives in `apps/api/src/middleware/hubspot-signature.ts`; `apps/api/src/middleware/auth.ts` re-exports it as `authMiddleware` so existing imports remain stable.
+
+### 13.1 Signature spec
+
+Re-verified against HubSpot's official docs on 2026-04-15 via Context7 (`/websites/developers_hubspot`):
+
+- Source: https://developers.hubspot.com/docs/apps/developer-platform/build-apps/authentication/request-validation
+- Source: https://developers.hubspot.com/docs/apps/developer-platform/add-features/ui-extensions/fetching-data
+
+| Field                   | Value                                                 |
+| ----------------------- | ----------------------------------------------------- | --------------- | ---------- |
+| Signature header        | `X-HubSpot-Signature-v3`                              |
+| Timestamp header        | `X-HubSpot-Request-Timestamp` (ms since epoch)        |
+| HMAC input (raw string) | `method + decodeURIComponent(uri) + body + timestamp` |
+| HMAC algorithm          | HMAC-SHA256 using `HUBSPOT_CLIENT_SECRET` as the key  |
+| Encoding                | Base64 (standard, not URL-safe)                       |
+| Freshness window        | 5 minutes (`300000 ms`). Reject if `                  | now - timestamp | > 300000`. |
+| Comparison              | `crypto.timingSafeEqual` over equal-length buffers    |
+
+The raw `uri` used for hashing matches Hono's `c.req.url`, which already includes protocol + host + path + query, in line with HubSpot's reference Node.js implementation (`https://${hostname}${url}`).
+
+### 13.2 Principal extraction
+
+`portalId` and `userId` come from the signed payload — never from arbitrary headers:
+
+- POST/PUT/PATCH: top-level `portalId` / `userId` fields on the JSON body.
+- GET/DELETE: `portalId` / `userId` query-string parameters.
+
+If `portalId` is missing, the request is rejected with 401. The downstream `tenantMiddleware` resolves the portal to an internal `tenantId` via the `tenants` table; unknown portals also produce 401.
+
+### 13.3 Test bypass (defense in depth)
+
+A `x-test-portal-id` header (and optional `x-test-user-id`) short-circuits signature verification — but ONLY when BOTH of the following are true:
+
+- `process.env.NODE_ENV === "test"`
+- `process.env.ALLOW_TEST_AUTH === "true"`
+
+If either gate is absent, the bypass header is ignored and the request is rejected as unauthorized. `.env.test.local` sets `ALLOW_TEST_AUTH=true` for local tests; no deployed environment (staging, production) sets it.
+
+### 13.4 Threat-model coverage (what the tests assert)
+
+`apps/api/src/middleware/__tests__/hubspot-signature.test.ts` locks these in:
+
+| Scenario                                                     | Expected                        |
+| ------------------------------------------------------------ | ------------------------------- |
+| Valid signature + current timestamp + known portal           | 200, `tenantId` populated       |
+| Missing signature or timestamp header                        | 401                             |
+| Tampered body (HMAC mismatch)                                | 401                             |
+| Stale timestamp (> 5 min)                                    | 401                             |
+| Replayed request once timestamp goes stale                   | 401                             |
+| Forged `portalId` (valid signature, portal not in `tenants`) | 401                             |
+| Malformed timestamp header                                   | 401                             |
+| Test bypass when `ALLOW_TEST_AUTH` unset                     | 401 (bypass denied)             |
+| Test bypass when `NODE_ENV=production`                       | 401 (bypass denied)             |
+| Error logs never contain secret / signature / body           | asserted via `console.warn` spy |
+
+### 13.5 Failure logging
+
+`logAuthFailure()` writes a short `console.warn` line containing only the failure reason (`"signature mismatch"`, `"stale timestamp"`, etc). It NEVER includes the client secret, the presented signature, or the request body. Tests assert that a raw payload marker does not appear in any logged output.
+
+---
+
+## 14. Server-to-HubSpot Credential (Slice 2 Step 4)
+
+The backend makes authenticated calls to HubSpot's CRM v3 API — today only from the adapters wired in Slice 2 Step 9 (company/contact enrichment). Those calls use a backend-only credential; no token flows through the inbound request.
+
+### 14.1 Credential model (Slice 2)
+
+- **Type**: HubSpot **Private App Access Token**, provisioned at the Slice 2 test portal (`147062576`) → Settings → Integrations → Private Apps.
+- **Env var**: `HUBSPOT_PRIVATE_APP_TOKEN` (optional per `packages/config/src/env.ts`; required by Step 9 onward).
+- **Required scopes (Slice 2)**:
+  - `crm.objects.companies.read`
+  - `crm.objects.contacts.read`
+  - Seed-script steps that provision mock fixtures (Step 14) may require additional write scopes — Step 14 will document the delta in place.
+- **Storage**: `.env` (gitignored) for local dev; deploy-time secret storage (Vercel / Render / AWS Secrets Manager / GCP Secret Manager / Supabase Vault) for staging and production. Never committed, never echoed to logs, never exposed to the UI extension.
+
+### 14.2 Client class
+
+`apps/api/src/lib/hubspot-client.ts` exposes a `HubSpotClient` class:
+
+- Constructor reads `HUBSPOT_PRIVATE_APP_TOKEN` via `loadEnv()`. Throws if missing — Slice 2 Steps 4–8 never instantiate the client; Step 9 does, and missing credentials fail loudly at that point rather than silently bypassing enrichment.
+- `getCompanyProperties(companyId, properties[])` hits `GET https://api.hubapi.com/crm/v3/objects/companies/{id}` with `Authorization: Bearer <token>`. Errors are surfaced as `hubspot: <status> <statusText>` — the token is never included in the error message.
+
+### 14.3 OAuth (Slice 3+)
+
+Marketplace distribution (multiple installing portals, per-install token storage) requires the OAuth 2.0 authorization-code flow plus refresh-token rotation. That is explicitly deferred to Slice 3; a `@todo Slice 3` JSDoc note on `HubSpotClient` tracks it.
