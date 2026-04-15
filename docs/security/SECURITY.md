@@ -214,3 +214,72 @@ Migration `packages/db/drizzle/0003_broad_ben_urich.sql` adds four columns to bo
 - `block_list jsonb` (nullable) — denied source identifiers/hostnames.
 
 Existing rows get `key_version=1` automatically. The three jsonb columns are nullable with no backfill, preserving the Slice 1 "feature off unless configured" semantics.
+
+---
+
+## 12. Key Management (Slice 2 Step 3)
+
+### 12.1 Envelope format
+
+Every ciphertext written by `apps/api/src/lib/encryption.ts` uses the format:
+
+```
+v{KEY_VERSION}:{iv}:{tag}:{ciphertext}
+```
+
+- All four segments are **base64url**-encoded (RFC 4648 §5, no padding).
+- `KEY_VERSION` is a decimal integer. Current: `1`.
+- `iv` is **12 random bytes** (GCM standard; generated per call via `crypto.randomBytes`).
+- `tag` is the **16-byte** AES-GCM authentication tag.
+- `ciphertext` is AES-256-GCM of the UTF-8 plaintext.
+
+Example shape (not a real secret): `v1:xBc8qK2mN5p0RtYu:AaBbCcDdEeFfGgHhIiJjKk:ZnVuY3Rpb25rZXlfMTIz`.
+
+The envelope is parsed defensively: any input with fewer than 4 colon-separated parts, a missing `v` prefix, a wrong IV length, a wrong tag length, or an unknown key version is rejected before any crypto runs.
+
+### 12.2 KEK derivation (HKDF-SHA256)
+
+Per-tenant Key Encryption Keys are derived at each encrypt/decrypt call:
+
+```
+tenantKek = HKDF-SHA256(
+  ikm    = ROOT_KEK,                // 32 raw bytes from env
+  salt   = "hap-tenant-kek-v1",     // constant per-app namespace
+  info   = tenantId,                // raw UTF-8 tenant UUID
+  length = 32,                      // AES-256 key
+)
+```
+
+Implementation: `apps/api/src/lib/kek.ts` via Node's built-in `crypto.hkdfSync`. The salt is a constant namespace string — rotation is performed by bumping it (see §12.4) and adding a new envelope version. The `info` field carries the tenantId so that tenant A's KEK is cryptographically distinct from tenant B's KEK by construction; no caller has to remember to attach the tenantId as AAD.
+
+`deriveTenantKek` is an **internal primitive**: it is not exported from any package barrel. The only legitimate caller is `encryption.ts`. Leaking a tenant KEK to other modules would defeat per-tenant key separation.
+
+### 12.3 `ROOT_KEK` storage
+
+- **Format**: exactly 32 random bytes, base64-encoded (not base64url) to fit `.env` line semantics.
+- **Generation**: `openssl rand -base64 32` (run once per environment).
+- **Location**: `.env` (gitignored) for local dev; deploy-time secret storage (e.g. Vercel/Render env vars, AWS Secrets Manager, GCP Secret Manager, Supabase Vault) for staging and production.
+- **Validation**: enforced at boot by `packages/config/src/env.ts` (`loadEnv()`): the Zod schema decodes the base64 and requires exactly 32 bytes. A misconfigured env fails fast at the first `encryptProviderKey` / `decryptProviderKey` call — we never silently fall back to a weaker key.
+- **Rotation of `ROOT_KEK` itself** is equivalent to a full re-encryption migration (see §12.4); plan for it with the same rollover procedure.
+
+### 12.4 Rotation plan
+
+Rotation is a **version bump**, not an in-place mutation. Procedure:
+
+1. Introduce a new `KEY_VERSION` constant (e.g. `2`) in `encryption.ts`. Choose the new parameters that differ — typically either:
+   - a new HKDF `salt` (e.g. `hap-tenant-kek-v2`), or
+   - a new `ROOT_KEK` value, or
+   - both.
+2. Add `2` to `SUPPORTED_VERSIONS`. `decryptProviderKey` now accepts **both** `v1:` and `v2:` envelopes; `encryptProviderKey` writes only `v2:`.
+3. Write a migration script that reads every `provider_config` / `llm_config` row with `key_version=1`, calls `decryptProviderKey` (reads the v1 envelope), then `encryptProviderKey` (writes a v2 envelope), and updates `key_version=2`. The `key_version` column on those tables (added in Step 2) exists for exactly this bookkeeping.
+4. Once the migration is verified (count of `key_version=1` rows is zero and a random sample round-trips), remove `1` from `SUPPORTED_VERSIONS`. `decryptProviderKey` now rejects legacy envelopes with `unknown key version`.
+
+The envelope prefix makes mixed-version state observable at all times: an operator can `SELECT key_version, count(*) FROM provider_config GROUP BY 1` to watch the migration progress.
+
+**Slice 1 legacy**: Slice 1 shipped a base64 stub (`base64("<tenantId>:<plaintext>")`) with no envelope prefix. Step 3 intentionally does **NOT** accept those strings on decrypt; see §11 for the data-migration boundary. A test in `apps/api/src/lib/__tests__/encryption.test.ts` (`rejects Slice 1 base64 ciphertext`) locks this contract in.
+
+### 12.5 Audit trail
+
+Encryption and decryption errors are structured exceptions, not console side-effects. Callers that log them (today: none in Slice 1; Slice 2 routes/middleware will) must log the **caller's tenantId** (i.e. the `tenantId` passed to `decryptProviderKey`), **not** any fragment of the ciphertext or any parsed plaintext. This makes cross-tenant decrypt attempts visible in logs — tenant B reading tenant A's ciphertext fails with `decryption: authentication failed`, and the log line ties the failed attempt to tenant B's context.
+
+Error messages are deliberately opaque: they never include the tenantId of either party, the envelope version, the IV, or any plaintext fragment. Tests (`encryption.test.ts` "rejects ciphertext encrypted under a different tenant") assert this non-leak property explicitly.

@@ -19,10 +19,6 @@
  * in Slice 1. For multi-instance deployments, swap to Redis (or Supabase
  * Postgres LISTEN/NOTIFY invalidation) keyed by `${tenantId}:...`.
  *
- * @todo Slice 2: the encryption stub in `./encryption` is base64 only. When
- * AES-256-GCM lands, callers of this resolver DO NOT change — the
- * `apiKeyRef` contract is stable.
- *
  * @todo Slice 2: once real provider adapters exist, add a higher-level
  * `resolveProviderAdapter(tenantId, providerName)` factory here that wires
  * this resolver's output into the correct adapter constructor.

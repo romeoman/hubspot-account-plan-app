@@ -215,7 +215,8 @@ describe("cross-tenant: encryption", () => {
     const tB = await seedTenant("B");
     const ctForB = encryptProviderKey(tB.id, "tenant-B-secret");
 
-    expect(() => decryptProviderKey(tA.id, ctForB)).toThrow(/tenant mismatch/);
+    // Slice 2: cross-tenant decrypt fails the AES-GCM auth tag check.
+    expect(() => decryptProviderKey(tA.id, ctForB)).toThrow(/authentication failed/);
   });
 
   it("each tenant can decrypt only its own ciphertext", async () => {
@@ -226,8 +227,8 @@ describe("cross-tenant: encryption", () => {
 
     expect(decryptProviderKey(tA.id, ctA)).toBe("secret-A");
     expect(decryptProviderKey(tB.id, ctB)).toBe("secret-B");
-    expect(() => decryptProviderKey(tA.id, ctB)).toThrow(/tenant mismatch/);
-    expect(() => decryptProviderKey(tB.id, ctA)).toThrow(/tenant mismatch/);
+    expect(() => decryptProviderKey(tA.id, ctB)).toThrow(/authentication failed/);
+    expect(() => decryptProviderKey(tB.id, ctA)).toThrow(/authentication failed/);
   });
 });
 
