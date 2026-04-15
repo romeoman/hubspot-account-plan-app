@@ -16,15 +16,19 @@ import { assembleSnapshot } from "../services/snapshot-assembler";
 type Vars = TenantVariables & { portalId?: string };
 
 /**
- * Validate companyId: must be a non-empty, trimmed string of reasonable
- * length. We accept the HubSpot numeric-string convention but stay permissive
- * since the CRM uses multiple record id shapes.
+ * Normalize + validate companyId. Returns the trimmed value when valid, or
+ * `null` when not. Caller must use the returned normalized value — never the
+ * raw param — so downstream consumers never see leading/trailing whitespace.
+ *
+ * We accept the HubSpot numeric-string convention but stay permissive since
+ * the CRM uses multiple record id shapes.
  */
-function isValidCompanyId(raw: string): boolean {
+function normalizeCompanyId(raw: string): string | null {
   const trimmed = raw.trim();
-  if (trimmed.length === 0) return false;
-  if (trimmed.length > 128) return false;
-  return /^[A-Za-z0-9._-]+$/.test(trimmed);
+  if (trimmed.length === 0) return null;
+  if (trimmed.length > 128) return null;
+  if (!/^[A-Za-z0-9._-]+$/.test(trimmed)) return null;
+  return trimmed;
 }
 
 /**
@@ -114,9 +118,20 @@ const fixtureContactFetcher: ContactFetcher = async () => [
   { id: "contact-3", name: "Sam Influencer", title: "Head of Platform" },
 ];
 
-/** Lazy DB handle so DATABASE_URL changes between tests are respected. */
+/**
+ * Lazy DB handle so DATABASE_URL changes between tests are respected.
+ *
+ * No production fallback. If DATABASE_URL is unset, fail loudly so a
+ * misconfigured deployment surfaces immediately instead of quietly trying
+ * to connect to the dev Postgres on `localhost:5433`.
+ */
 function getDb(): Database {
-  const url = process.env.DATABASE_URL ?? "postgresql://hap:hap_local_dev@localhost:5433/hap_dev";
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    throw new Error(
+      "DATABASE_URL is not set. The snapshot route refuses to connect to a default dev URL in any environment.",
+    );
+  }
   return createDatabase(url);
 }
 
@@ -124,12 +139,13 @@ snapshotRoutes.post("/:companyId", async (c) => {
   const rawCompanyId = c.req.param("companyId") ?? "";
   const decoded = decodeURIComponent(rawCompanyId);
 
-  if (!isValidCompanyId(decoded)) {
+  const companyId = normalizeCompanyId(decoded);
+  if (!companyId) {
     return c.json({ error: "invalid_company_id" }, 400);
   }
 
   // Testability hook: reserved id for the 404 path.
-  if (decoded === "missing-company") {
+  if (companyId === "missing-company") {
     return c.json({ error: "not_found" }, 404);
   }
 
@@ -160,10 +176,20 @@ snapshotRoutes.post("/:companyId", async (c) => {
         contactFetcher: fixtureContactFetcher,
         thresholds,
       },
-      { tenantId, companyId: decoded },
+      { tenantId, companyId },
     );
     return c.json(snapshot, 200);
-  } catch (_err) {
+  } catch (err) {
+    // Log with tenant + company context so prod incidents are debuggable.
+    // Stderr only — no evidence/request body content echoed. Slice 2
+    // swaps console.error for a structured logger.
+    console.error("snapshot_route_error", {
+      tenantId,
+      companyId,
+      fixture,
+      eligibilityMode: mode,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return c.json({ error: "internal_error" }, 500);
   }
 });

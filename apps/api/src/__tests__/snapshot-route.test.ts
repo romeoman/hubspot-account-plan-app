@@ -79,6 +79,24 @@ describe("POST /api/snapshot/:companyId", () => {
     expect([400, 404]).toContain(res.status);
   });
 
+  it("trims leading/trailing whitespace before passing companyId downstream", async () => {
+    const portal = portalId();
+    await db.insert(tenants).values({ hubspotPortalId: portal, name: "Trim Co" });
+    const app = await loadApp();
+    // "%20co-trim%20" = "  co-trim  " after decodeURIComponent.
+    const res = await app.request("/api/snapshot/%20co-trim%20", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer anything",
+        "x-test-portal-id": portal,
+      },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { companyId: string };
+    // Must be normalized, no leading/trailing whitespace.
+    expect(body.companyId).toBe("co-trim");
+  });
+
   it("returns 400 when companyId is whitespace only", async () => {
     const portal = portalId();
     await db.insert(tenants).values({ hubspotPortalId: portal, name: "WS Co" });
