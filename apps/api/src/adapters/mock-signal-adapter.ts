@@ -84,24 +84,33 @@ export function createMockSignalAdapter(opts: MockSignalAdapterOptions = {}): Pr
 }
 
 function buildStrong(tenantId: string): Evidence[] {
+  // Use clearly-past timestamps (1-3 days ago) so that if the assembler
+  // captures `now` BEFORE the adapter resolves, the evidence is not
+  // "future-dated" relative to that snapshot's reference clock.
+  // Trust.evaluateFreshness now treats future-dated rows as not-fresh.
+  const day = 24 * 60 * 60 * 1000;
+  const baseNow = Date.now();
   return [
     createEvidence(tenantId, {
       id: "ev-strong-1",
       source: "hubspot",
       confidence: 0.92,
       content: "Target account flagged with recent engagement.",
+      timestamp: new Date(baseNow - 1 * day),
     }),
     createEvidence(tenantId, {
       id: "ev-strong-2",
       source: "news",
       confidence: 0.87,
       content: "Funding round announced this week.",
+      timestamp: new Date(baseNow - 3 * day),
     }),
     createEvidence(tenantId, {
       id: "ev-strong-3",
       source: "hubspot",
       confidence: 0.9,
       content: "Email open from champion 2 days ago.",
+      timestamp: new Date(baseNow - 2 * day),
     }),
   ];
 }
@@ -134,19 +143,24 @@ function buildDegraded(tenantId: string): Evidence[] {
 
 function buildLowConf(tenantId: string): Evidence[] {
   // All confidences below DEFAULT_THRESHOLDS.minConfidence (0.5) → trust
-  // evaluator sets stateFlags.lowConfidence.
+  // evaluator sets stateFlags.lowConfidence. Past timestamps to avoid the
+  // future-dated path on slow adapters.
+  const day = 24 * 60 * 60 * 1000;
+  const baseNow = Date.now();
   return [
     createEvidence(tenantId, {
       id: "ev-lowconf-1",
       source: "hubspot",
       confidence: 0.3,
       content: "Weak engagement signal.",
+      timestamp: new Date(baseNow - 1 * day),
     }),
     createEvidence(tenantId, {
       id: "ev-lowconf-2",
       source: "news",
       confidence: 0.25,
       content: "Tangential mention in industry blog.",
+      timestamp: new Date(baseNow - 2 * day),
     }),
   ];
 }
@@ -154,12 +168,15 @@ function buildLowConf(tenantId: string): Evidence[] {
 function buildRestricted(tenantId: string): Evidence[] {
   // Mixed: one restricted row triggers the zero-leak short-circuit in the
   // assembler regardless of any other rows in the batch.
+  const day = 24 * 60 * 60 * 1000;
+  const baseNow = Date.now();
   return [
     createEvidence(tenantId, {
       id: "ev-restricted-1",
       source: "internal",
       confidence: 0.95,
       content: "REDACTED — permission-restricted source.",
+      timestamp: new Date(baseNow - 1 * day),
       isRestricted: true,
     }),
     createEvidence(tenantId, {
@@ -167,6 +184,7 @@ function buildRestricted(tenantId: string): Evidence[] {
       source: "hubspot",
       confidence: 0.88,
       content: "This row would be visible if not for the restricted sibling.",
+      timestamp: new Date(baseNow - 1 * day),
     }),
   ];
 }

@@ -59,13 +59,13 @@ export async function fetchContacts(
   try {
     return await deps.fetcher(args.tenantId, args.companyId);
   } catch (err) {
-    // Empty-state preferred over bluffing, but the failure itself must be
-    // visible in logs. No contact content is echoed — only tenant + company
-    // + error message so the silent `[]` path is diagnosable.
+    // Empty-state preferred over bluffing. Log only stable identifiers
+    // (tenant, company, error CLASS) — never the raw err.message because
+    // it can carry external API URLs / auth material.
     console.warn("people_selector.contact_fetcher_failed", {
       tenantId: args.tenantId,
       companyId: args.companyId,
-      error: err instanceof Error ? err.message : String(err),
+      errorClass: err instanceof Error ? err.constructor.name : typeof err,
     });
     return [];
   }
@@ -126,7 +126,9 @@ function scoreContact(contact: RawContact, signal: Evidence | null): number {
 
 /**
  * Rank contacts by relevance to the dominant signal (or recency-only when
- * no signal). Stable within equal scores via insertion order.
+ * no signal). Order among equal scores is implementation-defined but
+ * practically stable in modern engines (V8 / SpiderMonkey / JavaScriptCore
+ * have all guaranteed Array.prototype.sort stability since ES2019).
  */
 export function rankContacts(
   contacts: RawContact[],

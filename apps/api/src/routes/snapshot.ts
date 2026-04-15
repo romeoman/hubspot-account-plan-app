@@ -119,11 +119,17 @@ const fixtureContactFetcher: ContactFetcher = async () => [
 ];
 
 /**
- * Lazy DB handle so DATABASE_URL changes between tests are respected.
- *
- * No production fallback. If DATABASE_URL is unset, fail loudly so a
- * misconfigured deployment surfaces immediately instead of quietly trying
- * to connect to the dev Postgres on `localhost:5433`.
+ * Memoized DB handle, keyed by DATABASE_URL so tests that flip the env
+ * between cases still get a fresh handle. In production the URL is stable,
+ * so we create one client wrapper per process and let postgres.js pool
+ * connections internally.
+ */
+let cachedDb: { url: string; db: Database } | null = null;
+
+/**
+ * Lazy DB handle. No production fallback. If DATABASE_URL is unset, fail
+ * loudly so a misconfigured deployment surfaces immediately instead of
+ * quietly trying to connect to the dev Postgres on `localhost:5433`.
  */
 function getDb(): Database {
   const url = process.env.DATABASE_URL;
@@ -132,7 +138,10 @@ function getDb(): Database {
       "DATABASE_URL is not set. The snapshot route refuses to connect to a default dev URL in any environment.",
     );
   }
-  return createDatabase(url);
+  if (cachedDb && cachedDb.url === url) return cachedDb.db;
+  const db = createDatabase(url);
+  cachedDb = { url, db };
+  return db;
 }
 
 snapshotRoutes.post("/:companyId", async (c) => {
@@ -180,15 +189,15 @@ snapshotRoutes.post("/:companyId", async (c) => {
     );
     return c.json(snapshot, 200);
   } catch (err) {
-    // Log with tenant + company context so prod incidents are debuggable.
-    // Stderr only — no evidence/request body content echoed. Slice 2
-    // swaps console.error for a structured logger.
+    // Log a stable error CLASS + safe request context. Never the raw
+    // err.message — external clients can smuggle URLs / tenant data / auth
+    // material into Error.message and we don't want that in shared logs.
     console.error("snapshot_route_error", {
       tenantId,
       companyId,
       fixture,
       eligibilityMode: mode,
-      error: err instanceof Error ? err.message : String(err),
+      errorClass: err instanceof Error ? err.constructor.name : typeof err,
     });
     return c.json({ error: "internal_error" }, 500);
   }

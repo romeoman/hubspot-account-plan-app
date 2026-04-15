@@ -340,7 +340,9 @@ describe("POST /api/snapshot/:companyId", () => {
     expect([200, 204]).toContain(res.status);
     const allowOrigin = res.headers.get("access-control-allow-origin");
     expect(allowOrigin).toBeTruthy();
-    // Either echoes the origin or "*" in dev/test
-    expect([allowOrigin, "*"]).toContain(allowOrigin);
+    // Either echoes the requested origin or "*" in dev/test — assert against
+    // the literal expected values rather than `[allowOrigin, "*"]` which
+    // would be a tautology.
+    expect(["https://app.hubspot.com", "*"]).toContain(allowOrigin);
   });
 });

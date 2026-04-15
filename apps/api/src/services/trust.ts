@@ -118,7 +118,16 @@ export function createTrustEvaluator(): TrustEvaluator {
   ): FreshnessResult {
     const ts = coerceTimestamp(evidence.timestamp);
     const ageMs = now.getTime() - ts.getTime();
-    const ageDays = Math.max(0, Math.floor(ageMs / DAY_MS));
+    // Future-dated evidence (ageMs < 0) is suspect — clamping to age=0 would
+    // silently bless a tomorrow timestamp as "fresh" and inflate trust. Treat
+    // it as not-fresh and report the absolute skew so callers see the issue.
+    if (ageMs < 0) {
+      return {
+        isFresh: false,
+        ageDays: Math.ceil(-ageMs / DAY_MS),
+      };
+    }
+    const ageDays = Math.floor(ageMs / DAY_MS);
     return {
       isFresh: ageDays <= thresholds.freshnessMaxDays,
       ageDays,

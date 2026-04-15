@@ -102,13 +102,15 @@ export async function assembleSnapshot(
     signals = await deps.providerAdapter.fetchSignals(tenantId, companyId);
   } catch (err) {
     // Transport error → mark degraded; continue with empty signal set.
-    // Log with context so prod incidents are debuggable. Evidence content is
-    // never echoed — only adapter name + tenant + company + error message.
+    // Log a STABLE error code/class only — never the raw message. External
+    // adapter errors can smuggle request URLs, tenant data, or auth material
+    // straight into shared logs. The class name is enough to grep for; the
+    // raw text stays in any structured observability sink behind a debug gate.
     console.warn("snapshot_assembler.signal_adapter_failed", {
       tenantId,
       companyId,
       adapter: deps.providerAdapter.name,
-      error: err instanceof Error ? err.message : String(err),
+      errorClass: err instanceof Error ? err.constructor.name : typeof err,
     });
     transportDegraded = true;
     signals = [];

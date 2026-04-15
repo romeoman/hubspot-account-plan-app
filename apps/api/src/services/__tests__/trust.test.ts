@@ -73,6 +73,14 @@ describe("TrustEvaluator.evaluateFreshness", () => {
     expect(result.isFresh).toBe(true);
   });
 
+  it("treats future-dated evidence as not-fresh (no free pass via age clamping)", () => {
+    const e = ev({ timestamp: new Date(now.getTime() + 5 * DAY_MS) });
+    const result = evaluator.evaluateFreshness(e, BASE_THRESHOLDS, now);
+    expect(result.isFresh).toBe(false);
+    // Reports the absolute skew so callers can see how off the timestamp is.
+    expect(result.ageDays).toBeGreaterThan(0);
+  });
+
   it("treats unparseable timestamp as extremely stale rather than throwing", () => {
     const e = ev({ timestamp: new Date() });
     const broken = { ...e, timestamp: "not-a-date" } as unknown as Evidence;
@@ -131,11 +139,17 @@ describe("TrustEvaluator.applySuppression — restricted zero-leak", () => {
   const now = new Date("2026-04-15T00:00:00Z");
 
   it("removes ALL restricted evidence and sets stateFlags.restricted=true", () => {
+    // Pin a uniquely identifiable restricted timestamp so we can also assert
+    // the timestamp itself is absent from filteredEvidence + warnings — not
+    // just the id/source/content. A leaked timestamp is a leak.
+    const RESTRICTED_TS = new Date("2024-07-04T13:37:42.555Z");
+    const RESTRICTED_TS_ISO = RESTRICTED_TS.toISOString();
     const input: Evidence[] = [
       ev({
         id: "ev-secret-1",
         source: "internal-hr",
         content: "SECRET EMPLOYEE NOTE",
+        timestamp: RESTRICTED_TS,
         isRestricted: true,
       }),
       ev({
@@ -159,12 +173,14 @@ describe("TrustEvaluator.applySuppression — restricted zero-leak", () => {
     expect(serialized).not.toContain("SECRET EMPLOYEE NOTE");
     expect(serialized).not.toContain("internal-hr");
     expect(serialized).not.toContain("ev-secret-1");
+    expect(serialized).not.toContain(RESTRICTED_TS_ISO);
 
     // Warnings must not echo restricted content either.
     const warningsSerialized = JSON.stringify(out.warnings);
     expect(warningsSerialized).not.toContain("SECRET EMPLOYEE NOTE");
     expect(warningsSerialized).not.toContain("internal-hr");
     expect(warningsSerialized).not.toContain("ev-secret-1");
+    expect(warningsSerialized).not.toContain(RESTRICTED_TS_ISO);
   });
 
   it("produces empty filteredEvidence when ALL input is restricted", () => {

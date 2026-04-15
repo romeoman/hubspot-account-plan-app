@@ -92,7 +92,15 @@ export async function generateReasonText(
     const trimmed = res.content.trim();
     if (trimmed.length === 0) return fallback;
     return trimmed;
-  } catch {
+  } catch (err) {
+    // Failure must not propagate — falling back to the template is the
+    // honest path. Log a stable error class so prod observability can see
+    // LLM adapter health drift; never log raw err.message (provider error
+    // messages can carry request URLs / api-key context).
+    console.warn("reason_generator.llm_adapter_failed", {
+      adapter: llmAdapter.provider,
+      errorClass: err instanceof Error ? err.constructor.name : typeof err,
+    });
     return fallback;
   }
 }

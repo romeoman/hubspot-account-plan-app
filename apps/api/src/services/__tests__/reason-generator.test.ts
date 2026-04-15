@@ -79,7 +79,7 @@ describe("generateReasonText", () => {
     expect(text).toContain("Funding round announced this week.");
   });
 
-  it("uses llmAdapter output when provided", async () => {
+  it("uses llmAdapter output when provided (NOT the template format)", async () => {
     const signal = ev({
       id: "x",
       source: "hubspot",
@@ -89,6 +89,9 @@ describe("generateReasonText", () => {
     const text = await generateReasonText(signal, llm);
     expect(typeof text).toBe("string");
     expect(text.length).toBeGreaterThan(0);
+    // Proves the LLM path was taken, not just the fallback template:
+    // template format is "<source> reported: <content>".
+    expect(text).not.toContain("hubspot reported:");
   });
 
   it("falls back to template if llmAdapter throws", async () => {
