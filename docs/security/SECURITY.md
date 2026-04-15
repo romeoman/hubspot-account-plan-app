@@ -419,6 +419,14 @@ Verified limitations (HubSpot docs + Exa research, 2026-04-15):
 - `scripts/seed-hubspot-test-portal.ts`: user first installs the app into their test portal via the install flow (one-click on HubSpot's side); seed script then reads the stored tenant token and proceeds. No env-variable token path.
 - `packages/config/src/env.ts`: `HUBSPOT_DEV_PORTAL_TOKEN` removed from the schema. `HUBSPOT_CLIENT_ID` + `HUBSPOT_CLIENT_SECRET` stay (they drive OAuth + the existing Step 4 signed-request verification).
 
+**OAuth state tradeoff (accepted for Slice 3):**
+
+- OAuth `state` is a **stateless HMAC** over a short-lived payload (for example `nonce + expiresAt`) using `HUBSPOT_CLIENT_SECRET`.
+- This provides **tamper detection + expiry enforcement**, which is the CSRF property Slice 3 requires.
+- It does **not** provide single-use replay detection for an intercepted but still-unexpired `state` value, because there is no server-side nonce store.
+- That gap is **accepted for Slice 3** and must be called out explicitly in tests and review: do not write tests that assert single-use replay rejection for OAuth `state` unless the implementation also introduces persistent nonce tracking.
+- If single-use replay becomes a product or audit requirement, the mitigation is a dedicated `oauth_state_nonce` table (or equivalent bounded nonce store) in a later slice.
+
 ### 16.3 Why this is Slice 3, not Slice 2
 
 - The OAuth install flow is a sizable architectural piece on its own — endpoints, redirect handling, state+CSRF, refresh-token rotation, DB schema, error UX.
@@ -432,7 +440,7 @@ Verified limitations (HubSpot docs + Exa research, 2026-04-15):
 - [ ] Re-upload the project via `pnpm tsx scripts/hs-project-upload.ts`. HubSpot provisions the OAuth config (same `client_id`/`client_secret`).
 - [ ] Add DB migration: `tenants.hubspot_access_token_encrypted`, `tenants.hubspot_refresh_token_encrypted`, `tenants.hubspot_token_expires_at`, `tenants.hubspot_hub_id`, `tenants.hubspot_scopes`. (Or a sibling table if we want a 1:many relation for multi-install-per-tenant scenarios.)
 - [ ] `GET /oauth/install` endpoint — builds HubSpot authorize URL with state (CSRF-signed via the Slice 2 `HUBSPOT_CLIENT_SECRET`), redirects.
-- [ ] `GET /oauth/callback` endpoint — verifies state, calls HubSpot token exchange, encrypts + stores per-tenant, redirects to a success page.
+- [ ] `GET /oauth/callback` endpoint — verifies state for tampering + expiry, calls HubSpot token exchange, encrypts + stores per-tenant, redirects to a success page.
 - [ ] `hubspot-client.ts` refactor as above. Tests updated.
 - [ ] `seed-hubspot-test-portal.ts` refactor to use post-install tenant token. Tests updated.
 - [ ] Remove `HUBSPOT_DEV_PORTAL_TOKEN` from `.env.example`, the Zod validator, and `docs/qa/slice-2-walkthrough.md`.
@@ -443,5 +451,6 @@ Verified limitations (HubSpot docs + Exa research, 2026-04-15):
 
 - Two tenants can install the app into two different HubSpot portals and use it independently. Cross-tenant tests prove isolation at both the DB and the HubSpot-client levels.
 - `HUBSPOT_DEV_PORTAL_TOKEN` grep returns zero hits in `apps/`, `packages/`, and `scripts/`.
+- OAuth `state` tests prove tampering + expiry rejection. Single-use replay of an unexpired state is explicitly documented as out of scope for the stateless Slice 3 design.
 - Security audit PASS on the OAuth flow.
 - Deployable to `distribution: "marketplace"` (listing submission is a separate business step, but the CODE is ready for it).
