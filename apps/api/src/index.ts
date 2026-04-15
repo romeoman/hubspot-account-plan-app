@@ -3,10 +3,11 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { authMiddleware } from "./middleware/auth";
+import { type CorrelationVariables, correlationMiddleware } from "./middleware/correlation";
 import { type TenantVariables, tenantMiddleware } from "./middleware/tenant";
 import { snapshotRoutes } from "./routes/snapshot";
 
-type AppVars = TenantVariables & { portalId?: string };
+type AppVars = TenantVariables & CorrelationVariables & { portalId?: string };
 
 /**
  * Resolve the allowed CORS origin for a given request origin.
@@ -36,6 +37,10 @@ function resolveCorsOrigin(origin: string): string | null {
 }
 
 const app = new Hono<{ Variables: AppVars }>();
+
+// Correlation middleware MUST be first — every request (including auth
+// failures and CORS preflights) needs an X-Request-Id for Phase 5 QA tracing.
+app.use("*", correlationMiddleware());
 
 app.use(
   "*",
