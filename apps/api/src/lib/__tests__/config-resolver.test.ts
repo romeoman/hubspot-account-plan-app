@@ -2,13 +2,17 @@ import { randomUUID } from "node:crypto";
 import { createDatabase, llmConfig, providerConfig, tenants } from "@hap/db";
 import { eq, like } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { InMemoryCacheAdapter } from "../cache-adapter";
 import {
+  __setCacheAdapterForTests,
   CONFIG_RESOLVER_CACHE_TTL_MS,
   clearConfigResolverCache,
   getLlmConfig,
+  getLlmConfigByProvider,
   getProviderConfig,
   invalidateLlmConfig,
   invalidateProviderConfig,
+  invalidateTenantConfig,
 } from "../config-resolver";
 import { encryptProviderKey } from "../encryption";
 
@@ -37,6 +41,10 @@ async function seedTenant(settings?: Record<string, unknown>) {
 }
 
 beforeEach(async () => {
+  // Swap in a fresh adapter per test so no state leaks between cases —
+  // `clearConfigResolverCache` is still exposed for external callers and is a
+  // superset of this reset.
+  __setCacheAdapterForTests(new InMemoryCacheAdapter());
   clearConfigResolverCache();
   // FK cascade on providerConfig / llmConfig handles child cleanup.
   await db.delete(tenants).where(like(tenants.hubspotPortalId, `${PORTAL_PREFIX}%`));
@@ -377,5 +385,210 @@ describe("cache invalidation", () => {
     invalidateLlmConfig(tenant.id);
     const fresh = await getLlmConfig({ db }, { tenantId: tenant.id });
     expect(fresh?.provider).toBe("anthropic");
+  });
+});
+
+describe("getLlmConfigByProvider", () => {
+  it("returns the matching row for the tenant + provider", async () => {
+    const tenant = await seedTenant();
+    await db.insert(llmConfig).values([
+      {
+        tenantId: tenant.id,
+        providerName: "anthropic",
+        modelName: "claude-3-5-sonnet",
+        apiKeyEncrypted: encryptProviderKey(tenant.id, "sk-ant"),
+        settings: {},
+      },
+      {
+        tenantId: tenant.id,
+        providerName: "openai",
+        modelName: "gpt-4o",
+        apiKeyEncrypted: encryptProviderKey(tenant.id, "sk-oai"),
+        settings: {},
+      },
+    ]);
+
+    const res = await getLlmConfigByProvider({ db }, { tenantId: tenant.id, provider: "openai" });
+    expect(res?.provider).toBe("openai");
+    expect(res?.model).toBe("gpt-4o");
+    expect(res?.apiKeyRef).toBe("sk-oai");
+  });
+
+  it("returns null when no row matches that tenant + provider", async () => {
+    const tenant = await seedTenant();
+    await db.insert(llmConfig).values({
+      tenantId: tenant.id,
+      providerName: "anthropic",
+      modelName: "claude-3-5-sonnet",
+      apiKeyEncrypted: encryptProviderKey(tenant.id, "sk-ant"),
+      settings: {},
+    });
+
+    const res = await getLlmConfigByProvider({ db }, { tenantId: tenant.id, provider: "openai" });
+    expect(res).toBeNull();
+  });
+
+  it("caches within TTL (delete-then-read still returns the cached value)", async () => {
+    const tenant = await seedTenant();
+    await db.insert(llmConfig).values({
+      tenantId: tenant.id,
+      providerName: "gemini",
+      modelName: "gemini-1.5-pro",
+      apiKeyEncrypted: encryptProviderKey(tenant.id, "sk-gem"),
+      settings: {},
+    });
+
+    const first = await getLlmConfigByProvider({ db }, { tenantId: tenant.id, provider: "gemini" });
+    expect(first?.apiKeyRef).toBe("sk-gem");
+
+    // Delete the row — a cache miss would now return null. A cache HIT
+    // returns the cached value unchanged.
+    await db.delete(llmConfig).where(eq(llmConfig.tenantId, tenant.id));
+
+    const second = await getLlmConfigByProvider(
+      { db },
+      { tenantId: tenant.id, provider: "gemini" },
+    );
+    expect(second?.apiKeyRef).toBe("sk-gem");
+  });
+
+  it("refetches after TTL expiry via injected clock", async () => {
+    const tenant = await seedTenant();
+    await db.insert(llmConfig).values({
+      tenantId: tenant.id,
+      providerName: "gemini",
+      modelName: "gemini-1.5-pro",
+      apiKeyEncrypted: encryptProviderKey(tenant.id, "sk-gem"),
+      settings: {},
+    });
+
+    let t = 1_000_000;
+    const now = () => t;
+
+    const first = await getLlmConfigByProvider(
+      { db, now },
+      { tenantId: tenant.id, provider: "gemini" },
+    );
+    expect(first?.apiKeyRef).toBe("sk-gem");
+
+    t += CONFIG_RESOLVER_CACHE_TTL_MS + 1;
+    await db.delete(llmConfig).where(eq(llmConfig.tenantId, tenant.id));
+
+    const second = await getLlmConfigByProvider(
+      { db, now },
+      { tenantId: tenant.id, provider: "gemini" },
+    );
+    expect(second).toBeNull();
+  });
+});
+
+describe("invalidateTenantConfig", () => {
+  it("flushes one tenant's cache entries but leaves other tenants untouched", async () => {
+    const tenantA = await seedTenant();
+    const tenantB = await seedTenant();
+    await db.insert(providerConfig).values([
+      { tenantId: tenantA.id, providerName: "exa", enabled: true },
+      { tenantId: tenantB.id, providerName: "exa", enabled: true },
+    ]);
+    await db.insert(llmConfig).values([
+      {
+        tenantId: tenantA.id,
+        providerName: "anthropic",
+        modelName: "claude-a",
+        apiKeyEncrypted: encryptProviderKey(tenantA.id, "sk-A"),
+        settings: {},
+      },
+      {
+        tenantId: tenantB.id,
+        providerName: "anthropic",
+        modelName: "claude-b",
+        apiKeyEncrypted: encryptProviderKey(tenantB.id, "sk-B"),
+        settings: {},
+      },
+    ]);
+
+    // Prime the caches for both tenants.
+    await getProviderConfig({ db }, { tenantId: tenantA.id, providerName: "exa" });
+    await getProviderConfig({ db }, { tenantId: tenantB.id, providerName: "exa" });
+    await getLlmConfig({ db }, { tenantId: tenantA.id });
+    await getLlmConfig({ db }, { tenantId: tenantB.id });
+    await getLlmConfigByProvider({ db }, { tenantId: tenantA.id, provider: "anthropic" });
+    await getLlmConfigByProvider({ db }, { tenantId: tenantB.id, provider: "anthropic" });
+
+    // Mutate tenant A's rows under the cache's feet.
+    await db
+      .update(providerConfig)
+      .set({ enabled: false })
+      .where(eq(providerConfig.tenantId, tenantA.id));
+    await db.delete(llmConfig).where(eq(llmConfig.tenantId, tenantA.id));
+
+    // Tag-flush tenant A only.
+    invalidateTenantConfig(tenantA.id);
+
+    // Tenant A: fresh reads observe the mutations.
+    const aProv = await getProviderConfig({ db }, { tenantId: tenantA.id, providerName: "exa" });
+    const aLlm = await getLlmConfig({ db }, { tenantId: tenantA.id });
+    const aByProv = await getLlmConfigByProvider(
+      { db },
+      { tenantId: tenantA.id, provider: "anthropic" },
+    );
+    expect(aProv?.enabled).toBe(false);
+    expect(aLlm).toBeNull();
+    expect(aByProv).toBeNull();
+
+    // Tenant B: still served from cache with the exploding db proxy.
+    const exploding = new Proxy(
+      {},
+      {
+        get() {
+          throw new Error("tenant B cache was evicted by mistake");
+        },
+      },
+    ) as unknown as typeof db;
+    const bProv = await getProviderConfig(
+      { db: exploding },
+      { tenantId: tenantB.id, providerName: "exa" },
+    );
+    const bLlm = await getLlmConfig({ db: exploding }, { tenantId: tenantB.id });
+    const bByProv = await getLlmConfigByProvider(
+      { db: exploding },
+      { tenantId: tenantB.id, provider: "anthropic" },
+    );
+    expect(bProv?.enabled).toBe(true);
+    expect(bLlm?.model).toBe("claude-b");
+    expect(bByProv?.apiKeyRef).toBe("sk-B");
+  });
+});
+
+describe("cache return semantics", () => {
+  it("mutating a returned config does not poison subsequent reads", async () => {
+    const tenant = await seedTenant();
+    await db.insert(providerConfig).values({
+      tenantId: tenant.id,
+      providerName: "exa",
+      enabled: true,
+      apiKeyEncrypted: encryptProviderKey(tenant.id, "sk-immut"),
+      thresholds: { freshnessMaxDays: 10, minConfidence: 0.8 },
+      settings: {},
+    });
+
+    const first = await getProviderConfig({ db }, { tenantId: tenant.id, providerName: "exa" });
+    expect(first?.thresholds.freshnessMaxDays).toBe(10);
+
+    // Try to mutate the returned object. Either it throws (frozen) or the
+    // mutation is confined to this copy (clone-on-read). Both satisfy the
+    // contract: subsequent reads MUST still see the pristine values.
+    try {
+      if (first) {
+        (first.thresholds as { freshnessMaxDays: number }).freshnessMaxDays = 999;
+        (first as { name: string }).name = "tampered";
+      }
+    } catch {
+      // Frozen object — mutation rejected. That's fine.
+    }
+
+    const second = await getProviderConfig({ db }, { tenantId: tenant.id, providerName: "exa" });
+    expect(second?.thresholds.freshnessMaxDays).toBe(10);
+    expect(second?.name).toBe("exa");
   });
 });

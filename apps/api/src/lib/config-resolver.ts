@@ -8,16 +8,30 @@
  *    Slice 2 adapters) while the ciphertext never leaves this module.
  *  - Map DB row shapes to the domain types exported from `@hap/config`
  *    (`ProviderConfig`, `LlmProviderConfig`).
- *  - Cache results per-tenant with a 5-minute TTL. Keys embed `tenantId` so
- *    cross-tenant lookups cannot collide.
+ *  - Cache results per-tenant with a 5-minute TTL behind a {@link CacheAdapter}
+ *    abstraction. Cache keys embed `tenantId` so cross-tenant lookups cannot
+ *    collide; every entry is tagged `tenant:${tenantId}` so one call to
+ *    {@link invalidateTenantConfig} flushes a whole tenant's configs when
+ *    their DB rows change.
  *
- * Tenant isolation: every cache key is prefixed with `tenantId`; no helper in
- * this module returns a config whose underlying row belongs to a different
- * tenant. Tests in `__tests__/config-resolver.test.ts` assert this directly.
+ * Cache key conventions:
+ *  - `provider:${tenantId}:${providerName}` — one row from `provider_config`.
+ *  - `llm:${tenantId}:default` — the tenant's default LLM row (the
+ *    {@link getLlmConfig} selection).
+ *  - `llm:${tenantId}:${provider}` — a specific LLM row by `provider_name`
+ *    (used by {@link getLlmConfigByProvider}, which the Step 8 LLM factory
+ *    calls at request time).
  *
- * @todo Slice 2: the in-memory Map cache is fine for a single API instance
- * in Slice 1. For multi-instance deployments, swap to Redis (or Supabase
- * Postgres LISTEN/NOTIFY invalidation) keyed by `${tenantId}:...`.
+ * Tenant isolation: every cache key is prefixed with `tenantId` AND every
+ * entry carries a `tenant:${tenantId}` tag; no helper in this module returns
+ * a config whose underlying row belongs to a different tenant. Tests in
+ * `__tests__/config-resolver.test.ts` assert this directly.
+ *
+ * Decryption flow: the cache stores the already-decrypted domain object so
+ * we don't pay the AES cost on every read. The object is FROZEN on write
+ * (including its nested `thresholds` / `settings`) so a buggy caller cannot
+ * mutate the shared instance and poison the next reader. `invalidateTenantConfig`
+ * is what forces re-decryption when a tenant rotates their key.
  *
  * @todo Slice 2: once real provider adapters exist, add a higher-level
  * `resolveProviderAdapter(tenantId, providerName)` factory here that wires
@@ -32,6 +46,7 @@ import type {
 } from "@hap/config";
 import { type Database, llmConfig, providerConfig, tenants } from "@hap/db";
 import { and, asc, eq } from "drizzle-orm";
+import { type CacheAdapter, InMemoryCacheAdapter } from "./cache-adapter";
 import { decryptProviderKey } from "./encryption";
 
 /** Cache TTL: 5 minutes. Matches eligibility-service TTL for consistency. */
@@ -60,12 +75,6 @@ function isLlmProviderType(v: unknown): v is LlmProviderType {
   return typeof v === "string" && (LLM_PROVIDER_TYPES as readonly string[]).includes(v);
 }
 
-/**
- * Cached row shape — the `apiKeyEncrypted` ciphertext is fine to keep in
- * memory for the TTL window, but the decrypted plaintext is NOT. Caches
- * therefore store the raw row and decrypt on demand inside each call so
- * plaintext only lives for the duration of a single function execution.
- */
 type ProviderRow = {
   providerName: string;
   enabled: boolean;
@@ -79,16 +88,24 @@ type LlmRow = {
   endpointUrl: string | null;
 };
 
-type ProviderCacheEntry = { row: ProviderRow | null; expiresAt: number };
-type LlmCacheEntry = { row: LlmRow | null; expiresAt: number };
+// -----------------------------------------------------------------------------
+// Cache adapter (module-level, swappable for tests and Slice 3 Redis)
+// -----------------------------------------------------------------------------
 
-const providerCache = new Map<string, ProviderCacheEntry>();
-const llmCache = new Map<string, LlmCacheEntry>();
+let cache: CacheAdapter = new InMemoryCacheAdapter();
 
-/** Clear all cached entries. Tests call this in `beforeEach`. */
+/**
+ * Swap the cache adapter. Tests call this in `beforeEach` with a fresh
+ * {@link InMemoryCacheAdapter} so state never leaks between cases. Slice 3
+ * wires a Redis-backed implementation here at startup.
+ */
+export function __setCacheAdapterForTests(adapter: CacheAdapter): void {
+  cache = adapter;
+}
+
+/** Clear all cached entries. Existing Slice 1 callers rely on this signature. */
 export function clearConfigResolverCache(): void {
-  providerCache.clear();
-  llmCache.clear();
+  cache.clear();
 }
 
 /**
@@ -98,16 +115,27 @@ export function clearConfigResolverCache(): void {
  * the new row for up to {@link CONFIG_RESOLVER_CACHE_TTL_MS}.
  */
 export function invalidateProviderConfig(tenantId: string, providerName: string): void {
-  providerCache.delete(buildProviderKey(tenantId, providerName));
+  cache.delete(providerKey(tenantId, providerName));
 }
 
 /**
- * Drop the cached LLM-config entry for a tenant. Call from any code path that
- * mutates `llm_config` rows for that tenant (insert / update / delete) or
- * `tenants.settings.defaultLlmProvider`.
+ * Drop the cached LLM-config entries for a tenant. Flushes BOTH the default
+ * selection and any per-provider entries (Step 8+ can store either).
  */
 export function invalidateLlmConfig(tenantId: string): void {
-  llmCache.delete(buildLlmKey(tenantId));
+  // We don't track which per-provider entries exist, so use the tenant tag —
+  // this over-flushes (drops provider rows too), which is acceptable on config
+  // mutation paths and matches the pre-refactor behaviour.
+  cache.invalidateByTag(tenantTag(tenantId));
+}
+
+/**
+ * Flush every cached config for this tenant. Step 9+ provider adapters call
+ * this when they detect a stale row (e.g., 401 Unauthorized suggests a
+ * rotated key). The implementation is O(#entries-with-this-tag).
+ */
+export function invalidateTenantConfig(tenantId: string): void {
+  cache.invalidateByTag(tenantTag(tenantId));
 }
 
 export type ConfigResolverDeps = {
@@ -116,12 +144,18 @@ export type ConfigResolverDeps = {
   now?: () => number;
 };
 
-function buildProviderKey(tenantId: string, providerName: string): string {
-  return `${tenantId}:provider:${providerName}`;
+// Key builders. Keep string shapes stable — tests and logs reference them.
+function providerKey(tenantId: string, providerName: string): string {
+  return `provider:${tenantId}:${providerName}`;
 }
-
-function buildLlmKey(tenantId: string): string {
-  return `${tenantId}:llm`;
+function llmDefaultKey(tenantId: string): string {
+  return `llm:${tenantId}:default`;
+}
+function llmProviderKey(tenantId: string, provider: LlmProviderType): string {
+  return `llm:${tenantId}:${provider}`;
+}
+function tenantTag(tenantId: string): string {
+  return `tenant:${tenantId}`;
 }
 
 /**
@@ -130,10 +164,6 @@ function buildLlmKey(tenantId: string): string {
  * returned. Missing fields are omitted (not coerced to 0) so callers can
  * distinguish "tenant left this blank, use the default" from "tenant
  * explicitly set zero".
- *
- * The zero-coercion bug this replaces caused tenants with a provider row
- * but no explicit thresholds to be treated as `{ freshnessMaxDays: 0,
- * minConfidence: 0 }` — which made every piece of evidence stale.
  */
 function parseThresholds(raw: unknown): Partial<ThresholdConfig> {
   const out: Partial<ThresholdConfig> = {};
@@ -150,6 +180,58 @@ function parseThresholds(raw: unknown): Partial<ThresholdConfig> {
 }
 
 /**
+ * Deep-freeze a config object. We chose freeze-on-set over clone-on-read:
+ *  - one allocation per DB read instead of one per cache hit
+ *  - immediately crashes buggy callers that try to mutate shared state
+ *    (much better signal than silent divergence between "my copy" and
+ *    "what's cached")
+ *  - `ProviderConfig` / `LlmProviderConfig` are shallow POJOs, so freeze is
+ *    cheap and complete. If these types grow arrays or nested objects in
+ *    Slice 3, freeze recursively here.
+ */
+function freezeConfig<T>(value: T | null): T | null {
+  if (value === null) return null;
+  if (typeof value === "object" && value !== null) {
+    for (const v of Object.values(value as Record<string, unknown>)) {
+      if (v && typeof v === "object") Object.freeze(v);
+    }
+    Object.freeze(value);
+  }
+  return value;
+}
+
+/**
+ * Envelope wrapping a cached config with an absolute `expiresAt` timestamp.
+ *
+ * We intentionally do NOT use the {@link CacheAdapter}'s own `ttlMs` here —
+ * the adapter reads `Date.now()` directly, but the resolver's test harness
+ * injects a `now()` clock via `ConfigResolverDeps`. Keeping the expiry check
+ * inside the resolver lets tests advance time deterministically without
+ * monkey-patching `Date`. The adapter's TTL machinery is still used by other
+ * consumers (Slice 3 rate limiter, nonce store).
+ */
+type CacheEnvelope<T> = { value: T; expiresAt: number };
+
+function readCache<T>(key: string, now: number): T | undefined {
+  const env = cache.get<CacheEnvelope<T>>(key);
+  if (!env) return undefined;
+  if (env.expiresAt <= now) return undefined;
+  return env.value;
+}
+
+function writeCache<T>(key: string, tenantId: string, value: T, now: number): void {
+  cache.set<CacheEnvelope<T>>(
+    key,
+    { value, expiresAt: now + CONFIG_RESOLVER_CACHE_TTL_MS },
+    { tags: [tenantTag(tenantId)] },
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Provider config
+// -----------------------------------------------------------------------------
+
+/**
  * Fetch the `ProviderConfig` for a tenant + provider name.
  *
  * Returns `null` when no row exists. NEVER throws on missing data; only
@@ -160,101 +242,63 @@ export async function getProviderConfig(
   deps: ConfigResolverDeps,
   args: { tenantId: string; providerName: string },
 ): Promise<ProviderConfig | null> {
-  const now = deps.now ?? Date.now;
-  const currentTime = now();
-  const key = buildProviderKey(args.tenantId, args.providerName);
+  const now = (deps.now ?? Date.now)();
+  const key = providerKey(args.tenantId, args.providerName);
 
-  let row: ProviderRow | null;
-  const cached = providerCache.get(key);
-  if (cached && cached.expiresAt > currentTime) {
-    row = cached.row;
+  // `undefined` = cache miss / expired; `null` = cached "row does not exist".
+  const cached = readCache<ProviderConfig | null>(key, now);
+  if (cached !== undefined) return cached;
+
+  const rows = await deps.db
+    .select({
+      providerName: providerConfig.providerName,
+      enabled: providerConfig.enabled,
+      apiKeyEncrypted: providerConfig.apiKeyEncrypted,
+      thresholds: providerConfig.thresholds,
+    })
+    .from(providerConfig)
+    .where(
+      and(
+        eq(providerConfig.tenantId, args.tenantId),
+        eq(providerConfig.providerName, args.providerName),
+      ),
+    )
+    .limit(1);
+  const row: ProviderRow | null = rows[0] ?? null;
+
+  let result: ProviderConfig | null;
+  if (!row) {
+    result = null;
   } else {
-    const rows = await deps.db
-      .select({
-        providerName: providerConfig.providerName,
-        enabled: providerConfig.enabled,
-        apiKeyEncrypted: providerConfig.apiKeyEncrypted,
-        thresholds: providerConfig.thresholds,
-      })
-      .from(providerConfig)
-      .where(
-        and(
-          eq(providerConfig.tenantId, args.tenantId),
-          eq(providerConfig.providerName, args.providerName),
-        ),
-      )
-      .limit(1);
-    row = rows[0] ?? null;
-    providerCache.set(key, {
-      row,
-      expiresAt: currentTime + CONFIG_RESOLVER_CACHE_TTL_MS,
-    });
+    const apiKeyRef = row.apiKeyEncrypted
+      ? decryptProviderKey(args.tenantId, row.apiKeyEncrypted)
+      : "";
+    const thresholds: ThresholdConfig = {
+      ...DEFAULT_THRESHOLDS,
+      ...parseThresholds(row.thresholds),
+    };
+    result = {
+      name: row.providerName,
+      enabled: row.enabled,
+      apiKeyRef,
+      thresholds,
+    };
   }
 
-  if (!row) return null;
-
-  // Decrypt at point of use — the cache holds ciphertext only. The plaintext
-  // returned here lives only for the caller's own scope.
-  const apiKeyRef = row.apiKeyEncrypted
-    ? decryptProviderKey(args.tenantId, row.apiKeyEncrypted)
-    : "";
-  // Merge parsed fields ON TOP of defaults. A tenant that sets only
-  // `freshnessMaxDays` still gets the default `minConfidence`; a completely
-  // empty jsonb returns DEFAULT_THRESHOLDS as-is rather than zeros.
-  const thresholds: ThresholdConfig = {
-    ...DEFAULT_THRESHOLDS,
-    ...parseThresholds(row.thresholds),
-  };
-  return {
-    name: row.providerName,
-    enabled: row.enabled,
-    apiKeyRef,
-    thresholds,
-  };
+  writeCache(key, args.tenantId, freezeConfig(result), now);
+  return result;
 }
 
-/**
- * Fetch the preferred `LlmProviderConfig` for a tenant.
- *
- * Selection strategy (V1, intentionally simple):
- *   1. If `tenants.settings.defaultLlmProvider` is a supported
- *      {@link LlmProviderType} AND a matching `llm_config` row exists,
- *      return that row.
- *   2. Otherwise, return the first `llm_config` row for the tenant
- *      (by insertion order in `id`).
- *   3. Returns `null` when no rows exist.
- *
- * @todo Slice 2: expose explicit `getLlmConfigByProvider(tenantId, provider)`
- * for callers that need to target a specific family (e.g. guardrail / judge
- * models). V1 callers only need the tenant default.
- */
-export async function getLlmConfig(
+// -----------------------------------------------------------------------------
+// LLM config — default (tenant's preferred model) and per-provider lookup
+// -----------------------------------------------------------------------------
+
+/** Fetch-and-cache wrapper. Shared by the default + per-provider code paths. */
+async function fetchLlmRow(
   deps: ConfigResolverDeps,
-  args: { tenantId: string },
-): Promise<LlmProviderConfig | null> {
-  const now = deps.now ?? Date.now;
-  const currentTime = now();
-  const key = buildLlmKey(args.tenantId);
-
-  let chosen: LlmRow | null;
-  const cached = llmCache.get(key);
-  if (cached && cached.expiresAt > currentTime) {
-    chosen = cached.row;
-  } else {
-    // Look up tenant default (if set) and all llm_config rows in one pair of queries.
-    const tenantRows = await deps.db
-      .select({ settings: tenants.settings })
-      .from(tenants)
-      .where(eq(tenants.id, args.tenantId))
-      .limit(1);
-
-    let defaultProvider: LlmProviderType | undefined;
-    const tenantSettings = tenantRows[0]?.settings;
-    if (tenantSettings && typeof tenantSettings === "object" && !Array.isArray(tenantSettings)) {
-      const raw = (tenantSettings as Record<string, unknown>).defaultLlmProvider;
-      if (isLlmProviderType(raw)) defaultProvider = raw;
-    }
-
+  args: { tenantId: string; provider?: LlmProviderType },
+): Promise<LlmRow | null> {
+  if (args.provider) {
     const rows = await deps.db
       .select({
         providerName: llmConfig.providerName,
@@ -263,38 +307,96 @@ export async function getLlmConfig(
         endpointUrl: llmConfig.endpointUrl,
       })
       .from(llmConfig)
-      .where(eq(llmConfig.tenantId, args.tenantId))
-      // Deterministic selection — without orderBy, Postgres returns rows in
-      // physical order which can change after VACUUM, replication, or any
-      // table-level mutation.
-      .orderBy(asc(llmConfig.id));
-
-    let pick = rows[0] ?? null;
-    if (defaultProvider) {
-      const match = rows.find((r) => r.providerName === defaultProvider);
-      if (match) pick = match;
-    }
-    chosen = pick;
-    llmCache.set(key, {
-      row: chosen,
-      expiresAt: currentTime + CONFIG_RESOLVER_CACHE_TTL_MS,
-    });
+      .where(and(eq(llmConfig.tenantId, args.tenantId), eq(llmConfig.providerName, args.provider)))
+      .orderBy(asc(llmConfig.id))
+      .limit(1);
+    return rows[0] ?? null;
   }
 
-  if (!chosen) return null;
-  if (!isLlmProviderType(chosen.providerName)) {
-    // Defensive: unknown provider string in DB — skip rather than crash.
-    return null;
+  // Default selection: honour `tenants.settings.defaultLlmProvider` if set,
+  // otherwise fall back to the first row by insertion order.
+  const tenantRows = await deps.db
+    .select({ settings: tenants.settings })
+    .from(tenants)
+    .where(eq(tenants.id, args.tenantId))
+    .limit(1);
+
+  let defaultProvider: LlmProviderType | undefined;
+  const tenantSettings = tenantRows[0]?.settings;
+  if (tenantSettings && typeof tenantSettings === "object" && !Array.isArray(tenantSettings)) {
+    const raw = (tenantSettings as Record<string, unknown>).defaultLlmProvider;
+    if (isLlmProviderType(raw)) defaultProvider = raw;
   }
 
-  // Decrypt at point of use — cache holds ciphertext only.
-  const apiKeyRef = chosen.apiKeyEncrypted
-    ? decryptProviderKey(args.tenantId, chosen.apiKeyEncrypted)
-    : "";
+  const rows = await deps.db
+    .select({
+      providerName: llmConfig.providerName,
+      modelName: llmConfig.modelName,
+      apiKeyEncrypted: llmConfig.apiKeyEncrypted,
+      endpointUrl: llmConfig.endpointUrl,
+    })
+    .from(llmConfig)
+    .where(eq(llmConfig.tenantId, args.tenantId))
+    .orderBy(asc(llmConfig.id));
+
+  let pick = rows[0] ?? null;
+  if (defaultProvider) {
+    const match = rows.find((r) => r.providerName === defaultProvider);
+    if (match) pick = match;
+  }
+  return pick;
+}
+
+/** Map a raw DB row to the domain shape, decrypting the key. */
+function mapLlmRow(tenantId: string, row: LlmRow): LlmProviderConfig | null {
+  if (!isLlmProviderType(row.providerName)) return null;
+  const apiKeyRef = row.apiKeyEncrypted ? decryptProviderKey(tenantId, row.apiKeyEncrypted) : "";
   return {
-    provider: chosen.providerName,
-    model: chosen.modelName,
+    provider: row.providerName,
+    model: row.modelName,
     apiKeyRef,
-    endpointUrl: chosen.endpointUrl ?? undefined,
+    endpointUrl: row.endpointUrl ?? undefined,
   };
+}
+
+/**
+ * Fetch the preferred `LlmProviderConfig` for a tenant (the default
+ * selection). See file-level docs for the selection strategy.
+ */
+export async function getLlmConfig(
+  deps: ConfigResolverDeps,
+  args: { tenantId: string },
+): Promise<LlmProviderConfig | null> {
+  const now = (deps.now ?? Date.now)();
+  const key = llmDefaultKey(args.tenantId);
+  const cached = readCache<LlmProviderConfig | null>(key, now);
+  if (cached !== undefined) return cached;
+
+  const row = await fetchLlmRow(deps, { tenantId: args.tenantId });
+  const result = row ? mapLlmRow(args.tenantId, row) : null;
+  writeCache(key, args.tenantId, freezeConfig(result), now);
+  return result;
+}
+
+/**
+ * Fetch the `LlmProviderConfig` for a tenant + specific provider (e.g. the
+ * Step 8 LLM factory uses this to resolve an adapter for a guardrail or judge
+ * model). Returns `null` when the tenant has no row for that provider.
+ */
+export async function getLlmConfigByProvider(
+  deps: ConfigResolverDeps,
+  args: { tenantId: string; provider: LlmProviderType },
+): Promise<LlmProviderConfig | null> {
+  const now = (deps.now ?? Date.now)();
+  const key = llmProviderKey(args.tenantId, args.provider);
+  const cached = readCache<LlmProviderConfig | null>(key, now);
+  if (cached !== undefined) return cached;
+
+  const row = await fetchLlmRow(deps, {
+    tenantId: args.tenantId,
+    provider: args.provider,
+  });
+  const result = row ? mapLlmRow(args.tenantId, row) : null;
+  writeCache(key, args.tenantId, freezeConfig(result), now);
+  return result;
 }
