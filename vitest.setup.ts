@@ -41,3 +41,25 @@ for (const path of candidates) {
   const isOverride = path.endsWith(".env.test.local");
   config({ path, override: isOverride });
 }
+
+/**
+ * CI fallback: when no .env files are present (e.g. GitHub Actions), inject
+ * safe test defaults so the Zod env validator (`packages/config/src/env.ts`)
+ * doesn't fail before any test runs. These values are meaningless — they
+ * exist solely to satisfy the schema; tests that actually exercise crypto
+ * or HubSpot auth paths stub or override the relevant functions. Production
+ * NEVER runs vitest.
+ */
+const TEST_DEFAULTS = {
+  DATABASE_URL: "postgresql://hap:hap_local_dev@localhost:5433/hap_dev",
+  HUBSPOT_CLIENT_ID: "test-client-id",
+  HUBSPOT_CLIENT_SECRET: "test-client-secret",
+  // 32 random bytes, base64. Deterministic test value; NOT a real KEK.
+  ROOT_KEK: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+  ALLOW_TEST_AUTH: "true",
+  NODE_ENV: "test",
+} as const;
+
+for (const [key, value] of Object.entries(TEST_DEFAULTS)) {
+  if (!process.env[key]) process.env[key] = value;
+}
