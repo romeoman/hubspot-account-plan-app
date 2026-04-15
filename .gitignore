@@ -2,8 +2,10 @@
 node_modules/
 .pnpm-store/
 
-# Git worktrees
-.worktrees/
+# Git worktrees — anchor to repo root only so tools that walk gitignore
+# from INSIDE a worktree (e.g., HubSpot CLI's file walker) don't mistakenly
+# exclude files whose absolute path contains the .worktrees segment.
+/.worktrees/
 
 # Build output
 dist/

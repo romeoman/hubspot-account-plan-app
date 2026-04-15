@@ -12,7 +12,10 @@
       "conditionallyRequiredScopes": []
     },
     "permittedUrls": {
-      "fetch": ["http://localhost:3001"],
+      "fetch": [
+        "https://hap-signal-workspace.vercel.app",
+        "https://hap-signal-workspace-staging.vercel.app"
+      ],
       "iframe": [],
       "img": []
     },
