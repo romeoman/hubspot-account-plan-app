@@ -1,0 +1,20 @@
+{
+  "_meta": {
+    "source": "HubSpot docs — POST /oauth/2026-03/token (grant_type=refresh_token)",
+    "verified": "slice-3-preflight-notes.md §3",
+    "scrubbed": true
+  },
+  "request": {
+    "url": "https://api.hubapi.com/oauth/2026-03/token",
+    "method": "POST"
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "access_token": "CO1-fake-rotated-access-token-scrubbed",
+      "refresh_token": "na1-fake-rotated-refresh-token-scrubbed",
+      "expires_in": 1800,
+      "token_type": "bearer"
+    }
+  }
+}

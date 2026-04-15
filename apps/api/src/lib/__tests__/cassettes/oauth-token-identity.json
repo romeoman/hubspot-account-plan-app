@@ -1,0 +1,25 @@
+{
+  "_meta": {
+    "source": "HubSpot docs — GET /oauth/v1/access-tokens/{token}",
+    "verified": "slice-3-preflight-notes.md §4",
+    "scrubbed": true
+  },
+  "request": {
+    "url": "https://api.hubapi.com/oauth/v1/access-tokens/CO1-fake-access-token-scrubbed-for-repo",
+    "method": "GET"
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "token": "CO1-fake-access-token-scrubbed-for-repo",
+      "user": "qa-user@example.com",
+      "hub_domain": "qa-account.example.com",
+      "scopes": ["oauth", "crm.objects.companies.read", "crm.objects.contacts.read"],
+      "hub_id": 146425426,
+      "app_id": 9999999,
+      "expires_in": 1754,
+      "user_id": 293199,
+      "token_type": "access"
+    }
+  }
+}
