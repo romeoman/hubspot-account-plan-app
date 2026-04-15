@@ -374,3 +374,24 @@ The backend makes authenticated calls to HubSpot's CRM v3 API — today only fro
 ### 14.3 OAuth (Slice 3+)
 
 Marketplace distribution (multiple installing portals, per-install token storage) requires the OAuth 2.0 authorization-code flow plus refresh-token rotation. That is explicitly deferred to Slice 3; a `@todo Slice 3` JSDoc note on `HubSpotClient` tracks it.
+
+## 15. Phase 1 Security Audit (Slice 2 Step 5)
+
+Independent review of commits `9fbccc5` (provider config + env validator), `2b47c9d` (AES-256-GCM + KEK), `b3c63d7` (HubSpot signed-request auth) by the `security-auditor` agent.
+
+**Verdict: PASS WITH 4 ADVISORIES.** All ten threat-model items (key leakage, AES-GCM correctness, HKDF correctness, signature verification, test-bypass safety, cross-tenant isolation, forged portal_id, replay attacks, server-to-HubSpot credential handling, documentation) returned PASS. No blocking findings. Phase 2 (Steps 6-7 platform infrastructure, Steps 8-10 live adapters, Steps 11-14 application + UX) cleared to proceed.
+
+### 15.1 Advisory dispositions
+
+- **A1 — Replay window within freshness bound** (`hubspot-signature.ts`). Within the 5-minute freshness window the same `(body, signature, timestamp)` triple can be replayed. Defense-in-depth fix is a nonce store with 5-minute TTL keyed on the signature hash. **Disposition:** `@todo Slice 3` marker added at the freshness constant; Slice 3 wires Redis-backed nonce tracking on top of the Step 6 cache adapter.
+- **A2 — `HubSpotClient` token validation deferred to first call** (`hubspot-client.ts`). Missing `HUBSPOT_PRIVATE_APP_TOKEN` throws only when the class is first instantiated. **Disposition:** `@todo Slice 3` marker added at the class declaration; Step 9 (Exa + HubSpot signal adapters) adds a startup health-check that instantiates the client once, surfacing missing credentials at process start.
+- **A3 — `safeEquals` unequal-length branch timing** (`hubspot-signature.ts`). When the inbound and expected signatures differ in length, the implementation runs `timingSafeEqual` against a zero-padded buffer sized to the inbound (attacker-controlled) length. The branch is distinguishable in wall time from the equal-length path but does not leak the expected signature — the expected length is the public 44-char base64 of SHA-256, and the timing reveals only the length the attacker already supplied. Risk is low and bounded; documented here for future readers.
+- **A4 — HKDF salt as plaintext constant** (`kek.ts`). The salt `"hap-tenant-kek-v1"` is a correct design choice per RFC 5869 (HKDF salt is non-secret; per-tenant binding lives in `info`). Recorded so a future reviewer does not "fix" it to a random or per-tenant salt — that change would invalidate every existing ciphertext. An invariant comment was added at the constant declaration.
+
+### 15.2 Acceptance criteria for Phase 2 entry
+
+- Slice 1 + Phase 1 tests green: 269 passing, 0 lint, 0 typecheck. ✅
+- All four advisory dispositions either applied (A2, A3, A4) or scheduled as Slice 3 work (A1). ✅
+- This audit section appended to `SECURITY.md`. ✅
+
+Phase 2 may proceed.

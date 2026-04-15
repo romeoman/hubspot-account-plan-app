@@ -26,6 +26,12 @@ const HUBSPOT_API_ROOT = "https://api.hubapi.com";
  * behind the signal adapter). The token is bound at construction so callers
  * cannot accidentally pass in tenant-inbound credentials.
  */
+/**
+ * @todo Slice 3 (security audit advisory A2): add a startup health-check in
+ * `apps/api/src/index.ts` that instantiates `HubSpotClient` once when the
+ * Step 9 enrichment adapter ships, so a missing `HUBSPOT_PRIVATE_APP_TOKEN`
+ * fails loud at process start instead of latent-until-first-call.
+ */
 export class HubSpotClient {
   private readonly token: string;
 

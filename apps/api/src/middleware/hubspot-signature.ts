@@ -38,7 +38,15 @@ import { loadEnv } from "@hap/config";
 import type { MiddlewareHandler } from "hono";
 import type { TenantVariables } from "./tenant";
 
-/** HubSpot v3 signature freshness window. */
+/**
+ * HubSpot v3 signature freshness window.
+ *
+ * @todo Slice 3 (security audit advisory A1): within this window, the same
+ * (body, signature, timestamp) triple can be replayed. Defense-in-depth fix
+ * is a nonce store keyed on the signature hash with a 5-minute TTL. Phase 2
+ * PRD does not require it; Slice 3 should add Redis-backed nonce tracking
+ * once the rate-limiter cache adapter from Step 6 is in place.
+ */
 const MAX_TIMESTAMP_SKEW_MS = 5 * 60 * 1000;
 
 /** Header names (lower-cased for consistent lookup via Hono's `c.req.header`). */

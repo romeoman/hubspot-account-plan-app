@@ -25,6 +25,12 @@
 
 import { hkdfSync } from "node:crypto";
 
+// HKDF salt is a deterministic per-app namespace constant — NOT a secret and
+// NOT per-tenant. Per RFC 5869 it can be public; the per-tenant binding lives
+// in the `info` parameter (the tenant ID). Do NOT change this to a random or
+// per-tenant salt — that would break decryption of all existing ciphertext.
+// Rotation is handled via key versioning (encryption.ts KEY_VERSION) and the
+// `-v1` suffix here, NOT by changing the salt in place. See SECURITY.md §12.4.
 const SALT = Buffer.from("hap-tenant-kek-v1");
 const KEK_BYTES = 32;
 const ROOT_KEK_BYTES = 32;
