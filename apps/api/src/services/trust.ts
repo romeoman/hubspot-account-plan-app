@@ -173,13 +173,24 @@ export function createTrustEvaluator(): TrustEvaluator {
   }
 
   function applyAllowBlockLists(evidence: Evidence[], lists: AllowBlockLists): Evidence[] {
-    const block = lists.block?.filter((s) => typeof s === "string" && s.length > 0) ?? [];
-    const allow = lists.allow?.filter((s) => typeof s === "string" && s.length > 0) ?? [];
+    // Normalize once: trim + lowercase patterns and drop empties. Without trim
+    // a stray whitespace in tenant config ("example.com " → stored verbatim
+    // in jsonb) would silently fail to match anything and exclude all
+    // evidence on an allow-list — a false-positive suppression.
+    const normalize = (xs: readonly string[] | undefined): string[] =>
+      xs
+        ?.filter((s): s is string => typeof s === "string")
+        .map((s) => s.trim().toLowerCase())
+        .filter((s) => s.length > 0) ?? [];
+    const block = normalize(lists.block);
+    const allow = normalize(lists.allow);
     if (block.length === 0 && allow.length === 0) return evidence;
 
+    // Dot-prefix guard: `example.com` must match `news.example.com` but NOT
+    // `malicious-example.com`. Exact match + `.`-boundary suffix is safe.
     const matches = (source: string, patterns: string[]): boolean => {
       const src = source.toLowerCase();
-      return patterns.some((p) => src === p.toLowerCase() || src.endsWith(`.${p.toLowerCase()}`));
+      return patterns.some((p) => src === p || src.endsWith(`.${p}`));
     };
 
     const out: Evidence[] = [];

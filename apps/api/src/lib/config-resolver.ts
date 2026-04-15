@@ -33,9 +33,11 @@
  * mutate the shared instance and poison the next reader. `invalidateTenantConfig`
  * is what forces re-decryption when a tenant rotates their key.
  *
- * @todo Slice 2: once real provider adapters exist, add a higher-level
- * `resolveProviderAdapter(tenantId, providerName)` factory here that wires
- * this resolver's output into the correct adapter constructor.
+ * @todo Slice 3: once every tenant has a provisioned `provider_config` row
+ * AND the scaffolded signal adapters (hubspot-enrichment, news) ship real
+ * bodies, add a higher-level `resolveProviderAdapter(tenantId, providerName)`
+ * factory here that wires this resolver's output into the correct adapter
+ * constructor and retires the route-level fallback-to-mock path.
  */
 
 import type {

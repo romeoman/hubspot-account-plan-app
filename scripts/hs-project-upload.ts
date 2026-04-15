@@ -15,10 +15,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const PROJECT_DIR = "apps/hubspot-project";
-const HS_CLI = process.env.HS_CLI_PATH ?? `${process.env.HOME}/.npm-global/bin/hs`;
+// Default to PATH-resolved `hs` so the wrapper works across environments.
+// Override via HS_CLI_PATH env var when a specific binary is required
+// (e.g., when a system-wide older version shadows a user-installed newer one).
+const HS_CLI = process.env.HS_CLI_PATH ?? "hs";
 
 function repoRoot(): string {
-  return execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
+  return execFileSync("git", ["rev-parse", "--show-toplevel"], {
+    encoding: "utf8",
+  }).trim();
 }
 
 function main(): number {

@@ -237,13 +237,23 @@ export async function assembleSnapshot(
   //    assembler does not duplicate those checks so there is exactly one
   //    audited boundary.
   if (deps.llmAdapter && deps.llmAdapter.provider !== "mock-llm") {
-    const nextMove = await generateNextMove({
-      snapshot: assembled,
-      llmAdapter: deps.llmAdapter,
-      correlationId: deps.correlationId,
-    });
-    if (nextMove !== null) {
-      assembled.nextMove = nextMove;
+    // Best-effort — MUST NOT block the snapshot response. If the LLM call
+    // throws (network error, rate limit, malformed response, etc), we log
+    // via observability (already wrapped inside generateNextMove) and leave
+    // `assembled.nextMove` undefined. The card then hides gracefully in the UI.
+    try {
+      const nextMove = await generateNextMove({
+        snapshot: assembled,
+        llmAdapter: deps.llmAdapter,
+        correlationId: deps.correlationId,
+      });
+      if (nextMove !== null) {
+        assembled.nextMove = nextMove;
+      }
+    } catch {
+      // Swallow. generateNextMove's own failure path also returns null on
+      // thrown errors, so this is defense-in-depth for any error that
+      // escapes the wrapper.
     }
   }
 

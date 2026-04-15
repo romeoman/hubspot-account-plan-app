@@ -12,8 +12,9 @@ restricted-evidence suppression all behave correctly end-to-end.
    (worktrees inherit it via `vitest.setup.ts`'s dotenv resolver).
    - Required scopes: `crm.objects.companies.read`,
      `crm.objects.companies.write`, `crm.objects.contacts.read`,
-     `crm.objects.contacts.write`, `crm.schemas.companies.write` (the seed
-     script writes the `hap_seed_marker` custom property for idempotency).
+     `crm.objects.contacts.write`. The seed uses name-prefix idempotency
+     via `name CONTAINS_TOKEN "Slice2*"`, so NO custom property is
+     stamped and `crm.schemas.companies.write` is NOT required.
 2. The HubSpot CLI is authenticated against the test portal:
    ```bash
    hs accounts list
@@ -46,13 +47,14 @@ pnpm tsx scripts/seed-hubspot-test-portal.ts
 
 The script:
 
-1. Searches for existing rows stamped with
-   `hap_seed_marker = "slice2-walkthrough-v1"` via
-   `POST /crm/v3/objects/companies/search`.
+1. Searches for existing rows by the Slice2- name prefix via
+   `POST /crm/v3/objects/companies/search` with
+   `name CONTAINS_TOKEN "Slice2*"`. No custom property involved.
 2. For each of the 8 targets, either UPDATEs the existing company (matched by
-   name within the marker set) or CREATEs a new one.
-3. CREATEs each associated contact and associates it via
-   `PUT /crm/v3/objects/companies/{id}/associations/default/contacts/{id}`.
+   exact name within the search result set) or CREATEs a new one.
+3. For each associated contact: `findContactByEmail` first; if absent,
+   CREATEs. Then associates via
+   `PUT /crm/v4/objects/companies/{id}/associations/default/contacts/{id}`.
 4. Prints a pipe-delimited results table that can be pasted directly into the
    per-state checklist below.
 
@@ -73,8 +75,8 @@ pasting the results-table rows printed by the seed script. The
 opening the company record in HubSpot and looking at the Account Signal
 `crm.record.tab`.
 
-| QA State        | Company Name                   | Company ID | Contact IDs | Expected Card Render                                                                                                                               |
-| --------------- | ------------------------------ | ---------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| QA State        | Company Name                   | Company ID   | Contact IDs                              | Expected Card Render                                                                                                                               |
+| --------------- | ------------------------------ | ------------ | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | eligible-strong | Slice2-EligibleStrong-AcmeCorp | 426502882508 | 758304740581, 758306242797, 758361454786 | reason-to-contact string + 3 people cards; evidence drill-in shows source, freshness, trust breakdown for each evidence row                        |
 | fewer-contacts  | Slice2-FewerContacts-BetaInc   | 426504036557 | 758374480061                             | reason-to-contact + 1 person card + an explicit "fewer usable contacts" note (never fabricated filler people)                                      |
 | empty           | Slice2-Empty-GammaCo           | 426541219053 | (none)                                   | "no credible reason to contact this account now" empty state; zero people, zero evidence                                                           |

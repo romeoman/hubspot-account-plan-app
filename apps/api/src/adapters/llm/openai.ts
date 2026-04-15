@@ -38,6 +38,13 @@ const DEFAULT_MAX_TOKENS = 256;
 const DEFAULT_TEMPERATURE = 0.7;
 
 /**
+ * Per-request timeout. OpenAI chat completions normally finish in 2–10s at
+ * max_tokens≈256; anything over this is a network-layer problem (rate-limit
+ * queue, transient upstream). Keeps the snapshot route from hanging.
+ */
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
  * Constructor options. `fetch` is injectable so cassette tests can load a
  * recorded response without hitting the network. Production wiring passes the
  * global {@link fetch}.
@@ -131,14 +138,25 @@ export class OpenAiAdapter implements LlmAdapter {
       temperature: options?.temperature ?? DEFAULT_TEMPERATURE,
     });
 
-    const res = await this.fetchImpl(OPENAI_CHAT_COMPLETIONS_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body,
-    });
+    // AbortController-based timeout: prevents the snapshot route from hanging
+    // indefinitely on a stalled OpenAI connection. Cleared in the finally.
+    const abortController = new AbortController();
+    const timeoutHandle = setTimeout(() => abortController.abort(), DEFAULT_REQUEST_TIMEOUT_MS);
+
+    let res: Response;
+    try {
+      res = await this.fetchImpl(OPENAI_CHAT_COMPLETIONS_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body,
+        signal: abortController.signal,
+      });
+    } finally {
+      clearTimeout(timeoutHandle);
+    }
 
     if (!res.ok) {
       const retryAfter = parseRetryAfter(res.headers.get("retry-after"));

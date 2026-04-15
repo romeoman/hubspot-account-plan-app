@@ -41,12 +41,18 @@ import type { Evidence } from "@hap/config";
  * Strip the `<provider>:` prefix from an Evidence id, returning the
  * canonical URL (or raw id if no prefix). Lower-cased for case-insensitive
  * comparison across providers that may differ on URL casing.
+ *
+ * Edge case (cubic review P2): an id that IS itself a URL — e.g., an
+ * adapter that writes the raw URL as the id — would naively have its
+ * scheme stripped. Guard by detecting URL-scheme syntax (`://`) after
+ * the first colon and keeping the id intact in that case.
  */
 function canonicalizeId(id: string): string {
   const colonIdx = id.indexOf(":");
   if (colonIdx === -1) return id.toLowerCase();
-  // Skip the prefix but preserve protocol colons (e.g. `exa:https://...`).
-  // First token = provider namespace; everything after = URL.
+  // URL-scheme collision: `https://...` has `:` after the scheme. Don't
+  // strip — the whole id IS the URL.
+  if (id.slice(colonIdx + 1, colonIdx + 3) === "//") return id.toLowerCase();
   const rest = id.slice(colonIdx + 1);
   return rest.toLowerCase();
 }

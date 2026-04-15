@@ -149,13 +149,13 @@ export function wrapSignalWithGuards(
       companyName: string,
       domain?: string,
     ): Promise<Evidence[]> {
-      const { allowed, retryAfterMs } = await ctx.rateLimiter.acquire(
-        ctx.tenantId,
-        adapter.name,
-        rateLimitConfig,
-      );
-      if (!allowed) {
-        throw new SignalRateLimitedError(retryAfterMs ?? 0);
+      // Tenant binding: ctx.tenantId is the authoritative tenant (the wrapper
+      // is built per-tenant in resolveSignalAdapter). The `tenantId` parameter
+      // on the ProviderAdapter interface must match. We assert here because a
+      // mismatch would attribute rate-limit quota / observability logs to the
+      // wrong tenant — a silent cross-tenant bleed.
+      if (tenantId !== ctx.tenantId) {
+        throw new Error(`signal wrap: tenantId mismatch (param=${tenantId}, ctx=${ctx.tenantId})`);
       }
 
       const obsCtx: ObservabilityContext = {
@@ -165,7 +165,20 @@ export function wrapSignalWithGuards(
         correlationId: ctx.correlationId,
       };
 
-      return withObservability(() => adapter.fetchSignals(tenantId, companyName, domain), obsCtx);
+      // withObservability wraps the ENTIRE call including the rate-limit
+      // check so that 429-class denials still emit a structured log line
+      // (fix for cubic review P2: rate-limit bypass of observability).
+      return withObservability(async () => {
+        const { allowed, retryAfterMs } = await ctx.rateLimiter.acquire(
+          ctx.tenantId,
+          adapter.name,
+          rateLimitConfig,
+        );
+        if (!allowed) {
+          throw new SignalRateLimitedError(retryAfterMs ?? 0);
+        }
+        return adapter.fetchSignals(ctx.tenantId, companyName, domain);
+      }, obsCtx);
     },
   };
 }

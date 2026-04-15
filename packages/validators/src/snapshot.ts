@@ -107,6 +107,10 @@ export const providerConfigSchema = z.object({
   enabled: z.boolean(),
   apiKeyRef: z.string().min(1),
   thresholds: thresholdConfigSchema,
+  // Slice 2 Step 10 hygiene — per-provider domain allow/block lists stored
+  // in `provider_config.{allow_list,block_list}` jsonb columns.
+  allowList: z.array(z.string()).optional(),
+  blockList: z.array(z.string()).optional(),
 }) satisfies z.ZodType<ProviderConfig>;
 
 export const tenantSettingsSchema = z.object({

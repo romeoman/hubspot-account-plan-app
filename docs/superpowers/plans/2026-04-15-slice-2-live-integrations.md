@@ -642,8 +642,8 @@ Build the security gate. Nothing else ships before this merges and passes indepe
 5. **Security audit**: PASS on Phase 1 (reported by `security-audit`)
 6. **Config resolver v2**: `getLlmConfigByProvider` works, cache-adapter interface in place, tenant-scoped invalidation tested
 7. **Rate limiter + observability**: per-tenant/per-provider bucket; structured logs with zero secret/restricted leakage
-8. **LLM adapter set complete**: Anthropic + OpenAI + Gemini + OpenRouter + openai-compatible all resolve through `llm/factory.ts`; Taskmaster 7.4 moved from deferred → done
-9. **Signal adapter set live**: Exa + HubSpot enrichment + news resolve through `signal/factory.ts`; Taskmaster 7.6 moved from deferred → done; mock adapters no longer on the production path
+8. **LLM factory ships with real OpenAI adapter**: Anthropic / Gemini / OpenRouter / openai-compatible are scaffolded as throw-on-call Slice 3 stubs. Tenants can already configure any provider in `llm_config`; Slice 3 ships the four deferred bodies. Taskmaster 7.4 stays `deferred`.
+9. **Signal factory ships with real Exa adapter**: HubSpot enrichment + news are scaffolded as throw-on-call Slice 3 stubs. Route probes only `exa` end-to-end; other `provider_config` rows fall back to the mock adapter so snapshots never 500. Taskmaster 7.6 stays `deferred`. Mock adapters remain reachable from the assembler fallback path by design; Slice 3 retires that path once every tenant has provisioned config rows.
 10. **Hygiene layers**: dedup + staleness tested; allow-list + blocklist integrated into `TrustEvaluator`
 11. **Real fetcher**: `useSnapshot` calls the API via `hubspot.fetch()` (no custom auth headers from the extension); app manifest `permittedUrls` updated; fixture injection still works for tests
 12. **Evidence drill-in**: renders for all 8 QA states; restricted renders nothing (zero-leak asserted)

@@ -173,7 +173,10 @@ function extractPrincipals(
     if (queryPortal) return { portalId: queryPortal, userId: queryUser ?? userId };
     return null;
   } catch {
-    if (queryPortal) return { portalId: queryPortal, userId: queryUser };
+    // A mutating request with a malformed JSON body is anomalous — HubSpot's
+    // signed requests always carry well-formed JSON. Silently downgrading to
+    // query-string principal widens the surface for future parser bugs; fail
+    // closed instead (independent review I7).
     return null;
   }
 }

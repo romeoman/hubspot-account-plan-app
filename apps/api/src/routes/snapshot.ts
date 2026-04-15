@@ -133,10 +133,16 @@ async function resolveLlmAdapter(
 
 /**
  * Real signal providers Slice 2 can resolve from `provider_config` rows.
- * Probed in listed order; first match wins. Slice 2 ships single-provider
- * per snapshot — Step 10 hygiene merges multiple when multiple rows exist.
+ * Probed in listed order; first match wins.
+ *
+ * Slice 2 ONLY wires `exa` end-to-end. `hubspot-enrichment` and `news` are
+ * scaffolded stubs that throw on call — including them here would 500 any
+ * tenant that configures them (surfaced by cubic review P1). They are
+ * re-added in Slice 3 alongside the adapter bodies. Tenants with those
+ * provider rows today silently fall back to the mock adapter, which is
+ * the same behavior as if the row didn't exist.
  */
-const REAL_SIGNAL_PROVIDERS = ["exa", "hubspot-enrichment", "news"] as const;
+const REAL_SIGNAL_PROVIDERS = ["exa"] as const;
 
 /**
  * Resolve the signal adapter for a tenant.
@@ -150,10 +156,11 @@ const REAL_SIGNAL_PROVIDERS = ["exa", "hubspot-enrichment", "news"] as const;
  * Slice 2 seed script (Step 14). A structured `outcome=fallback` log line is
  * emitted so operators can see when a fallback fires.
  *
- * Slice 3: once every tenant has a provisioned `provider_config` row, the
- * fallback is removed. Note: Slice 2 only wires the `exa` branch end-to-end;
- * selecting `hubspot-enrichment` or `news` will throw at `fetchSignals` time
- * (Slice 3 deferral stubs) and the assembler will mark the snapshot degraded.
+ * Slice 3: once every tenant has a provisioned `provider_config` row AND
+ * the stub adapters (`hubspot-enrichment`, `news`) are replaced with real
+ * bodies, the fallback is removed and the probe list in
+ * {@link REAL_SIGNAL_PROVIDERS} is expanded to include them. Slice 2 only
+ * probes `exa` — other provider rows fall through to the mock fallback.
  */
 type SignalResolution = {
   adapter: ProviderAdapter;

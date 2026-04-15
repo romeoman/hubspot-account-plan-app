@@ -7,7 +7,7 @@
     "distribution": "private",
     "auth": {
       "type": "static",
-      "requiredScopes": ["oauth", "crm.objects.companies.read", "crm.objects.contacts.read"],
+      "requiredScopes": ["crm.objects.companies.read", "crm.objects.contacts.read"],
       "optionalScopes": [],
       "conditionallyRequiredScopes": []
     },

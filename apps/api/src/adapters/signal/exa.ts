@@ -154,7 +154,11 @@ function extractErrorCode(body: unknown): string | null {
 function sourceFromUrl(url: string | undefined): string {
   if (!url) return "exa";
   try {
-    const host = new URL(url).host.toLowerCase();
+    // hostname (not host) — drops `:port` so `example.com:8080` becomes
+    // `example.com`. Source tokens feed into trust evaluator's allow/block
+    // matching and degraded-source classification; a stray port would
+    // cause spurious mismatches (cubic review P2).
+    const host = new URL(url).hostname.toLowerCase();
     return host.length > 0 ? host : "exa";
   } catch {
     return "exa";
