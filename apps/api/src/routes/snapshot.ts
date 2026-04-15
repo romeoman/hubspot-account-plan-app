@@ -1,7 +1,9 @@
+import type { ThresholdConfig } from "@hap/config";
 import { createDatabase, type Database } from "@hap/db";
 import { Hono } from "hono";
 import { createMockLlmAdapter } from "../adapters/mock-llm-adapter";
 import { createMockSignalAdapter } from "../adapters/mock-signal-adapter";
+import { getProviderConfig } from "../lib/config-resolver";
 import type { TenantVariables } from "../middleware/tenant";
 import type { CompanyPropertyFetcher } from "../services/eligibility";
 import type { ContactFetcher } from "../services/people-selector";
@@ -34,12 +36,42 @@ function isValidCompanyId(raw: string): boolean {
  * the upstream tenant middleware. Body-provided tenantIds are ignored and the
  * assembler re-stamps evidence with the middleware-resolved tenantId.
  *
- * @todo Step 9: read per-tenant thresholds from provider_config and pass
- * through trust + suppression stage.
+ * Trust thresholds: resolved per-tenant from `provider_config.thresholds`
+ * (provider name `mock-signal` in V1, matching {@link createMockSignalAdapter}).
+ * Falls back to {@link DEFAULT_THRESHOLDS} when the tenant has no row yet so
+ * the route stays usable on a fresh install. Slice 2 will replace the
+ * `mock-signal` provider name with the real adapter family selected per call.
  */
 export const snapshotRoutes = new Hono<{ Variables: Vars }>();
 
-const DEFAULT_THRESHOLDS = { freshnessMaxDays: 30, minConfidence: 0.5 };
+const DEFAULT_THRESHOLDS: ThresholdConfig = {
+  freshnessMaxDays: 30,
+  minConfidence: 0.5,
+};
+const SIGNAL_PROVIDER_NAME = "mock-signal";
+
+/** Reasonable bounds — guard against malformed or hostile DB rows. */
+function isValidThresholds(t: ThresholdConfig): boolean {
+  return (
+    Number.isFinite(t.freshnessMaxDays) &&
+    t.freshnessMaxDays >= 0 &&
+    Number.isFinite(t.minConfidence) &&
+    t.minConfidence >= 0 &&
+    t.minConfidence <= 1
+  );
+}
+
+async function resolveThresholds(db: Database, tenantId: string): Promise<ThresholdConfig> {
+  try {
+    const cfg = await getProviderConfig({ db }, { tenantId, providerName: SIGNAL_PROVIDER_NAME });
+    if (cfg && isValidThresholds(cfg.thresholds)) {
+      return cfg.thresholds;
+    }
+  } catch {
+    // Resolver failure must not break the snapshot path — fall back to defaults.
+  }
+  return DEFAULT_THRESHOLDS;
+}
 
 /**
  * V1 fixture property fetcher — reports any company as an eligible target
@@ -83,14 +115,16 @@ snapshotRoutes.post("/:companyId", async (c) => {
   }
 
   try {
+    const db = getDb();
+    const thresholds = await resolveThresholds(db, tenantId);
     const snapshot = await assembleSnapshot(
       {
-        db: getDb(),
+        db,
         providerAdapter: createMockSignalAdapter({ fixture: "strong" }),
         llmAdapter: createMockLlmAdapter({ style: "short" }),
         propertyFetcher: fixturePropertyFetcher,
         contactFetcher: fixtureContactFetcher,
-        thresholds: DEFAULT_THRESHOLDS,
+        thresholds,
       },
       { tenantId, companyId: decoded },
     );

@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { createDatabase, tenants } from "@hap/db";
+import { createDatabase, providerConfig, tenants } from "@hap/db";
 import { like } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { clearConfigResolverCache } from "../lib/config-resolver";
 
 const DATABASE_URL =
   process.env.DATABASE_URL ?? "postgresql://hap:hap_local_dev@localhost:5433/hap_dev";
@@ -24,6 +25,7 @@ afterAll(() => {
 });
 
 beforeEach(async () => {
+  clearConfigResolverCache();
   await db.delete(tenants).where(like(tenants.hubspotPortalId, `${PORTAL_PREFIX}%`));
 });
 
@@ -153,6 +155,59 @@ describe("POST /api/snapshot/:companyId", () => {
     for (const ev of body.evidence as Array<{ tenantId: string }>) {
       expect(ev.tenantId).toBe(expectedTenantId);
     }
+  });
+
+  it("uses per-tenant thresholds from provider_config (strict minConfidence flips lowConfidence flag)", async () => {
+    const portal = portalId();
+    const [inserted] = await db
+      .insert(tenants)
+      .values({ hubspotPortalId: portal, name: "Strict Co" })
+      .returning();
+    const tenantId = inserted?.id;
+    expect(tenantId).toBeDefined();
+    if (!tenantId) throw new Error("tenant insert failed");
+
+    // Strict threshold higher than every confidence in the "strong" fixture
+    // (max 0.92). Default route thresholds (minConfidence 0.5) would let it
+    // through; per-tenant config must take effect and flip lowConfidence=true.
+    await db.insert(providerConfig).values({
+      tenantId,
+      providerName: "mock-signal",
+      enabled: true,
+      thresholds: { freshnessMaxDays: 30, minConfidence: 0.99 },
+    });
+
+    const app = await loadApp();
+    const res = await app.request("/api/snapshot/co-strict", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer anything",
+        "x-test-portal-id": portal,
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      stateFlags: Record<string, boolean>;
+    };
+    expect(body.stateFlags.lowConfidence).toBe(true);
+  });
+
+  it("falls back to default thresholds when no provider_config row exists", async () => {
+    const portal = portalId();
+    await db.insert(tenants).values({ hubspotPortalId: portal, name: "Default Co" });
+    const app = await loadApp();
+    const res = await app.request("/api/snapshot/co-default", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer anything",
+        "x-test-portal-id": portal,
+      },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { stateFlags: Record<string, boolean> };
+    // Strong fixture confidence 0.87-0.92 vs default 0.5 → not low-confidence.
+    expect(body.stateFlags.lowConfidence).toBe(false);
   });
 
   it("CORS preflight OPTIONS returns allow headers for HubSpot origin", async () => {
