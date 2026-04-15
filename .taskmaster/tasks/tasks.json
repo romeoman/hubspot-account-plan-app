@@ -2,14 +2,14 @@
   "master": {
     "tasks": [
       {
-        "id": 1,
+        "id": "1",
         "title": "Project Bootstrap and Repo Structure",
         "description": "Initialize monorepo with Bulletproof React frontend structure and Hono backend following specified standards",
         "details": "Create repo structure per Bulletproof React (https://github.com/alan2207/bulletproof-react/blob/master/docs/project-structure.md): /frontend (React/TS HubSpot extension), /backend (Hono/TS), /shared (types/domain), /docker-compose.yml. Use Google TS style guide and filename conventions. Initialize git, husky, lint-staged. Add .env.example with required vars (HUBSPOT_APP_ID, EXA_API_KEY, DATABASE_URL). Verify HubSpot extension docs for crm.record.tab. Include Vercel CLI as a deployment/preview tool only, not as the primary data store. The actual application data layer remains Postgres/Supabase. Add HubSpot CLI and Vercel CLI setup/verification early so local development can test HubSpot extensions and deployment workflow intentionally.",
         "testStrategy": "Verify folder structure matches Bulletproof React spec, lint passes, docker-compose up starts services without errors, env validation works",
         "priority": "high",
         "dependencies": [],
-        "status": "pending",
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -17,92 +17,134 @@
             "description": "Create the monorepo root and Bulletproof React specified directories: /frontend, /backend, /shared, plus docker-compose.yml placeholder.",
             "dependencies": [],
             "details": "Use mkdir -p to create /frontend (React/TS HubSpot extension), /backend (Hono/TS), /shared (types/domain). Initialize git with git init, create .gitignore for Node/Docker. Follow Google TS style guide for kebab-case filenames.",
-            "status": "pending",
-            "testStrategy": "Write Vitest test to verify exact folder structure matches Bulletproof React spec using fs.existsSync() on each required path before any code implementation."
+            "status": "done",
+            "testStrategy": "Write Vitest test to verify exact folder structure matches Bulletproof React spec using fs.existsSync() on each required path before any code implementation.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.604Z"
           },
           {
             "id": 9,
             "title": "Install and Verify HubSpot CLI and Vercel CLI",
             "description": "Install both CLIs, verify versions, authenticate where needed, and document their intended use in the stack.",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Install latest @hubspot/cli and Vercel CLI. Verify HubSpot CLI can auth and run project/dev commands. Verify Vercel CLI can login and is treated as deployment/preview infrastructure tooling, not the primary data host. Document versions and commands in repo docs.",
-            "status": "pending",
-            "testStrategy": "Run hs --version, hs account auth readiness check, vercel --version, and vercel login/whoami verification before depending on either CLI in implementation."
+            "status": "done",
+            "testStrategy": "Run hs --version, hs account auth readiness check, vercel --version, and vercel login/whoami verification before depending on either CLI in implementation.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.632Z"
           },
           {
             "id": 2,
             "title": "Setup TypeScript Configurations and Monorepo tsconfig.json",
             "description": "Configure root tsconfig.json with paths for frontend/backend/shared, composite project references, and Google TS style guide compliance.",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Create tsconfig.json with 'composite': true, 'paths' mapping @frontend/* to frontend/src/* etc., strict mode enabled. Add package.json with workspaces: ['frontend', 'backend', 'shared']. Use Google naming conventions.",
-            "status": "pending",
-            "testStrategy": "Vitest test: tsc --noEmit should pass without errors on empty projects, verify path resolution by importing shared types in test files first."
+            "status": "done",
+            "testStrategy": "Vitest test: tsc --noEmit should pass without errors on empty projects, verify path resolution by importing shared types in test files first.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.634Z"
           },
           {
             "id": 3,
             "title": "Configure Docker Compose with Postgres, Backend, and Frontend Services",
             "description": "Create docker-compose.yml with postgres service, backend dev server, frontend dev server per standards.",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Define services: postgres (latest, DATABASE_URL env), backend (node:20, vol mount backend), frontend (node:20, vol mount frontend). Add healthchecks and depends_on for postgres.",
-            "status": "pending",
-            "testStrategy": "Shell script test via Vitest: docker-compose up -d && docker-compose ps shows all services healthy, no errors in logs before implementation."
+            "status": "done",
+            "testStrategy": "Shell script test via Vitest: docker-compose up -d && docker-compose ps shows all services healthy, no errors in logs before implementation.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.645Z"
           },
           {
             "id": 4,
             "title": "Setup Environment Variables and Validation with .env.example",
             "description": "Create .env.example with HUBSPOT_APP_ID, EXA_API_KEY, DATABASE_URL and basic validation schema.",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Use zod or env-schema for validation. Add validation script in package.json: 'validate-env'. Ensure vars match HubSpot extension docs for crm.record.tab context.",
-            "status": "pending",
-            "testStrategy": "Vitest test: validate-env script passes with sample .env values, fails gracefully with missing vars before any app code."
+            "status": "done",
+            "testStrategy": "Vitest test: validate-env script passes with sample .env values, fails gracefully with missing vars before any app code.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.646Z"
           },
           {
             "id": 5,
             "title": "Configure Linting, Formatting, Husky, and Lint-Staged",
             "description": "Setup ESLint/Prettier per Google TS style guide, husky pre-commit hooks, lint-staged for monorepo.",
-            "dependencies": [2],
+            "dependencies": [
+              2
+            ],
             "details": "Root .eslintrc.js with Google TS rules, .prettierrc. Husky install, lint-staged config for staged files across workspaces. Kebab-case filename lint rule.",
-            "status": "pending",
-            "testStrategy": "Vitest test: Run lint/format on dummy files, husky hooks trigger correctly on git commit simulation before real code."
+            "status": "done",
+            "testStrategy": "Vitest test: Run lint/format on dummy files, husky hooks trigger correctly on git commit simulation before real code.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.649Z"
           },
           {
             "id": 6,
             "title": "Initialize Vitest Testing Framework Across Monorepo",
             "description": "Setup Vitest configs for frontend/backend/shared with monorepo workspace support and TDD readiness.",
-            "dependencies": [2],
+            "dependencies": [
+              2
+            ],
             "details": "package.json scripts: 'test', 'test:watch'. vitest.config.ts per workspace with globals, coverage. Hono testing with app.request(), React with jsdom.",
-            "status": "pending",
-            "testStrategy": "Self-test: Vitest passes empty test suite (e.g., test('bootstrap', () => expect(true).toBe(true)) across all workspaces first."
+            "status": "done",
+            "testStrategy": "Self-test: Vitest passes empty test suite (e.g., test('bootstrap', () => expect(true).toBe(true)) across all workspaces first.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.650Z"
           },
           {
             "id": 7,
             "title": "Create CI Skeleton with GitHub Actions Workflow",
             "description": "Add .github/workflows/ci.yml for lint, test, build on push/PR with monorepo path filtering.",
-            "dependencies": [5, 6],
+            "dependencies": [
+              5,
+              6
+            ],
             "details": "Matrix strategy for frontend/backend/shared. Steps: checkout, setup-node/uv, validate-env, lint, vitest, docker-compose build. Selective builds on changed paths.",
-            "status": "pending",
-            "testStrategy": "Local test: act or manual trigger verifies workflow syntax and runs successfully on bootstrap state before full implementation."
+            "status": "done",
+            "testStrategy": "Local test: act or manual trigger verifies workflow syntax and runs successfully on bootstrap state before full implementation.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.662Z"
           },
           {
             "id": 8,
             "title": "Verification: Run Full Bootstrap Tests and Structure Audit",
             "description": "Execute complete bootstrap verification: lint, test, docker up, env validation, HubSpot docs check.",
-            "dependencies": [3, 4, 5, 6, 7],
+            "dependencies": [
+              3,
+              4,
+              5,
+              6,
+              7
+            ],
             "details": "Create verify-bootstrap script: git status clean, docker-compose up healthy, lint/test pass, folder structure audit vs Bulletproof React spec, verify HubSpot crm.record.tab docs integration readiness.",
-            "status": "pending",
-            "testStrategy": "Vitest integration test suite: Run verify-bootstrap script programmatically, assert all checks pass (exit code 0), docker services responsive, no lint errors."
+            "status": "done",
+            "testStrategy": "Vitest integration test suite: Run verify-bootstrap script programmatically, assert all checks pass (exit code 0), docker services responsive, no lint errors.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.663Z"
           }
-        ]
+        ],
+        "updatedAt": "2026-04-15T19:55:40.663Z"
       },
       {
-        "id": 2,
+        "id": "2",
         "title": "Database Schema and Drizzle ORM Setup",
         "description": "Define Postgres schema for evidence objects, snapshots, and config using Drizzle ORM",
         "details": "Create Drizzle schema per https://orm.drizzle.team/docs/sql-schema-declaration: tables for snapshots (company_id, eligibility_state, reason_to_contact, created_at, trust_score), evidence (id, source, timestamp, confidence, content), people (id, company_snapshot_id, name, reason_to_talk, evidence_refs), config (provider_settings, thresholds). Generate migrations. Use Supabase/Postgres. Add TypeScript types in /shared.",
         "testStrategy": "Run migrations, verify schema with Drizzle Studio, insert/query test data via generated client, ensure all required fields present",
         "priority": "high",
-        "dependencies": [1],
-        "status": "pending",
+        "dependencies": [
+          "1"
+        ],
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -110,83 +152,132 @@
             "description": "Initialize Drizzle ORM with PostgreSQL driver and configure for Supabase connection including schema file structure.",
             "dependencies": [],
             "details": "Install drizzle-orm, drizzle-kit, pg dependencies. Create drizzle.config.ts with Supabase DATABASE_URL. Setup schema/index.ts exporting all tables. Reference https://orm.drizzle.team/docs/sql-schema-declaration.",
-            "status": "pending",
-            "testStrategy": "Verify config runs without errors: npx drizzle-kit generate, check generated files structure."
+            "status": "done",
+            "testStrategy": "Verify config runs without errors: npx drizzle-kit generate, check generated files structure.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.665Z"
           },
           {
             "id": 2,
             "title": "Create Tenants/Workspaces Table",
             "description": "Define tenants table with id, hubspot_portal_id (unique), name, created_at, settings jsonb using pgTable.",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Use serial/integer for id, varchar for hubspot_portal_id with unique index, text for name, timestamp for created_at, jsonb for settings. Add primary key on id.",
-            "status": "pending",
-            "testStrategy": "Insert tenant record via Drizzle client, verify unique constraint on hubspot_portal_id."
+            "status": "done",
+            "testStrategy": "Insert tenant record via Drizzle client, verify unique constraint on hubspot_portal_id.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.672Z"
           },
           {
             "id": 3,
             "title": "Define Snapshots Table with Tenant Isolation",
             "description": "Create snapshots table including tenant_id FK, company_id, eligibility_state, reason_to_contact, created_at, trust_score with composite indexes.",
-            "dependencies": [1, 2],
+            "dependencies": [
+              1,
+              2
+            ],
             "details": "Add tenant_id integer references tenants(id) onDelete cascade. Composite index on (tenant_id, company_id). Fields: eligibility_state enum, reason_to_contact text, trust_score numeric.",
-            "status": "pending",
-            "testStrategy": "Insert snapshot for tenant A, verify query scoped by tenant_id returns correct data."
+            "status": "done",
+            "testStrategy": "Insert snapshot for tenant A, verify query scoped by tenant_id returns correct data.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.679Z"
           },
           {
             "id": 4,
             "title": "Define Evidence Table with Tenant Isolation",
             "description": "Create evidence table with id, tenant_id FK, source, timestamp, confidence, content.",
-            "dependencies": [1, 2],
+            "dependencies": [
+              1,
+              2
+            ],
             "details": "tenant_id references tenants(id) cascade. id uuid or serial, source varchar, timestamp timestamptz, confidence numeric(0,2), content text. Index on (tenant_id, timestamp).",
-            "status": "pending",
-            "testStrategy": "Insert evidence for different tenants, verify tenant-scoped queries isolate data correctly."
+            "status": "done",
+            "testStrategy": "Insert evidence for different tenants, verify tenant-scoped queries isolate data correctly.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.681Z"
           },
           {
             "id": 5,
             "title": "Define People Table with Tenant Isolation",
             "description": "Create people table with id, tenant_id FK, company_snapshot_id FK, name, reason_to_talk, evidence_refs jsonb.",
-            "dependencies": [1, 2, 3],
+            "dependencies": [
+              1,
+              2,
+              3
+            ],
             "details": "tenant_id and company_snapshot_id (references snapshots(id)) both cascade. evidence_refs as jsonb array of evidence ids. Composite index (tenant_id, company_snapshot_id).",
-            "status": "pending",
-            "testStrategy": "Insert people linked to snapshot, verify FK constraints and tenant isolation."
+            "status": "done",
+            "testStrategy": "Insert people linked to snapshot, verify FK constraints and tenant isolation.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.682Z"
           },
           {
             "id": 6,
             "title": "Create Provider and LLM Config Tables",
             "description": "Define provider_config and llm_config tables both with tenant_id FK for per-tenant settings.",
-            "dependencies": [1, 2],
+            "dependencies": [
+              1,
+              2
+            ],
             "details": "llm_config: tenant_id, provider_name enum, model_name varchar, api_key_encrypted text, endpoint_url varchar, settings jsonb. provider_config similar structure. Unique constraint (tenant_id, provider_name).",
-            "status": "pending",
-            "testStrategy": "Insert config for tenant A, verify cannot insert duplicate provider for same tenant."
+            "status": "done",
+            "testStrategy": "Insert config for tenant A, verify cannot insert duplicate provider for same tenant.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.683Z"
           },
           {
             "id": 7,
             "title": "Generate Migrations and Run Schema",
             "description": "Generate and apply Drizzle migrations, verify schema in Supabase with all tenant_id columns and indexes.",
-            "dependencies": [1, 2, 3, 4, 5, 6],
+            "dependencies": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
             "details": "Run npx drizzle-kit generate:pg && npx drizzle-kit push:pg. Verify via Supabase dashboard or Drizzle Studio. Check FKs cascade on tenant delete.",
-            "status": "pending",
-            "testStrategy": "Run migrations, use Drizzle Studio to verify all tables/columns/indexes/FKs present."
+            "status": "done",
+            "testStrategy": "Run migrations, use Drizzle Studio to verify all tables/columns/indexes/FKs present.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.690Z"
           },
           {
             "id": 8,
             "title": "Add TypeScript Types and Tenant Isolation Tests",
             "description": "Export Drizzle types to /shared/types, write tests verifying tenant isolation and cross-tenant leakage prevention.",
-            "dependencies": [1, 2, 3, 4, 5, 6, 7],
+            "dependencies": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7
+            ],
             "details": "Create index.d.ts exporting InferSelectModel for all tables. Tests: insert tenant A/B data, query tenant A must not see B data. Test FK cascade delete.",
-            "status": "pending",
-            "testStrategy": "Jest/Vitest: 100% coverage on isolation tests, verify query scoping middleware or DB queries filter by tenant_id."
+            "status": "done",
+            "testStrategy": "Jest/Vitest: 100% coverage on isolation tests, verify query scoping middleware or DB queries filter by tenant_id.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.693Z"
           }
-        ]
+        ],
+        "updatedAt": "2026-04-15T19:55:40.693Z"
       },
       {
-        "id": 3,
+        "id": "3",
         "title": "HubSpot Extension Frontend Scaffold",
         "description": "Build React/TS HubSpot UI extension for crm.record.tab with hsmeta context access",
         "details": "Scaffold React app with Vite/TS, HubSpot CLI integration. Implement hsMeta context hook to extract current company record (companyId, properties). Create basic tab layout with loading/empty states. Use Bulletproof React modules: features/, entities/, ui/. Verify HubSpot docs for latest crm.record.tab API and context shape.",
         "testStrategy": "Local HubSpot dev server renders extension in company record tab, hsMeta provides company context, basic layout renders without errors",
         "priority": "high",
-        "dependencies": [1],
-        "status": "pending",
+        "dependencies": [
+          "1"
+        ],
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -194,83 +285,120 @@
             "description": "Install HubSpot CLI, create new UI extension project for crm.record.tab, and run initial hs project dev server.",
             "dependencies": [],
             "details": "Use 'hs project create' or 'hs project add' for crm.record.tab location. Authenticate CLI with HubSpot account. Verify dev server starts without errors and basic scaffold generates.",
-            "status": "pending",
-            "testStrategy": "CLI commands execute successfully, dev server runs on localhost, no authentication errors in terminal."
+            "status": "done",
+            "testStrategy": "CLI commands execute successfully, dev server runs on localhost, no authentication errors in terminal.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.694Z"
           },
           {
             "id": 2,
             "title": "Configure Project Files for Vite/TS and HubSpot",
             "description": "Create and configure hsproject.json, app.json, app-hsmeta.json with platformVersion 2025.2, scopes, and permittedUrls.",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Set location: 'crm.record.tab' in app.json. Add Vite/TS config for React. Include serverless.json if needed. Ensure Bulletproof React structure: features/, entities/, ui/ folders.",
-            "status": "pending",
-            "testStrategy": "Validate JSON schemas with CLI, hs project upload succeeds, permittedUrls allow necessary fetches."
+            "status": "done",
+            "testStrategy": "Validate JSON schemas with CLI, hs project upload succeeds, permittedUrls allow necessary fetches.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.695Z"
           },
           {
             "id": 3,
             "title": "Implement Extension Entry Point with hubspot.extend",
             "description": "Create main extension file using hubspot.extend<'crm.record.tab'> passing context to React Extension component.",
-            "dependencies": [2],
+            "dependencies": [
+              2
+            ],
             "details": "Import from '@hubspot/ui-extensions'. Destructure context and actions. Render <Extension context={context} />. Use TypeScript for type safety per HubSpot docs.",
-            "status": "pending",
-            "testStrategy": "Unit test entry point renders without crashing using createRenderer('crm.record.tab')."
+            "status": "done",
+            "testStrategy": "Unit test entry point renders without crashing using createRenderer('crm.record.tab').",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.696Z"
           },
           {
             "id": 4,
             "title": "Develop hsMeta Context Hook for Company Record",
             "description": "Create custom React hook to extract companyId, properties from context, using fetchCrmObjectProperties and onCrmPropertiesUpdate.",
-            "dependencies": [3],
+            "dependencies": [
+              3
+            ],
             "details": "Place in features/ or entities/. Handle loading states. Access context.portal.id, context.objectTypeId. Fetch company properties relevant to task.",
-            "status": "pending",
-            "testStrategy": "Mock context in Vitest, verify hook returns companyId and properties, test updates trigger re-fetch."
+            "status": "done",
+            "testStrategy": "Mock context in Vitest, verify hook returns companyId and properties, test updates trigger re-fetch.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.703Z"
           },
           {
             "id": 5,
             "title": "Build Basic Tab Layout with HubSpot UI Components",
             "description": "Design layout using Flex, Text, Tile, LoadingSpinner from @hubspot/ui-extensions for crm.record.tab.",
-            "dependencies": [4],
+            "dependencies": [
+              4
+            ],
             "details": "Structure in ui/ folder per Bulletproof React. Integrate context hook data. Ensure responsive design matching HubSpot native look.",
-            "status": "pending",
-            "testStrategy": "Visual regression tests for layout, component renders correctly with mock props."
+            "status": "done",
+            "testStrategy": "Visual regression tests for layout, component renders correctly with mock props.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.704Z"
           },
           {
             "id": 6,
             "title": "Add Loading and Empty States to Extension",
             "description": "Implement loading spinner and empty state UI with proper messaging using HubSpot Alert and Text components.",
-            "dependencies": [5],
+            "dependencies": [
+              5
+            ],
             "details": "Conditional rendering based on context hook state. Show 'Loading company data...' and 'No data available' states. Follow TDD: tests first.",
-            "status": "pending",
-            "testStrategy": "TDD with createRenderer: test loading state shows spinner, empty state shows message, transitions correctly."
+            "status": "done",
+            "testStrategy": "TDD with createRenderer: test loading state shows spinner, empty state shows message, transitions correctly.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.705Z"
           },
           {
             "id": 7,
             "title": "Setup Vitest TDD Environment and Verify Integration",
             "description": "Configure Vitest with @hubspot/ui-extensions/testing, write tests for all components, run hs project dev and verify in HubSpot.",
-            "dependencies": [6],
+            "dependencies": [
+              6
+            ],
             "details": "Use createRenderer('crm.record.tab') for all tests. Test context access, states. Lint, build, upload, and inspect in company record tab.",
-            "status": "pending",
-            "testStrategy": "100% test coverage for scaffold, all states pass, extension renders in local HubSpot dev server without console errors."
+            "status": "done",
+            "testStrategy": "100% test coverage for scaffold, all states pass, extension renders in local HubSpot dev server without console errors.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.706Z"
           },
           {
             "id": 8,
             "title": "Create HubSpot developer test account and import mock data",
             "description": "Create a separate HubSpot development/test account, install the app there, and import mock CRM data for realistic company-record testing.",
-            "dependencies": [1, 2, 6, 7],
+            "dependencies": [
+              1,
+              2,
+              6,
+              7
+            ],
             "details": "Use HubSpot CLI configurable or developer test account flow. Prefer isolated developer test account for first validation. Create/import mock company and contact data so crm.record.tab can be tested against realistic target-account scenarios. Include hs test-account create and hs test-account import-data workflow or equivalent current documented HubSpot flow. Ensure at least one target account using hs_is_target_account and several company/contact fixtures covering strong evidence, <3 contacts, empty, stale, degraded, and ineligible states.",
-            "status": "pending",
-            "testStrategy": "Verify the test account exists, the app is installed into it, mock data imports successfully, and the extension renders against real company records in the test account."
+            "status": "done",
+            "testStrategy": "Verify the test account exists, the app is installed into it, mock data imports successfully, and the extension renders against real company records in the test account.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.713Z"
           }
-        ]
+        ],
+        "updatedAt": "2026-04-15T19:55:40.713Z"
       },
       {
-        "id": 4,
+        "id": "4",
         "title": "Backend API with Hono and Snapshot Endpoint",
         "description": "Implement Hono backend with /api/snapshot/:companyId endpoint returning snapshot contract",
         "details": "Setup Hono app with CORS for HubSpot origin, Drizzle integration. Create POST /api/snapshot/:companyId that returns {eligibility, reasonToContact, people: [], evidenceRefs, stateFlags}. Add auth middleware for HubSpot app tokens. Use async/await, structured logging. Verify Hono routing patterns from docs.",
         "testStrategy": "curl/postman calls return 200 with mock snapshot JSON matching contract, error handling for invalid companyId, auth required",
         "priority": "high",
-        "dependencies": [1, 2],
-        "status": "pending",
+        "dependencies": [
+          "1",
+          "2"
+        ],
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -278,74 +406,107 @@
             "description": "Create Vitest test suite using app.request() to verify Hono app starts, CORS allows HubSpot origin, and rejects invalid origins before implementation.",
             "dependencies": [],
             "details": "Test 200 OPTIONS preflight from HubSpot origin, 403 from others. Use testClient(app) for type-safe requests. Mock no DB yet. Cover middleware order per Hono docs.",
-            "status": "pending",
-            "testStrategy": "Vitest: expect(app.request('OPTIONS /api/snapshot/test', {headers: {Origin: 'hubspot.com'}})).toHaveStatus(200)"
+            "status": "done",
+            "testStrategy": "Vitest: expect(app.request('OPTIONS /api/snapshot/test', {headers: {Origin: 'hubspot.com'}})).toHaveStatus(200)",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.715Z"
           },
           {
             "id": 2,
             "title": "Initialize Hono app with CORS middleware for HubSpot",
             "description": "Setup base Hono app with typed Variables, CORS middleware for HubSpot origin, structured logger, and Node.js serve export.",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Use new Hono<{Variables: AppVariables}>(), app.use('/api/*', cors({origin: c.env.CORS_ORIGIN})), logger() before handlers. Export serve({fetch: app.fetch}).",
-            "status": "pending",
-            "testStrategy": "Run tests from subtask 1; verify app starts without errors, CORS headers present in responses."
+            "status": "done",
+            "testStrategy": "Run tests from subtask 1; verify app starts without errors, CORS headers present in responses.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.717Z"
           },
           {
             "id": 3,
             "title": "Write TDD tests for auth middleware and 401 responses",
             "description": "Add Vitest tests for bearerAuth middleware: 401 without token, 200 with valid HubSpot app token before implementing endpoint.",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Test POST /api/snapshot/:companyId requires Authorization: Bearer <token>. Mock token validation. Verify middleware chaining order.",
-            "status": "pending",
-            "testStrategy": "expect(app.request('POST /api/snapshot/test')).toHaveStatus(401); expect(with token).toHaveStatus(200)"
+            "status": "done",
+            "testStrategy": "expect(app.request('POST /api/snapshot/test')).toHaveStatus(401); expect(with token).toHaveStatus(200)",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.718Z"
           },
           {
             "id": 4,
             "title": "Implement bearerAuth middleware for HubSpot tokens",
             "description": "Add bearerAuth middleware to /api/* routes validating HubSpot app tokens from env or DB whitelist.",
-            "dependencies": [2, 3],
+            "dependencies": [
+              2,
+              3
+            ],
             "details": "import {bearerAuth} from 'hono/bearer-auth'; app.use('/api/*', bearerAuth({token: process.env.HUBSPOT_TOKENS.split(',')})). Set c.set('auth', true) on success.",
-            "status": "pending",
-            "testStrategy": "Pass auth tests from subtask 3; test invalid token returns 401 JSON error."
+            "status": "done",
+            "testStrategy": "Pass auth tests from subtask 3; test invalid token returns 401 JSON error.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.719Z"
           },
           {
             "id": 5,
             "title": "Write TDD tests for snapshot endpoint responses",
             "description": "Create comprehensive tests for POST /api/snapshot/:companyId: 200 with full contract, 400 invalid ID, 404 not found, using app.request().",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Mock DB responses. Test contract: {eligibilityState, reasonToContact?, people:[], evidenceRefs:[], stateFlags:{stale,etc}}. Verify JSON structure and status codes.\n<info added on 2026-04-10T23:33:07.980Z>\nTenant isolation requirements: All snapshot endpoint tests must verify tenant-scoped data access. Implementation must: (1) extract tenant_id from auth context using tenant resolution middleware after bearerAuth validates HubSpot token, (2) scope all DB queries with WHERE tenant_id = ? filter, (3) ensure response contains only snapshots belonging to the authenticated tenant's portal. Mock DB responses must include tenant_id in filtering logic. Add test cases: tenant A requests snapshot, verify only tenant A data returned; tenant B requests same snapshot ID, verify 404 or access denied; cross-tenant query attempts rejected. Verify bearerAuth middleware (per subtask 4.4) passes tenant context to handlers before DB access.\n</info added on 2026-04-10T23:33:07.980Z>",
-            "status": "pending",
-            "testStrategy": "Vitest: mock db query, expect(c.json(snapshotContract)).toMatchSnapshot(), error cases 400/404."
+            "status": "done",
+            "testStrategy": "Vitest: mock db query, expect(c.json(snapshotContract)).toMatchSnapshot(), error cases 400/404.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.723Z"
           },
           {
             "id": 6,
             "title": "Integrate Drizzle DB client and implement snapshot query",
             "description": "Setup Drizzle client import, query snapshots table by companyId, map to contract with async/await.",
-            "dependencies": [2],
+            "dependencies": [
+              2
+            ],
             "details": "import db from './db'; In handler: const snapshot = await db.query.snapshots.findFirst({where: eq(snapshots.companyId, id)}); return c.json(mapToContract(snapshot)).\n<info added on 2026-04-10T23:33:18.826Z>\nTENANT ISOLATION UPDATE: Drizzle DB client must always scope queries by tenant_id. Create a tenant-scoped DB helper: getTenantDb(tenantId) that wraps all queries with WHERE tenant_id = ?. The snapshot query must be: db.query.snapshots.findFirst({ where: and(eq(snapshots.tenantId, tenantId), eq(snapshots.companyId, companyId)) }). Never query without tenant filter.\n</info added on 2026-04-10T23:33:18.826Z>",
-            "status": "pending",
-            "testStrategy": "Mock Drizzle queries in tests; verify query params and result mapping."
+            "status": "done",
+            "testStrategy": "Mock Drizzle queries in tests; verify query params and result mapping.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.724Z"
           },
           {
             "id": 7,
             "title": "Add error handling, implement endpoint, verify all tests",
             "description": "Create POST /api/snapshot/:companyId route with auth+CORS+DB+error handling (400 invalid ID, 500 DB error). Run full TDD suite.",
-            "dependencies": [4, 5, 6],
+            "dependencies": [
+              4,
+              5,
+              6
+            ],
             "details": "app.post('/api/snapshot/:companyId', auth, async (c)=>{try{...}catch{e=400/500}}); Use c.req.param('companyId'), structured logging c.get('logger').",
-            "status": "pending",
-            "testStrategy": "All subtasks 1,3,5 tests pass + integration: curl -H 'Authorization: Bearer token' POST /api/snapshot/valid returns 200 contract JSON."
+            "status": "done",
+            "testStrategy": "All subtasks 1,3,5 tests pass + integration: curl -H 'Authorization: Bearer token' POST /api/snapshot/valid returns 200 contract JSON.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.726Z"
           }
-        ]
+        ],
+        "updatedAt": "2026-04-15T19:55:40.726Z"
       },
       {
-        "id": 5,
+        "id": "5",
         "title": "Domain Model and Evidence Object Types",
         "description": "Define TypeScript domain models for snapshot contract, evidence, trust states per PRD",
         "details": "In /shared/types: Snapshot type with eligibilityState, reasonToContact?: string, people: Person[], evidence: Evidence[], states: StateFlags. Evidence {source, timestamp, confidence, content}. Person {name, title, reasonToTalk, evidenceRefs}. StateFlags {stale, degraded, lowConfidence, ineligible, restricted}. Export for FE/BE use.",
         "testStrategy": "TypeScript compiles without errors, generate mock data validating all union types, coverage for all evidence states",
         "priority": "high",
-        "dependencies": [1, 2],
-        "status": "pending",
+        "dependencies": [
+          "1",
+          "2"
+        ],
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -353,74 +514,110 @@
             "description": "Create TypeScript interfaces for TenantContext { tenantId: string, portalId: string, settings: TenantSettings } and TenantSettings { defaultProvider?: string, thresholds: ThresholdConfig }",
             "dependencies": [],
             "details": "Place in /shared/types/index.ts. Ensure TenantSettings references ThresholdConfig. Export for FE/BE shared use. Use branded types for tenantId/portalId if possible for safety.",
-            "status": "pending",
-            "testStrategy": "Type checks compile, verify TenantContext requires all fields, ThresholdConfig nested properly"
+            "status": "done",
+            "testStrategy": "Type checks compile, verify TenantContext requires all fields, ThresholdConfig nested properly",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.727Z"
           },
           {
             "id": 2,
             "title": "Define ThresholdConfig and LlmProviderConfig Types",
             "description": "Implement ThresholdConfig { freshnessMaxDays: number, minConfidence: number } and LlmProviderConfig { provider: union of strings, model: string, apiKeyRef: string, endpointUrl?: string }",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Add union type for provider: 'anthropic'|'openai'|'gemini'|'openrouter'|'custom'. Make numbers precise with branded types or constraints. Config-driven, no hardcoded values.",
-            "status": "pending",
-            "testStrategy": "Validate union literals for provider, ensure optional fields handled, numbers >0 constraints"
+            "status": "done",
+            "testStrategy": "Validate union literals for provider, ensure optional fields handled, numbers >0 constraints",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.736Z"
           },
           {
             "id": 3,
             "title": "Define ProviderConfig and Update StateFlags Type",
             "description": "Create ProviderConfig { name: string, enabled: boolean, apiKeyRef: string, thresholds: ThresholdConfig } and finalize StateFlags with all 8 QA states",
-            "dependencies": [1, 2],
+            "dependencies": [
+              1,
+              2
+            ],
             "details": "StateFlags: { stale, degraded, lowConfidence, ineligible, restricted, ... } as boolean flags per PRD. ProviderConfig supports multi-provider setup.",
-            "status": "pending",
-            "testStrategy": "Type checks all StateFlags properties exist, ProviderConfig requires thresholds reference"
+            "status": "done",
+            "testStrategy": "Type checks all StateFlags properties exist, ProviderConfig requires thresholds reference",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.737Z"
           },
           {
             "id": 4,
             "title": "Update Snapshot, Evidence, and Person Types with TenantId",
             "description": "Extend existing Snapshot, Evidence, Person types to include tenantId: string. Scope all fields to tenant context.",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Snapshot adds tenantId, evidence: Evidence[], people: Person[] all tenant-scoped. Evidence adds tenantId. Person unchanged structurally but tenant-aware.",
-            "status": "pending",
-            "testStrategy": "Verify tenantId required on Snapshot/Evidence, arrays properly typed, no breaking changes to Person"
+            "status": "done",
+            "testStrategy": "Verify tenantId required on Snapshot/Evidence, arrays properly typed, no breaking changes to Person",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.738Z"
           },
           {
             "id": 5,
             "title": "Implement Tenant-Aware Factory Functions",
             "description": "Create factory functions for Snapshot, Evidence, Person, StateFlags that accept tenantId parameter and enforce tenant isolation.",
-            "dependencies": [4],
+            "dependencies": [
+              4
+            ],
             "details": "Functions like createSnapshot(tenantId: string, ...), createEvidence(tenantId: string, ...). Generate fixtures for tenant A/B isolation testing.",
-            "status": "pending",
-            "testStrategy": "Factories produce valid tenant-scoped objects, tenant A data doesn't leak to tenant B fixtures"
+            "status": "done",
+            "testStrategy": "Factories produce valid tenant-scoped objects, tenant A data doesn't leak to tenant B fixtures",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.739Z"
           },
           {
             "id": 6,
             "title": "Add TypeScript Type Tests for Tenant Scoping",
             "description": "Write TDD type tests verifying tenantId presence, isolation, and factory function correctness per TDD rule.",
-            "dependencies": [4, 5],
+            "dependencies": [
+              4,
+              5
+            ],
             "details": "Use TypeScript's conditional types to test tenantId required everywhere. Verify factory outputs match domain contracts with correct tenant scoping.",
-            "status": "pending",
-            "testStrategy": "Type errors if tenantId missing, fixtures validate multi-tenant isolation, coverage for all types"
+            "status": "done",
+            "testStrategy": "Type errors if tenantId missing, fixtures validate multi-tenant isolation, coverage for all types",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.744Z"
           },
           {
             "id": 7,
             "title": "Export All Domain Types and Run Full Compilation",
             "description": "Export complete domain model from /shared/types for FE/BE use. Verify full TypeScript compilation with all updates.",
-            "dependencies": [3, 4, 5, 6],
+            "dependencies": [
+              3,
+              4,
+              5,
+              6
+            ],
             "details": "Barrel export: export * from './domain-types'. Update any existing imports. Ensure no type errors across shared codebase.",
-            "status": "pending",
-            "testStrategy": "tsc --noEmit succeeds, all exports resolvable, generate mock data validating union types and tenant scoping"
+            "status": "done",
+            "testStrategy": "tsc --noEmit succeeds, all exports resolvable, generate mock data validating union types and tenant scoping",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.745Z"
           }
-        ]
+        ],
+        "updatedAt": "2026-04-15T19:55:40.745Z"
       },
       {
-        "id": 6,
+        "id": "6",
         "title": "Target Account Gating and Eligibility Logic",
         "description": "Implement FR2 eligibility check using hs_is_target_account property with configurable fallback",
         "details": "Backend service: fetchHubSpotCompany(companyId) -> check hs_is_target_account boolean. Configurable via DB config table (default: true if missing). Return {eligible: boolean, reason: 'ineligible' | 'unconfigured'}. Cache results 5min. No hardcoding.",
         "testStrategy": "Unit tests: eligible=true/false/missing, integration test with mock HubSpot API, verify fallback behavior",
         "priority": "high",
-        "dependencies": [2, 4, 5],
-        "status": "pending",
+        "dependencies": [
+          "2",
+          "4",
+          "5"
+        ],
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -428,65 +625,98 @@
             "description": "Create unit and integration tests covering all eligibility scenarios before any implementation.",
             "dependencies": [],
             "details": "Tests must cover: eligible=true, eligible=false, property missing (unconfigured), API error handling, cache hit/miss, configurable property name from DB. Use mocks for HubSpot API and DB. Ensure 100% coverage for edge cases per PRD FR2.\n<info added on 2026-04-10T23:33:28.630Z>\nTENANT ISOLATION UPDATE: All eligibility tests must include tenant_id scoping. The eligibility service must: (1) receive tenantId from middleware context, (2) use tenant-specific gating property name from provider_config (scoped by tenant_id), (3) use tenant-specific HubSpot credentials. Test cases must include: tenant A eligible, tenant B ineligible for same company_id (different portals). Cache must be keyed by (tenantId, companyId) not just companyId.\n</info added on 2026-04-10T23:33:28.630Z>",
-            "status": "pending",
-            "testStrategy": "Run all tests to verify green suite before proceeding; include assertions for {eligible: boolean, reason: string} outputs"
+            "status": "done",
+            "testStrategy": "Run all tests to verify green suite before proceeding; include assertions for {eligible: boolean, reason: string} outputs",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.746Z"
           },
           {
             "id": 2,
             "title": "Setup HubSpot API Client",
             "description": "Initialize @hubspot/api-client with private app access token from environment variables.",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Create fetchHubSpotCompany(companyId) function to retrieve company properties including configurable gating property (default 'hs_is_target_account'). Handle API errors gracefully with try-catch. No hardcoded tokens or properties.",
-            "status": "pending",
-            "testStrategy": "Mock API responses in tests from subtask 1 to verify client fetches properties correctly"
+            "status": "done",
+            "testStrategy": "Mock API responses in tests from subtask 1 to verify client fetches properties correctly",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.748Z"
           },
           {
             "id": 3,
             "title": "Implement Eligibility Check Service",
             "description": "Build core logic to evaluate target account eligibility based on fetched property.",
-            "dependencies": [1, 2],
+            "dependencies": [
+              1,
+              2
+            ],
             "details": "Check boolean value of gating property; return {eligible: true, reason: 'eligible'} if true/missing with default true fallback; {eligible: false, reason: 'ineligible'} if false; {eligible: false, reason: 'unconfigured'} if property unusable. Fail safely per PRD.",
-            "status": "pending",
-            "testStrategy": "Validate against test cases from subtask 1: true/false/missing/unconfigured scenarios pass"
+            "status": "done",
+            "testStrategy": "Validate against test cases from subtask 1: true/false/missing/unconfigured scenarios pass",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.753Z"
           },
           {
             "id": 4,
             "title": "Add Caching Layer with 5-Minute TTL",
             "description": "Implement result caching to store eligibility outcomes for companyId with 5-minute expiration.",
-            "dependencies": [1, 3],
+            "dependencies": [
+              1,
+              3
+            ],
             "details": "Use in-memory cache (e.g., lru-cache or Redis if available) keyed by companyId. Cache {eligible, reason} on fetch. Check cache first on calls, refresh on miss/expiry. Ensure thread-safe in Hono context.",
-            "status": "pending",
-            "testStrategy": "Test cache hit (no API call, returns cached), miss (fetches and caches), expiry after 5min from subtask 1"
+            "status": "done",
+            "testStrategy": "Test cache hit (no API call, returns cached), miss (fetches and caches), expiry after 5min from subtask 1",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.758Z"
           },
           {
             "id": 5,
             "title": "Integrate Config-Driven Property Name",
             "description": "Connect to provider_config DB table to read gating property name dynamically.",
-            "dependencies": [1, 3],
+            "dependencies": [
+              1,
+              3
+            ],
             "details": "Query DB for gating_property_name (default 'hs_is_target_account' if missing). Use Drizzle ORM. Cache config reads separately if frequent. Ensure no hardcoding; fallback to default on DB errors.",
-            "status": "pending",
-            "testStrategy": "Tests from subtask 1 verify configurable name: default and custom property scenarios work"
+            "status": "done",
+            "testStrategy": "Tests from subtask 1 verify configurable name: default and custom property scenarios work",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.760Z"
           },
           {
             "id": 6,
             "title": "Verification and Integration Testing",
             "description": "Run full test suite, integrate into /api/snapshot endpoint, and verify end-to-end.",
-            "dependencies": [2, 3, 4, 5],
+            "dependencies": [
+              2,
+              3,
+              4,
+              5
+            ],
             "details": "Expose eligibility service in Hono backend. Test full flow: companyId -> cached eligibility. Manual verification with real HubSpot token (dev env). Update snapshot contract to include eligibility/reason. Ensure deps on tasks 2,4,5 satisfied.",
-            "status": "pending",
-            "testStrategy": "End-to-end: mock HubSpot + DB, curl endpoint verifies {eligible, reason} in response; measure cache performance"
+            "status": "done",
+            "testStrategy": "End-to-end: mock HubSpot + DB, curl endpoint verifies {eligible, reason} in response; measure cache performance",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.762Z"
           }
-        ]
+        ],
+        "updatedAt": "2026-04-15T19:55:40.762Z"
       },
       {
-        "id": 7,
+        "id": "7",
         "title": "Configuration-Driven Provider Adapter Layer",
         "description": "Implement FR9 modular Exa provider integration with config-driven enablement/thresholds",
         "details": "DB config table: providers {name: 'exa', enabled, apiKeyEncrypted, thresholds}. Abstract ProviderAdapter interface. Exa adapter: minimal company name/domain to Exa Search API, parse recent signals. Configurable freshness (<7d), confidence (>0.7). No hardcoded secrets.",
         "testStrategy": "Toggle provider on/off via config, test Exa calls with mock/stub return signal data, verify thresholds filter results",
         "priority": "medium",
-        "dependencies": [2, 4, 6],
-        "status": "pending",
+        "dependencies": [
+          "2",
+          "4",
+          "6"
+        ],
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -494,83 +724,126 @@
             "description": "Create TypeScript interface for LLM adapters with complete method signature supporting tenant-specific options.",
             "dependencies": [],
             "details": "Interface: LlmAdapter { provider: string; complete(prompt: string, options?: LlmOptions): Promise<LlmResponse> }. Define LlmOptions (model, maxTokens, temperature) and LlmResponse (content, usage). Ensure data minimization constraints.",
-            "status": "pending",
-            "testStrategy": "Validate interface compilation and type checking with mock implementations."
+            "status": "done",
+            "testStrategy": "Validate interface compilation and type checking with mock implementations.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.764Z"
           },
           {
             "id": 2,
             "title": "Implement AnthropicAdapter",
             "description": "Build Anthropic-specific LLM adapter reading tenant config and calling Anthropic API with data minimization.",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Constructor takes decrypted API key, model name from tenant llm_config. Map LlmOptions to Anthropic Messages API format. Implement streaming support if available. Mock API responses for TDD.",
-            "status": "pending",
-            "testStrategy": "Unit test with mock Anthropic responses: valid completion, rate limit, auth error. Verify no PII in requests."
+            "status": "done",
+            "testStrategy": "Unit test with mock Anthropic responses: valid completion, rate limit, auth error. Verify no PII in requests.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.767Z"
           },
           {
             "id": 3,
             "title": "Implement OpenAiAdapter and CustomOpenAiCompatibleAdapter",
             "description": "Create OpenAI adapter and generic OpenAI-compatible adapter for custom endpoints from tenant config.",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Shared base class for OpenAI format. Custom adapter supports endpoint URL override. Handle both Chat Completions and legacy endpoints. Tenant-specific model/API key resolution.",
-            "status": "pending",
-            "testStrategy": "Test OpenAI and custom endpoint with mock responses. Verify tenant A OpenAI vs tenant B custom works."
+            "status": "done",
+            "testStrategy": "Test OpenAI and custom endpoint with mock responses. Verify tenant A OpenAI vs tenant B custom works.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.768Z"
           },
           {
             "id": 4,
             "title": "Implement GeminiAdapter and OpenRouterAdapter",
             "description": "Build adapters for Google Gemini and OpenRouter supporting tenant-specific models and routing.",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Gemini: Google Generative AI SDK integration. OpenRouter: Custom headers for model routing. Both read tenant llm_config for API keys/models. Ensure consistent LlmResponse format.",
-            "status": "pending",
-            "testStrategy": "Mock API responses testing completion, token usage, error handling. Cross-verify response normalization."
+            "status": "done",
+            "testStrategy": "Mock API responses testing completion, token usage, error handling. Cross-verify response normalization.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.770Z"
           },
           {
             "id": 5,
             "title": "Develop LlmAdapterFactory",
             "description": "Create factory that resolves tenant-specific LLM adapter from llm_config table with key decryption.",
-            "dependencies": [1, 2, 3, 4],
+            "dependencies": [
+              1,
+              2,
+              3,
+              4
+            ],
             "details": "Method: getAdapter(tenantId: string): Promise<LlmAdapter>. Query DB by tenant_id, decrypt apiKeyEncrypted, instantiate correct adapter class. Graceful fallback for missing config.",
-            "status": "pending",
-            "testStrategy": "Test tenant A→Anthropic, tenant B→OpenAI, missing config→fallback. Verify decryption/isolation."
+            "status": "done",
+            "testStrategy": "Test tenant A→Anthropic, tenant B→OpenAI, missing config→fallback. Verify decryption/isolation.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.771Z"
           },
           {
             "id": 6,
             "title": "Update Exa Signal ProviderAdapter",
             "description": "Enhance Exa adapter for per-tenant config from provider_config table with thresholds and freshness.",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Read tenant-specific enabled/apiKeyEncrypted/thresholds/freshness from provider_config. Call Exa Search API with company name/domain. Parse signals filtering by configurable confidence/freshness.",
-            "status": "pending",
-            "testStrategy": "Mock Exa API: test thresholds filter results, tenant toggles, freshness <7d. Verify no hardcoded secrets."
+            "status": "done",
+            "testStrategy": "Mock Exa API: test thresholds filter results, tenant toggles, freshness <7d. Verify no hardcoded secrets.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.775Z"
           },
           {
             "id": 7,
             "title": "Implement Per-Tenant Config Resolution Service",
             "description": "Build service for querying/decrypting provider_config and llm_config tables by tenant_id.",
-            "dependencies": [5],
+            "dependencies": [
+              5
+            ],
             "details": "Shared ConfigResolver class: getLlmConfig(tenantId), getProviderConfig(tenantId, providerName). Handle encryption/decryption. Cache results with TTL. Support multiple providers per tenant.",
-            "status": "pending",
-            "testStrategy": "Integration tests: tenant isolation, decryption, cache hit/miss, missing tenant fallback."
+            "status": "done",
+            "testStrategy": "Integration tests: tenant isolation, decryption, cache hit/miss, missing tenant fallback.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.777Z"
           },
           {
             "id": 8,
             "title": "Add Data Minimization and Comprehensive Tests",
             "description": "Implement prompt data minimization guardrails and full TDD suite for adapters/factory.",
-            "dependencies": [2, 3, 4, 5, 6, 7],
+            "dependencies": [
+              2,
+              3,
+              4,
+              5,
+              6,
+              7
+            ],
             "details": "Prompt sanitizer strips PII/CRM dumps. Tests: multi-tenant isolation (A=Anthropic/B=OpenAI), factory resolution, Exa thresholds, missing config fallback, no PII in requests.",
-            "status": "pending",
-            "testStrategy": "End-to-end: tenant scenarios, mock APIs, verify isolation/minimization. Coverage >90% on adapters."
+            "status": "done",
+            "testStrategy": "End-to-end: tenant scenarios, mock APIs, verify isolation/minimization. Coverage >90% on adapters.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.778Z"
           }
-        ]
+        ],
+        "updatedAt": "2026-04-15T19:55:40.778Z"
       },
       {
-        "id": 8,
+        "id": "8",
         "title": "Dominant Reason Generation and People Selection",
         "description": "Implement FR4/FR5: generate 1 reason-to-contact + 0-3 people with reasons from provider signals",
         "details": "Snapshot service: aggregate provider signals -> extract dominant signal (most recent/high-confidence) -> generate reason text. Fetch HubSpot contacts (limit 20) -> rank by relevance to signal -> select top 3 with reasonToTalk. Never fabricate. Use fixture data initially.",
         "testStrategy": "Mock provider signals generate valid reason/people, test 0/1/2/3 people cases, verify no fabrication when insufficient data",
         "priority": "medium",
-        "dependencies": [5, 6, 7],
-        "status": "pending",
+        "dependencies": [
+          "5",
+          "6",
+          "7"
+        ],
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -578,65 +851,101 @@
             "description": "Create function to aggregate provider signals and select the highest-confidence, most-recent signal meeting thresholds.",
             "dependencies": [],
             "details": "Use factory functions from Task 5 to generate fixture signals. Implement logic to compare timestamp and confidence scores, return null if no signal passes thresholds. Ensure single dominant signal output.\n<info added on 2026-04-10T23:33:41.788Z>\nTenant-scoped dominant signal extraction: all signal aggregation and selection must be filtered by tenantId. LLM provider resolution: use LlmAdapterFactory (Task 7) to resolve the tenant's configured LLM provider (Anthropic, OpenAI, Gemini, OpenRouter, or custom) before calling reason generation or ranking logic. Factory functions must accept tenantId as a required parameter. Data minimization for LLM calls: extract only company name and signal summary (source, confidence, timestamp, key insight) and send to LLM; never include raw CRM data, contact details, or internal identifiers. Implement validation to ensure tenantId is present and valid before any LLM provider lookup or signal processing. Document tenant isolation boundaries and LLM provider routing in implementation.\n</info added on 2026-04-10T23:33:41.788Z>",
-            "status": "pending",
-            "testStrategy": "Unit tests with fixture data: test most-recent wins, highest-confidence tiebreaker, no-signal empty state, threshold failures."
+            "status": "done",
+            "testStrategy": "Unit tests with fixture data: test most-recent wins, highest-confidence tiebreaker, no-signal empty state, threshold failures.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.780Z"
           },
           {
             "id": 2,
             "title": "Implement Reason Text Generation",
             "description": "Generate human-readable reason-to-contact text from the dominant signal content.",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Map signal types to templated text using signal content fields. Handle edge cases like partial signal data. Return empty string if no dominant signal. Use fixture signals for initial implementation.",
-            "status": "pending",
-            "testStrategy": "TDD with fixtures: verify text generation for different signal types, empty input returns empty, malformed signals handled gracefully."
+            "status": "done",
+            "testStrategy": "TDD with fixtures: verify text generation for different signal types, empty input returns empty, malformed signals handled gracefully.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.781Z"
           },
           {
             "id": 3,
             "title": "Implement HubSpot Contact Fetch",
             "description": "Fetch up to 20 contacts associated with the company from HubSpot API.",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Integrate HubSpot API client with companyId parameter, limit=20. Mock API responses using fixture data initially. Handle auth and errors. Return empty array on failures.",
-            "status": "pending",
-            "testStrategy": "Mock HubSpot responses: test 0/5/20 contacts returned, error handling, auth middleware integration."
+            "status": "done",
+            "testStrategy": "Mock HubSpot responses: test 0/5/20 contacts returned, error handling, auth middleware integration.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.783Z"
           },
           {
             "id": 4,
             "title": "Implement Contact Ranking by Relevance",
             "description": "Rank fetched contacts by relevance to dominant signal using title/role match and recency.",
-            "dependencies": [1, 3],
+            "dependencies": [
+              1,
+              3
+            ],
             "details": "Define scoring function: keyword match on titles/roles to signal content (0-1 score), recency decay. Sort descending. Use fuzzy matching libraries if needed. Fixtures for contacts.",
-            "status": "pending",
-            "testStrategy": "Unit tests: rank scenarios with title matches, recency variations, no-signal skips ranking, ties handled consistently."
+            "status": "done",
+            "testStrategy": "Unit tests: rank scenarios with title matches, recency variations, no-signal skips ranking, ties handled consistently.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.785Z"
           },
           {
             "id": 5,
             "title": "Implement People Selection Service",
             "description": "Select top 0-3 ranked contacts and generate reasonToTalk from signal + contact context.",
-            "dependencies": [1, 2, 3, 4],
+            "dependencies": [
+              1,
+              2,
+              3,
+              4
+            ],
             "details": "Slice top 3 from ranked list. Generate reasonToTalk by combining dominant reason text with contact-specific details (e.g., 'Talk to [role] about [signal]'). Support 0 selections gracefully.",
-            "status": "pending",
-            "testStrategy": "Integration tests: 0/1/2/3 people cases, verify reasonToTalk format, no fabrication when <3 contacts available."
+            "status": "done",
+            "testStrategy": "Integration tests: 0/1/2/3 people cases, verify reasonToTalk format, no fabrication when <3 contacts available.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.787Z"
           },
           {
             "id": 6,
             "title": "Snapshot Service Integration and Edge Case Verification",
             "description": "Integrate all components into snapshot service endpoint and verify all edge cases with TDD.",
-            "dependencies": [1, 2, 3, 4, 5],
+            "dependencies": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
             "details": "Wire components into /api/snapshot/:companyId. Use fixture data throughout. Test full data flow. Ensure no fabrication: empty states for no-signal/no-contacts. Update Hono endpoint contract.\n<info added on 2026-04-10T23:33:51.449Z>\nTENANT + LLM PROVIDER UPDATE: Snapshot service integration must pass tenantId through the entire flow: tenant resolution → eligibility check → signal fetching (tenant's Exa key) → LLM reason generation (tenant's LLM provider) → contact ranking → snapshot assembly. All fixture data must include tenantId. Test multi-tenant scenario: tenant A gets Anthropic-generated reason, tenant B gets OpenAI-generated reason, both isolated.\n</info added on 2026-04-10T23:33:51.449Z>",
-            "status": "pending",
-            "testStrategy": "End-to-end tests: no-signal empty, 0/1/2/3 people, low-confidence suppression, integration with Tasks 5-7, Postman/curl verification."
+            "status": "done",
+            "testStrategy": "End-to-end tests: no-signal empty, 0/1/2/3 people, low-confidence suppression, integration with Tasks 5-7, Postman/curl verification.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.790Z"
           }
-        ]
+        ],
+        "updatedAt": "2026-04-15T19:55:40.790Z"
       },
       {
-        "id": 9,
+        "id": "9",
         "title": "Trust, Freshness, and Suppression Logic",
         "description": "Implement evidence-state logic: stale/low-confidence/degraded/restricted suppression per trust rules",
         "details": "Trust service: evaluate evidence {freshness: timestamp <7d, confidence >0.7, sourceValid}. States: restricted->suppress, stale->flag, lowConf->flag+caution. Configurable thresholds. Backend computes final snapshot states. UI consumes pre-computed flags.",
         "testStrategy": "Unit tests cover all 8 QA states, integration verifies suppression (restricted empty), flags render correctly",
         "priority": "medium",
-        "dependencies": [5, 6, 7, 8],
-        "status": "pending",
+        "dependencies": [
+          "5",
+          "6",
+          "7",
+          "8"
+        ],
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -644,65 +953,100 @@
             "description": "Create the core trust service that orchestrates evaluation of evidence freshness, confidence, and source validity per configurable rules.",
             "dependencies": [],
             "details": "Define TrustEvaluator class in backend that takes Evidence object, reads thresholds from provider_config table (jsonb), computes all state flags (stale, lowConfidence, degraded, restricted). Use types from Task 5. Backend computes final snapshot states for UI consumption.\n<info added on 2026-04-10T23:34:01.397Z>\nTENANT ISOLATION UPDATE: TrustEvaluator must read thresholds from tenant-specific provider_config (scoped by tenant_id, not global). Each tenant may have different freshness/confidence thresholds. The service receives tenantId and queries config per tenant. Test that tenant A's lenient thresholds (3 day freshness, 0.5 confidence) produce different results than tenant B's strict thresholds (7 day, 0.9 confidence) for the same evidence data.\n</info added on 2026-04-10T23:34:01.397Z>",
-            "status": "pending",
-            "testStrategy": "TDD: Unit test service integration with mock evidence and config; verify all 8 QA state combinations produce correct StateFlags object."
+            "status": "done",
+            "testStrategy": "TDD: Unit test service integration with mock evidence and config; verify all 8 QA state combinations produce correct StateFlags object.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.793Z"
           },
           {
             "id": 2,
             "title": "Implement Freshness Checker",
             "description": "Build freshness evaluation logic to determine if evidence timestamp is fresh (<7 days) or stale based on configurable threshold.",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Create isFresh() function comparing evidence.timestamp to current time against threshold from provider_config.days_fresh (default 7). Return {isFresh: boolean, ageDays: number}. Flag stale evidence with visible timestamp.",
-            "status": "pending",
-            "testStrategy": "TDD: Test boundary cases (exactly 7 days, 6.9 days, 7.1 days), configurable thresholds (3 days, 14 days), timezone edge cases."
+            "status": "done",
+            "testStrategy": "TDD: Test boundary cases (exactly 7 days, 6.9 days, 7.1 days), configurable thresholds (3 days, 14 days), timezone edge cases.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.794Z"
           },
           {
             "id": 3,
             "title": "Implement Confidence Checker",
             "description": "Develop confidence scoring logic to classify evidence as adequate (>0.7) or low-confidence with explicit score display.",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Create evaluateConfidence() function checking evidence.confidence against provider_config.min_confidence (default 0.7). Return {isAdequate: boolean, confidenceScore: number}. Low-confidence flags trigger caution UI.",
-            "status": "pending",
-            "testStrategy": "TDD: Test thresholds (0.699→low, 0.701→adequate), configurable values (0.5, 0.9), null/undefined handling."
+            "status": "done",
+            "testStrategy": "TDD: Test thresholds (0.699→low, 0.701→adequate), configurable values (0.5, 0.9), null/undefined handling.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.796Z"
           },
           {
             "id": 4,
             "title": "Implement Source Validator",
             "description": "Create source validity checker for provider response and data parseability to detect degraded sources.",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Build validateSource() function checking provider responding (HTTP 200) + data parseable (JSON schema valid). Return {isValid: boolean, degradationReason?: string}. Degraded sources get distinct flagging from low-confidence.",
-            "status": "pending",
-            "testStrategy": "TDD: Mock provider failures (503, 404, parse errors), valid responses, schema mismatches."
+            "status": "done",
+            "testStrategy": "TDD: Mock provider failures (503, 404, parse errors), valid responses, schema mismatches.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.797Z"
           },
           {
             "id": 5,
             "title": "Implement Suppression Logic",
             "description": "Apply suppression rules: restricted→empty response, stale/lowConf→double warning flags, degraded→system issue flag.",
-            "dependencies": [1, 2, 3, 4],
+            "dependencies": [
+              1,
+              2,
+              3,
+              4
+            ],
             "details": "Create applySuppression() function in TrustEvaluator: if restricted→return empty Snapshot (no evidence, no summary); else compute combined StateFlags and warnings array. Backend pre-computes all flags for UI.",
-            "status": "pending",
-            "testStrategy": "TDD: Verify restricted returns truly empty objects; test stale+lowConf double warning combinations; ensure partial data never leaks from restricted."
+            "status": "done",
+            "testStrategy": "TDD: Verify restricted returns truly empty objects; test stale+lowConf double warning combinations; ensure partial data never leaks from restricted.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.800Z"
           },
           {
             "id": 6,
             "title": "Verification for All 8 QA States",
             "description": "Write comprehensive TDD suite covering all 8 QA states with factory functions, configurable thresholds, and suppression validation.",
-            "dependencies": [1, 2, 3, 4, 5],
+            "dependencies": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
             "details": "Use factory functions from Task 5 to generate test evidence for all combinations: fresh/adequate/valid, stale+lowConf+degraded+restricted×2. Test UI flag consumption. Verify configurable thresholds override defaults.",
-            "status": "pending",
-            "testStrategy": "100% coverage of 8 QA states matrix; integration tests verify empty responses for restricted; snapshot tests for flag combinations; threshold mutation testing."
+            "status": "done",
+            "testStrategy": "100% coverage of 8 QA states matrix; integration tests verify empty responses for restricted; snapshot tests for flag combinations; threshold mutation testing.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.801Z"
           }
-        ]
+        ],
+        "updatedAt": "2026-04-15T19:55:40.801Z"
       },
       {
-        "id": 10,
+        "id": "10",
         "title": "UI State Rendering and Evidence Inspection",
         "description": "Implement FR6/FR7: render all explicit states with evidence drill-down in React extension",
         "details": "Connect frontend to /api/snapshot. Render states: eligible-strong, fewer-contacts, empty, stale(warning), degraded(error), lowConf(caution), ineligible, loading. Evidence modal shows source/timestamp/confidence. Responsive design, accessible.",
         "testStrategy": "Manual QA all 8 states with fixture data, snapshot testing for UI states, evidence modal opens/closes correctly",
         "priority": "medium",
-        "dependencies": [3, 4, 5, 9],
-        "status": "pending",
+        "dependencies": [
+          "3",
+          "4",
+          "5",
+          "9"
+        ],
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -710,74 +1054,110 @@
             "description": "Create comprehensive render tests using createRenderer('crm.record.tab') covering eligible-strong, eligible-fewer-contacts, empty-no-reason, stale, degraded-source, low-confidence, ineligible, restricted states with fixture data from Task 5 factory functions",
             "dependencies": [],
             "details": "Use @hubspot/ui-extensions/testing. Test each state renders correct HubSpot components (Alert variants, Text, DescriptionList). Verify findByTestId() queries for state-specific elements. Include snapshot testing for visual regression.",
-            "status": "pending",
-            "testStrategy": "Run all 8 state tests pass with mock snapshot data before implementation"
+            "status": "done",
+            "testStrategy": "Run all 8 state tests pass with mock snapshot data before implementation",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.803Z"
           },
           {
             "id": 2,
             "title": "Write TDD tests for loading state and evidence modal",
             "description": "Test LoadingSpinner renders during API fetch, evidence modal opens/closes correctly with source/timestamp/confidence data using findByTestId()",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Test modal trigger on evidence item click, Modal overlay shows DescriptionList with evidence fields. Verify keyboard accessibility (Escape closes). Test responsive modal on mobile viewport.",
-            "status": "pending",
-            "testStrategy": "Modal open/close cycles 5x, loading spinner visible 2s minimum, all evidence fields populate"
+            "status": "done",
+            "testStrategy": "Modal open/close cycles 5x, loading spinner visible 2s minimum, all evidence fields populate",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.804Z"
           },
           {
             "id": 3,
             "title": "Implement main state renderer component",
             "description": "Create central SnapshotStateRenderer component that maps Snapshot.eligibilityState to specific state handlers using switch or object map pattern",
-            "dependencies": [1, 2],
+            "dependencies": [
+              1,
+              2
+            ],
             "details": "Connect to /api/snapshot via existing hsMeta.companyId. Use Flex/Box layout. Handle loading/error states. Make responsive with HubSpot Tile. Ensure ARIA labels for accessibility.",
-            "status": "pending",
-            "testStrategy": "Component renders correct child state for each snapshot state input"
+            "status": "done",
+            "testStrategy": "Component renders correct child state for each snapshot state input",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.805Z"
           },
           {
             "id": 4,
             "title": "Implement eligible states (strong + fewer-contacts)",
             "description": "Render full reason + people list (3 vs 1-2) + evidence drill-down triggers for eligible-strong and eligible-fewer-contacts",
-            "dependencies": [3],
+            "dependencies": [
+              3
+            ],
             "details": "Use DescriptionList for reason/people. Table or Flex for people cards with evidence chip/link. eligible-strong shows 3 people, fewer-contacts shows 1-2 + note. Add testId='eligible-strong'",
-            "status": "pending",
-            "testStrategy": "3 people render in strong, 1-2 + note in fewer-contacts, evidence links present"
+            "status": "done",
+            "testStrategy": "3 people render in strong, 1-2 + note in fewer-contacts, evidence links present",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.807Z"
           },
           {
             "id": 5,
             "title": "Implement warning/error states (stale, degraded, lowConf)",
             "description": "Render Alert components: stale(warning) with age indicator, degraded-source(danger/error), lowConf(caution) with confidence score",
-            "dependencies": [3],
+            "dependencies": [
+              3
+            ],
             "details": "Alert variant='warning' for stale with timestamp age text. variant='danger' for degraded. lowConf shows confidence bar + caution text. All maintain reasonToContact.",
-            "status": "pending",
-            "testStrategy": "Correct Alert variant colors, confidence score displays accurately"
+            "status": "done",
+            "testStrategy": "Correct Alert variant colors, confidence score displays accurately",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.809Z"
           },
           {
             "id": 6,
             "title": "Implement empty/ineligible/restricted states",
             "description": "Render explicit messages: empty-no-reason 'No credible reason', ineligible 'Account not eligible', restricted completely empty",
-            "dependencies": [3],
+            "dependencies": [
+              3
+            ],
             "details": "Use Text variant='microcopy' for messages. restricted returns null/empty Box. Add appropriate icons or visual hierarchy. Ensure accessible screen reader text.",
-            "status": "pending",
-            "testStrategy": "Explicit text matches PRD, restricted renders no content"
+            "status": "done",
+            "testStrategy": "Explicit text matches PRD, restricted renders no content",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.811Z"
           },
           {
             "id": 7,
             "title": "Implement evidence inspection modal + final verification",
             "description": "Build Modal with evidence details (source/timestamp/confidence) + verify all 8 states responsive/accessible + manual QA",
-            "dependencies": [3, 4, 5, 6],
+            "dependencies": [
+              3,
+              4,
+              5,
+              6
+            ],
             "details": "Modal uses PanelBody/DescriptionListItem for evidence fields. Responsive with max-width. Add close Button variant='secondary'. Final smoke test all states on mobile/desktop.",
-            "status": "pending",
-            "testStrategy": "Manual QA checklist: all 8 states, modal flow, responsive breakpoints, accessibility audit"
+            "status": "done",
+            "testStrategy": "Manual QA checklist: all 8 states, modal flow, responsive breakpoints, accessibility audit",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.812Z"
           }
-        ]
+        ],
+        "updatedAt": "2026-04-15T19:55:40.812Z"
       },
       {
-        "id": 11,
+        "id": "11",
         "title": "Security, Permissions, and Local Development Setup",
         "description": "Add permission enforcement, auth, Docker local dev, verify all docs standards",
         "details": "Backend: HubSpot app auth validation, object-level access checks. Encrypt provider keys. Docker-compose: postgres, backend, frontend dev. Local HubSpot extension testing. Verify docs for all stack components (HubSpot, Hono, Drizzle).",
         "testStrategy": "Security audit: no secrets in client, restricted data blocked, docker env works end-to-end, docs verification checklist passed",
         "priority": "medium",
-        "dependencies": [1, 2, 3, 4],
-        "status": "pending",
+        "dependencies": [
+          "1",
+          "2",
+          "3",
+          "4"
+        ],
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -785,88 +1165,136 @@
             "description": "Create Hono middleware to extract portal_id from HubSpot auth token, lookup tenant_id, set context, reject invalid requests",
             "dependencies": [],
             "details": "Add middleware at /backend/src/middleware/tenant.ts. Parse HubSpot PRIVATE_APP_ACCESS_TOKEN, query tenants table via Drizzle, attach tenant_id to Hono.Context, return 401 for invalid/missing tenant. Ensure every API route uses this middleware.",
-            "status": "pending",
-            "testStrategy": "Unit test token parsing, integration test full resolution flow, cross-tenant leakage test (tenant A cannot access tenant B data)"
+            "status": "done",
+            "testStrategy": "Unit test token parsing, integration test full resolution flow, cross-tenant leakage test (tenant A cannot access tenant B data)",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.814Z"
           },
           {
             "id": 2,
             "title": "Enforce Database-Level Tenant Isolation",
             "description": "Update all Drizzle queries and schema to include mandatory tenant_id WHERE clauses and composite indexes",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Modify schema from Task 2: add tenant_id to snapshots, evidence, people, config tables as first column. Create composite indexes (tenant_id, created_at), (tenant_id, company_id). Wrap all queries with tenant filter helper function. Add RLS policies if using Supabase.",
-            "status": "pending",
-            "testStrategy": "Query tests: insert tenant A data, verify tenant B cannot read. Performance test: index usage with EXPLAIN ANALYZE. Migration validation."
+            "status": "done",
+            "testStrategy": "Query tests: insert tenant A data, verify tenant B cannot read. Performance test: index usage with EXPLAIN ANALYZE. Migration validation.",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.815Z"
           },
           {
             "id": 3,
             "title": "Implement Provider Credential Encryption",
             "description": "Encrypt/decrypt tenant-specific provider API keys at rest using secure key derivation",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Use Node crypto module or libsodium. Store encrypted keys in config table. Create encryptProviderKey(tenant_id, key), decryptProviderKey(tenant_id, encryptedKey) functions. Decrypt only in memory at API call time. Never log plaintext keys.",
-            "status": "pending",
-            "testStrategy": "Roundtrip encryption test, key derivation test, memory leak check, cross-tenant isolation (tenant A cannot decrypt tenant B keys)"
+            "status": "done",
+            "testStrategy": "Roundtrip encryption test, key derivation test, memory leak check, cross-tenant isolation (tenant A cannot decrypt tenant B keys)",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.817Z"
           },
           {
             "id": 4,
             "title": "Configure HubSpot Private App Authentication",
             "description": "Set up HubSpot private app with PRIVATE_APP_ACCESS_TOKEN validation and portal context extraction",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Create HubSpot private app in dev account. Frontend sends token in Authorization header. Backend validates via HubSpot API /auth/v3/private-apps/validate. Extract portal_id from response. Update .env.example with token placeholder.",
-            "status": "pending",
-            "testStrategy": "Valid/invalid token tests, portal_id extraction test, token expiry handling"
+            "status": "done",
+            "testStrategy": "Valid/invalid token tests, portal_id extraction test, token expiry handling",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.820Z"
           },
           {
             "id": 5,
             "title": "Finalize Docker-Compose Local Development",
             "description": "Complete docker-compose.yml with postgres, backend, frontend services and tenant-aware volumes",
-            "dependencies": [2],
+            "dependencies": [
+              2
+            ],
             "details": "Update from Task 1: services for postgres (with init scripts), backend (Hono), frontend (Vite dev). Separate volumes per service for tenant isolation. Healthchecks, depends_on. Local HubSpot extension testing via ngrok/tunnel.",
-            "status": "pending",
-            "testStrategy": "docker-compose up end-to-end test, verify all services healthy, tenant middleware works locally"
+            "status": "done",
+            "testStrategy": "docker-compose up end-to-end test, verify all services healthy, tenant middleware works locally",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.822Z"
           },
           {
             "id": 6,
             "title": "Setup Test HubSpot Account with Mock Data",
             "description": "Create dedicated HubSpot dev account with multi-tenant mock data covering all 8 QA states",
-            "dependencies": [4],
+            "dependencies": [
+              4
+            ],
             "details": "Two portals: tenant A (eligible-strong, stale, etc.), tenant B (ineligible, restricted). Populate CRM with mock companies/people/evidence. Document connection instructions. Include 8 QA states from Task 9.",
-            "status": "pending",
-            "testStrategy": "Verify data isolation between portals, API queries return correct tenant data"
+            "status": "done",
+            "testStrategy": "Verify data isolation between portals, API queries return correct tenant data",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.823Z"
           },
           {
             "id": 7,
             "title": "Configure Deployment and Vercel/HubSpot CLI",
             "description": "Set up Vercel CLI for preview/deploy and HubSpot CLI for app management with tenant config",
-            "dependencies": [5],
+            "dependencies": [
+              5
+            ],
             "details": "Add vercel.json, hubspot.config.yml. Scripts for preview deploys per tenant. Environment variable mapping for multi-tenant (DATABASE_URL, etc.). HubSpot app private install instructions.",
-            "status": "pending",
-            "testStrategy": "Deploy preview, verify tenant isolation in production-like env, CLI commands work"
+            "status": "done",
+            "testStrategy": "Deploy preview, verify tenant isolation in production-like env, CLI commands work",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.825Z"
           },
           {
             "id": 8,
             "title": "Create Security Artifact Documentation",
             "description": "Document all security measures, tenant isolation, encryption, auth flows for audit and onboarding",
-            "dependencies": [2, 3, 4],
+            "dependencies": [
+              2,
+              3,
+              4
+            ],
             "details": "Create /docs/SECURITY.md covering tenant middleware, DB isolation, encryption, RLS, cross-tenant tests. Include architecture diagram, threat model, compliance checklist (GDPR, SOC2 basics). Verify all stack docs (HubSpot, Hono, Drizzle).",
-            "status": "pending",
-            "testStrategy": "Peer review doc completeness against requirements checklist"
+            "status": "done",
+            "testStrategy": "Peer review doc completeness against requirements checklist",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.826Z"
           },
           {
             "id": 9,
             "title": "Full Security Verification and Cross-Tenant Tests",
             "description": "Run comprehensive TDD security audit, verify no leakage, docs standards, end-to-end local dev",
-            "dependencies": [1, 2, 3, 4, 5, 6, 7, 8],
+            "dependencies": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8
+            ],
             "details": "Write tests: cross-tenant leakage (A sees B data?), encryption roundtrip, middleware rejection, Docker E2E. Security audit checklist. Verify all docs standards. Manual QA all 8 states with isolation.",
-            "status": "pending",
-            "testStrategy": "100% test coverage on security paths, zero leakage incidents, docker-compose works, docs checklist 100% pass"
+            "status": "done",
+            "testStrategy": "100% test coverage on security paths, zero leakage incidents, docker-compose works, docs checklist 100% pass",
+            "parentId": "undefined",
+            "updatedAt": "2026-04-15T19:55:40.828Z"
           }
-        ]
+        ],
+        "updatedAt": "2026-04-15T19:55:40.828Z"
       }
     ],
     "metadata": {
-      "created": "2026-04-10T23:16:00.974Z",
-      "updated": "2026-04-10T23:16:00.974Z",
-      "description": "Tasks for master context"
+      "version": "1.0.0",
+      "lastModified": "2026-04-15T19:55:40.828Z",
+      "taskCount": 11,
+      "completedCount": 11,
+      "tags": [
+        "master"
+      ]
     }
   }
 }
