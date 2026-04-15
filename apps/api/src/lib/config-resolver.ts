@@ -65,6 +65,25 @@ export function clearConfigResolverCache(): void {
   llmCache.clear();
 }
 
+/**
+ * Drop the cached entry for one tenant + provider so the next read hits the
+ * DB. Call from any code path that mutates `provider_config` (insert / update
+ * / delete) — without this, a `null` cached from a prior look-up would mask
+ * the new row for up to {@link CONFIG_RESOLVER_CACHE_TTL_MS}.
+ */
+export function invalidateProviderConfig(tenantId: string, providerName: string): void {
+  providerCache.delete(buildProviderKey(tenantId, providerName));
+}
+
+/**
+ * Drop the cached LLM-config entry for a tenant. Call from any code path that
+ * mutates `llm_config` rows for that tenant (insert / update / delete) or
+ * `tenants.settings.defaultLlmProvider`.
+ */
+export function invalidateLlmConfig(tenantId: string): void {
+  llmCache.delete(buildLlmKey(tenantId));
+}
+
 export type ConfigResolverDeps = {
   db: Database;
   /** Monotonic clock source (ms). Inject in tests for deterministic TTL checks. */

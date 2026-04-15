@@ -1,12 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { createDatabase, llmConfig, providerConfig, tenants } from "@hap/db";
-import { like } from "drizzle-orm";
+import { eq, like } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CONFIG_RESOLVER_CACHE_TTL_MS,
   clearConfigResolverCache,
   getLlmConfig,
   getProviderConfig,
+  invalidateLlmConfig,
+  invalidateProviderConfig,
 } from "../config-resolver";
 import { encryptProviderKey } from "../encryption";
 
@@ -274,5 +276,72 @@ describe("getLlmConfig", () => {
     expect(b?.apiKeyRef).toBe("sk-B");
     expect(a?.model).toBe("claude-a");
     expect(b?.model).toBe("gpt-b");
+  });
+});
+
+describe("cache invalidation", () => {
+  it("invalidateProviderConfig drops a cached null so a freshly-inserted row is visible", async () => {
+    const tenant = await seedTenant();
+    const first = await getProviderConfig({ db }, { tenantId: tenant.id, providerName: "exa" });
+    expect(first).toBeNull();
+
+    await db.insert(providerConfig).values({
+      tenantId: tenant.id,
+      providerName: "exa",
+      enabled: true,
+      thresholds: { freshnessMaxDays: 7, minConfidence: 0.7 },
+    });
+
+    // Without invalidation, the cached null is still served.
+    const stillCached = await getProviderConfig(
+      { db },
+      { tenantId: tenant.id, providerName: "exa" },
+    );
+    expect(stillCached).toBeNull();
+
+    invalidateProviderConfig(tenant.id, "exa");
+
+    const fresh = await getProviderConfig({ db }, { tenantId: tenant.id, providerName: "exa" });
+    expect(fresh?.name).toBe("exa");
+    expect(fresh?.thresholds.minConfidence).toBe(0.7);
+  });
+
+  it("invalidateProviderConfig only drops the targeted (tenant, provider) entry", async () => {
+    const tenantA = await seedTenant();
+    const tenantB = await seedTenant();
+    await db.insert(providerConfig).values([
+      { tenantId: tenantA.id, providerName: "exa", enabled: true },
+      { tenantId: tenantB.id, providerName: "exa", enabled: true },
+    ]);
+
+    await getProviderConfig({ db }, { tenantId: tenantA.id, providerName: "exa" });
+    await getProviderConfig({ db }, { tenantId: tenantB.id, providerName: "exa" });
+
+    await db
+      .update(providerConfig)
+      .set({ enabled: false })
+      .where(eq(providerConfig.tenantId, tenantA.id));
+    invalidateProviderConfig(tenantA.id, "exa");
+
+    const a = await getProviderConfig({ db }, { tenantId: tenantA.id, providerName: "exa" });
+    const b = await getProviderConfig({ db }, { tenantId: tenantB.id, providerName: "exa" });
+    expect(a?.enabled).toBe(false); // refreshed
+    expect(b?.enabled).toBe(true); // still cached, untouched
+  });
+
+  it("invalidateLlmConfig drops the cached entry for the tenant", async () => {
+    const tenant = await seedTenant();
+    expect(await getLlmConfig({ db }, { tenantId: tenant.id })).toBeNull();
+
+    await db.insert(llmConfig).values({
+      tenantId: tenant.id,
+      providerName: "anthropic",
+      modelName: "claude-a",
+    });
+
+    expect(await getLlmConfig({ db }, { tenantId: tenant.id })).toBeNull();
+    invalidateLlmConfig(tenant.id);
+    const fresh = await getLlmConfig({ db }, { tenantId: tenant.id });
+    expect(fresh?.provider).toBe("anthropic");
   });
 });
