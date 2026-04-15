@@ -36,6 +36,20 @@
       "when": 1776300000000,
       "tag": "0004_key_version_positive_check",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1776400000000,
+      "tag": "0005_tenant_hubspot_oauth",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1776400001000,
+      "tag": "0006_signed_request_nonce",
+      "breakpoints": true
     }
   ]
 }
