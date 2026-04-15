@@ -15,27 +15,48 @@
  * `beforeEach` keep the DB clean.
  */
 
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
+import {
+  fixtureEmpty,
+  fixtureIneligible,
+  fixtureRestricted,
+  type LlmProviderConfig,
+  type ProviderConfig as ProviderConfigDomain,
+} from "@hap/config";
 import {
   createDatabase,
   evidence as evidenceTable,
+  llmConfig,
   people as peopleTable,
   providerConfig,
   snapshots as snapshotsTable,
   tenants,
 } from "@hap/db";
 import { and, eq, like } from "drizzle-orm";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { createLlmAdapter, wrapWithGuards } from "../adapters/llm/factory";
+import type { LlmAdapter } from "../adapters/llm-adapter";
 import { createMockLlmAdapter } from "../adapters/mock-llm-adapter";
 import type { ProviderAdapter } from "../adapters/provider-adapter";
-import { clearConfigResolverCache, getProviderConfig } from "../lib/config-resolver";
+import { createSignalAdapter, wrapSignalWithGuards } from "../adapters/signal/factory";
+import {
+  clearConfigResolverCache,
+  getLlmConfigByProvider,
+  getProviderConfig,
+  invalidateTenantConfig,
+} from "../lib/config-resolver";
 import { decryptProviderKey, encryptProviderKey } from "../lib/encryption";
+import { deriveTenantKek } from "../lib/kek";
+import { __setLogSinkForTests, withObservability } from "../lib/observability";
+import { createRateLimiter } from "../lib/rate-limiter";
 import {
   checkEligibility,
   clearEligibilityCache,
   DEFAULT_ELIGIBILITY_PROPERTY,
 } from "../services/eligibility";
+import { generateNextMove } from "../services/next-move";
 import { assembleSnapshot } from "../services/snapshot-assembler";
+import { createTrustEvaluator } from "../services/trust";
 
 const DATABASE_URL =
   process.env.DATABASE_URL ?? "postgresql://hap:hap_local_dev@localhost:5433/hap_dev";
@@ -514,5 +535,512 @@ describe("cross-tenant: restricted suppression isolation", () => {
     // And B's serialized output must not contain A's restricted content.
     const serializedB = JSON.stringify(snapB);
     expect(serializedB).not.toContain("should-never-leak");
+  });
+});
+
+// ===========================================================================
+// SLICE 2 ASSERTIONS — every new surface must preserve tenant isolation.
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// (a) Encryption / KEK isolation — Step 3
+// ---------------------------------------------------------------------------
+
+describe("cross-tenant slice-2: encryption + KEK", () => {
+  it("tenant A encrypts → tenant B decrypt throws AES-GCM auth failure", async () => {
+    const tA = await seedTenant("A");
+    const tB = await seedTenant("B");
+
+    const ct = encryptProviderKey(tA.id, "plaintext-A");
+    // Cross-tenant decrypt MUST fail the GCM auth tag check. The collapsed
+    // error message carries no tenantId, plaintext, or ciphertext fragment.
+    expect(() => decryptProviderKey(tB.id, ct)).toThrow(/authentication failed/);
+    // And A can still decrypt its own ciphertext.
+    expect(decryptProviderKey(tA.id, ct)).toBe("plaintext-A");
+  });
+
+  it("same plaintext + same tenant encrypted twice produces different ciphertexts (random IV)", async () => {
+    const tA = await seedTenant("A");
+    const c1 = encryptProviderKey(tA.id, "same-secret");
+    const c2 = encryptProviderKey(tA.id, "same-secret");
+    expect(c1).not.toBe(c2);
+    // Both must still decrypt to the same plaintext.
+    expect(decryptProviderKey(tA.id, c1)).toBe("same-secret");
+    expect(decryptProviderKey(tA.id, c2)).toBe("same-secret");
+    // The IV segment (parts[1]) should differ.
+    const iv1 = c1.split(":")[1];
+    const iv2 = c2.split(":")[1];
+    expect(iv1).not.toBe(iv2);
+  });
+
+  it("deriveTenantKek produces distinct 32-byte keys for different tenantIds", () => {
+    const rootKek = randomBytes(32);
+    const kekA = deriveTenantKek(rootKek, "tenant-a");
+    const kekB = deriveTenantKek(rootKek, "tenant-b");
+    expect(kekA.length).toBe(32);
+    expect(kekB.length).toBe(32);
+    expect(kekA.equals(kekB)).toBe(false);
+    // Deterministic for same inputs (required — else we can't decrypt old CT).
+    const kekA2 = deriveTenantKek(rootKek, "tenant-a");
+    expect(kekA.equals(kekA2)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (b) LLM factory isolation — Step 8
+// ---------------------------------------------------------------------------
+
+describe("cross-tenant slice-2: LLM factory", () => {
+  it("createLlmAdapter wires different decrypted keys per tenant (same provider)", async () => {
+    const tA = await seedTenant("A");
+    const tB = await seedTenant("B");
+
+    // Seed per-tenant llm_config rows with distinct encrypted keys for the
+    // SAME provider — the riskiest cross-tenant collision case.
+    await db.insert(llmConfig).values({
+      tenantId: tA.id,
+      providerName: "openai",
+      modelName: "gpt-4o-mini",
+      apiKeyEncrypted: encryptProviderKey(tA.id, "sk-tenantA-key"),
+    });
+    await db.insert(llmConfig).values({
+      tenantId: tB.id,
+      providerName: "openai",
+      modelName: "gpt-4o-mini",
+      apiKeyEncrypted: encryptProviderKey(tB.id, "sk-tenantB-key"),
+    });
+
+    const cfgA = await getLlmConfigByProvider({ db }, { tenantId: tA.id, provider: "openai" });
+    const cfgB = await getLlmConfigByProvider({ db }, { tenantId: tB.id, provider: "openai" });
+
+    expect(cfgA?.apiKeyRef).toBe("sk-tenantA-key");
+    expect(cfgB?.apiKeyRef).toBe("sk-tenantB-key");
+    expect(cfgA?.apiKeyRef).not.toBe(cfgB?.apiKeyRef);
+
+    // The factory consumes the already-decrypted config — each adapter must
+    // carry its tenant's key. We confirm structurally: the factory closure
+    // itself is tenant-agnostic, so passing cfgA vs cfgB yields adapters
+    // whose internal apiKey matches their input.
+    const adapterA = createLlmAdapter(cfgA as LlmProviderConfig);
+    const adapterB = createLlmAdapter(cfgB as LlmProviderConfig);
+    expect(adapterA.provider).toBe("openai");
+    expect(adapterB.provider).toBe("openai");
+    // Adapters are DIFFERENT instances (no accidental singleton).
+    expect(adapterA).not.toBe(adapterB);
+  });
+
+  it("getLlmConfigByProvider: tenant A cached config does not leak to tenant B", async () => {
+    const tA = await seedTenant("A");
+    const tB = await seedTenant("B");
+
+    await db.insert(llmConfig).values({
+      tenantId: tA.id,
+      providerName: "openai",
+      modelName: "gpt-4o-mini",
+      apiKeyEncrypted: encryptProviderKey(tA.id, "sk-A"),
+    });
+
+    // Warm A's cache for openai.
+    const a1 = await getLlmConfigByProvider({ db }, { tenantId: tA.id, provider: "openai" });
+    expect(a1?.apiKeyRef).toBe("sk-A");
+
+    // Tenant B has no openai row — must NOT see A's cached value.
+    const b1 = await getLlmConfigByProvider({ db }, { tenantId: tB.id, provider: "openai" });
+    expect(b1).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (c) Signal factory isolation — Step 9
+// ---------------------------------------------------------------------------
+
+describe("cross-tenant slice-2: signal factory", () => {
+  it("createSignalAdapter wires different decrypted keys per tenant (same provider)", async () => {
+    const tA = await seedTenant("A");
+    const tB = await seedTenant("B");
+
+    await db.insert(providerConfig).values({
+      tenantId: tA.id,
+      providerName: "exa",
+      enabled: true,
+      apiKeyEncrypted: encryptProviderKey(tA.id, "exa-A"),
+      thresholds: {},
+      settings: {},
+    });
+    await db.insert(providerConfig).values({
+      tenantId: tB.id,
+      providerName: "exa",
+      enabled: true,
+      apiKeyEncrypted: encryptProviderKey(tB.id, "exa-B"),
+      thresholds: {},
+      settings: {},
+    });
+
+    const cfgA = await getProviderConfig({ db }, { tenantId: tA.id, providerName: "exa" });
+    const cfgB = await getProviderConfig({ db }, { tenantId: tB.id, providerName: "exa" });
+
+    expect(cfgA?.apiKeyRef).toBe("exa-A");
+    expect(cfgB?.apiKeyRef).toBe("exa-B");
+    expect(cfgA?.apiKeyRef).not.toBe(cfgB?.apiKeyRef);
+
+    const adapterA = createSignalAdapter(cfgA as ProviderConfigDomain);
+    const adapterB = createSignalAdapter(cfgB as ProviderConfigDomain);
+    expect(adapterA.name).toBe("exa");
+    expect(adapterB.name).toBe("exa");
+    expect(adapterA).not.toBe(adapterB);
+  });
+
+  it("applyAllowBlockLists is per-tenant: A's block list does NOT affect B's filtering", () => {
+    // Build two evidence batches under two tenant IDs. Apply tenant-A's lists
+    // ONLY to tenant-A's evidence, and tenant-B's lists ONLY to tenant-B's
+    // — the function is pure + list-scoped, so the test is structural: A's
+    // block list cannot see B's evidence because nothing passes it there.
+    const trust = createTrustEvaluator();
+    const tenantAEvidence = [
+      {
+        id: "ev-a-1",
+        tenantId: "tenant-a",
+        source: "blocked-by-a.com",
+        timestamp: new Date(),
+        confidence: 0.8,
+        content: "A's signal",
+        isRestricted: false,
+      },
+    ];
+    const tenantBEvidence = [
+      {
+        id: "ev-b-1",
+        tenantId: "tenant-b",
+        source: "blocked-by-a.com", // Same domain — B does NOT block it.
+        timestamp: new Date(),
+        confidence: 0.8,
+        content: "B's signal",
+        isRestricted: false,
+      },
+    ];
+
+    const afterA = trust.applyAllowBlockLists(tenantAEvidence, {
+      block: ["blocked-by-a.com"],
+    });
+    const afterB = trust.applyAllowBlockLists(tenantBEvidence, {
+      // B has its own — unrelated — block list. Not affected by A's.
+      block: ["different-domain.com"],
+    });
+
+    expect(afterA.length).toBe(0); // A's block list rejected A's evidence.
+    expect(afterB.length).toBe(1); // B's evidence survived (A's block list is not applied).
+    expect(afterB[0]?.tenantId).toBe("tenant-b");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (d) Rate limiter isolation — Step 7
+// ---------------------------------------------------------------------------
+
+describe("cross-tenant slice-2: rate limiter", () => {
+  it("exhausting (tenantA, exa) does NOT affect (tenantA, openai)", async () => {
+    const limiter = createRateLimiter();
+    const cfg = { capacity: 2, refillRatePerSec: 0.001 };
+
+    // Drain tenant-a's exa bucket to zero.
+    expect((await limiter.acquire("tenant-a", "exa", cfg)).allowed).toBe(true);
+    expect((await limiter.acquire("tenant-a", "exa", cfg)).allowed).toBe(true);
+    expect((await limiter.acquire("tenant-a", "exa", cfg)).allowed).toBe(false);
+
+    // openai bucket for the SAME tenant is independent.
+    expect((await limiter.acquire("tenant-a", "openai", cfg)).allowed).toBe(true);
+    expect((await limiter.acquire("tenant-a", "openai", cfg)).allowed).toBe(true);
+  });
+
+  it("exhausting (tenantA, exa) does NOT affect (tenantB, exa)", async () => {
+    const limiter = createRateLimiter();
+    const cfg = { capacity: 2, refillRatePerSec: 0.001 };
+
+    expect((await limiter.acquire("tenant-a", "exa", cfg)).allowed).toBe(true);
+    expect((await limiter.acquire("tenant-a", "exa", cfg)).allowed).toBe(true);
+    expect((await limiter.acquire("tenant-a", "exa", cfg)).allowed).toBe(false);
+
+    // Tenant B's bucket has its full capacity.
+    expect((await limiter.acquire("tenant-b", "exa", cfg)).allowed).toBe(true);
+    expect((await limiter.acquire("tenant-b", "exa", cfg)).allowed).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (e) Observability redaction — Step 7
+// ---------------------------------------------------------------------------
+
+describe("cross-tenant slice-2: observability redaction", () => {
+  // Allow-list schema: exactly these fields are permitted in any log line.
+  const ALLOWED_FIELDS = new Set([
+    "correlationId",
+    "tenantId",
+    "provider",
+    "operation",
+    "phase",
+    "latencyMs",
+    "outcome",
+    "errorClass",
+    "tokenUsage",
+  ]);
+
+  it("withObservability emits only allow-listed fields; never leaks inner-fn payloads", async () => {
+    const captured: Array<Record<string, unknown>> = [];
+    __setLogSinkForTests((line) => captured.push(line));
+    try {
+      const successVal = { secretPayload: "THIS-MUST-NEVER-APPEAR-IN-LOGS" };
+      await withObservability(async () => successVal, {
+        tenantId: "tenant-a",
+        provider: "exa",
+        operation: "signal.fetch",
+      });
+
+      await expect(
+        withObservability(
+          async () => {
+            throw new Error("provider error with SECRET_URL_IN_MESSAGE");
+          },
+          {
+            tenantId: "tenant-a",
+            provider: "exa",
+            operation: "signal.fetch",
+          },
+        ),
+      ).rejects.toThrow(/SECRET_URL_IN_MESSAGE/);
+
+      expect(captured.length).toBeGreaterThanOrEqual(3);
+      for (const line of captured) {
+        // Schema: every field name MUST be in the allow-list.
+        for (const key of Object.keys(line)) {
+          expect(ALLOWED_FIELDS.has(key), `unexpected field in log line: ${key}`).toBe(true);
+        }
+        // Tenant belongs to this request.
+        expect(line.tenantId).toBe("tenant-a");
+      }
+      // Serialize all captured lines and assert no payload / error message leakage.
+      const all = JSON.stringify(captured);
+      expect(all).not.toContain("THIS-MUST-NEVER-APPEAR-IN-LOGS");
+      expect(all).not.toContain("SECRET_URL_IN_MESSAGE");
+      expect(all).not.toContain("secretPayload");
+    } finally {
+      __setLogSinkForTests(null);
+    }
+  });
+
+  it("consecutive requests for tenant A then B do not cross-leak identifiers", async () => {
+    const captured: Array<Record<string, unknown>> = [];
+    __setLogSinkForTests((line) => captured.push(line));
+    try {
+      await withObservability(async () => "ok-a", {
+        tenantId: "tenant-a",
+        provider: "openai",
+        operation: "llm.complete",
+      });
+      const splitIdx = captured.length;
+      await withObservability(async () => "ok-b", {
+        tenantId: "tenant-b",
+        provider: "openai",
+        operation: "llm.complete",
+      });
+
+      const aLines = captured.slice(0, splitIdx);
+      const bLines = captured.slice(splitIdx);
+      expect(aLines.length).toBeGreaterThan(0);
+      expect(bLines.length).toBeGreaterThan(0);
+
+      for (const line of aLines) {
+        expect(line.tenantId).toBe("tenant-a");
+        expect(line.tenantId).not.toBe("tenant-b");
+      }
+      for (const line of bLines) {
+        expect(line.tenantId).toBe("tenant-b");
+        expect(line.tenantId).not.toBe("tenant-a");
+        // B's log lines must not contain A's correlationId either.
+        const aCorrIds = new Set(aLines.map((l) => l.correlationId as string));
+        expect(aCorrIds.has(line.correlationId as string)).toBe(false);
+      }
+    } finally {
+      __setLogSinkForTests(null);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (f) Next-move zero-leak end-to-end — Step 13
+// ---------------------------------------------------------------------------
+
+describe("cross-tenant slice-2: next-move zero-leak short-circuit", () => {
+  function spyAdapter(): LlmAdapter & { complete: ReturnType<typeof vi.fn> } {
+    const adapter = {
+      provider: "openai",
+      complete: vi.fn(async () => ({
+        content: "SHOULD NEVER BE RETURNED",
+        usage: { inputTokens: 0, outputTokens: 0 },
+      })),
+    };
+    return adapter;
+  }
+
+  it("restricted snapshot → returns null AND LLM NEVER invoked", async () => {
+    const adapter = spyAdapter();
+    const snap = fixtureRestricted("tenant-a");
+    const out = await generateNextMove({ snapshot: snap, llmAdapter: adapter });
+    expect(out).toBeNull();
+    expect(adapter.complete).toHaveBeenCalledTimes(0);
+  });
+
+  it("ineligible snapshot → returns null AND LLM NEVER invoked", async () => {
+    const adapter = spyAdapter();
+    const snap = fixtureIneligible("tenant-a");
+    const out = await generateNextMove({ snapshot: snap, llmAdapter: adapter });
+    expect(out).toBeNull();
+    expect(adapter.complete).toHaveBeenCalledTimes(0);
+  });
+
+  it("empty snapshot → returns null AND LLM NEVER invoked", async () => {
+    const adapter = spyAdapter();
+    const snap = fixtureEmpty("tenant-a");
+    const out = await generateNextMove({ snapshot: snap, llmAdapter: adapter });
+    expect(out).toBeNull();
+    expect(adapter.complete).toHaveBeenCalledTimes(0);
+  });
+
+  it("no-reason snapshot (whitespace-only reasonToContact) → returns null AND LLM NEVER invoked", async () => {
+    const adapter = spyAdapter();
+    const snap = fixtureEmpty("tenant-a");
+    // Override: simulate an eligible-shaped snapshot whose reason is "   ".
+    const mutated = {
+      ...snap,
+      reasonToContact: "   ",
+      stateFlags: { ...snap.stateFlags, empty: false },
+    };
+    const out = await generateNextMove({
+      snapshot: mutated,
+      llmAdapter: adapter,
+    });
+    expect(out).toBeNull();
+    expect(adapter.complete).toHaveBeenCalledTimes(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (g) Cache key / tag isolation — Step 6
+// ---------------------------------------------------------------------------
+
+describe("cross-tenant slice-2: cache key isolation", () => {
+  it("invalidateTenantConfig(A) flushes only A's entries; B's cached configs survive", async () => {
+    const tA = await seedTenant("A");
+    const tB = await seedTenant("B");
+
+    await db.insert(providerConfig).values({
+      tenantId: tA.id,
+      providerName: "exa",
+      enabled: true,
+      apiKeyEncrypted: encryptProviderKey(tA.id, "exa-A"),
+      thresholds: {},
+      settings: {},
+    });
+    await db.insert(providerConfig).values({
+      tenantId: tB.id,
+      providerName: "exa",
+      enabled: true,
+      apiKeyEncrypted: encryptProviderKey(tB.id, "exa-B"),
+      thresholds: {},
+      settings: {},
+    });
+
+    // Warm both caches.
+    const a1 = await getProviderConfig({ db }, { tenantId: tA.id, providerName: "exa" });
+    const b1 = await getProviderConfig({ db }, { tenantId: tB.id, providerName: "exa" });
+    expect(a1?.apiKeyRef).toBe("exa-A");
+    expect(b1?.apiKeyRef).toBe("exa-B");
+
+    // Flip A's DB row to a new key, then invalidate ONLY A.
+    await db
+      .update(providerConfig)
+      .set({ apiKeyEncrypted: encryptProviderKey(tA.id, "exa-A-rotated") })
+      .where(and(eq(providerConfig.tenantId, tA.id), eq(providerConfig.providerName, "exa")));
+    await db
+      .update(providerConfig)
+      .set({ apiKeyEncrypted: encryptProviderKey(tB.id, "exa-B-rotated") })
+      .where(and(eq(providerConfig.tenantId, tB.id), eq(providerConfig.providerName, "exa")));
+
+    invalidateTenantConfig(tA.id);
+
+    // A re-reads and gets the rotated key.
+    const a2 = await getProviderConfig({ db }, { tenantId: tA.id, providerName: "exa" });
+    expect(a2?.apiKeyRef).toBe("exa-A-rotated");
+
+    // B's cached entry was NOT flushed — still returns the pre-rotation value.
+    const b2 = await getProviderConfig({ db }, { tenantId: tB.id, providerName: "exa" });
+    expect(b2?.apiKeyRef).toBe("exa-B"); // still cached; NOT B-rotated.
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (h) Guard-wrapper end-to-end cross-tenant sanity (rate limiter + observability)
+// ---------------------------------------------------------------------------
+
+describe("cross-tenant slice-2: guard-wrapper cross-leak check", () => {
+  it("wrapWithGuards + wrapSignalWithGuards keep tenants' rate-limit buckets independent", async () => {
+    const limiter = createRateLimiter();
+    const cfg = { capacity: 1, refillRatePerSec: 0.001 };
+
+    // Build identical inner adapters for both tenants.
+    const makeInner = (): LlmAdapter => ({
+      provider: "openai",
+      complete: vi.fn(async () => ({
+        content: "ok",
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })),
+    });
+
+    const wrappedA = wrapWithGuards(makeInner(), {
+      tenantId: "tenant-a",
+      rateLimiter: limiter,
+      rateLimitConfig: cfg,
+    });
+    const wrappedB = wrapWithGuards(makeInner(), {
+      tenantId: "tenant-b",
+      rateLimiter: limiter,
+      rateLimitConfig: cfg,
+    });
+
+    // Silence log output for this check.
+    __setLogSinkForTests(() => {});
+    try {
+      // A spends its 1-token capacity.
+      await wrappedA.complete("hi");
+      // A is now rate-limited — next call throws.
+      await expect(wrappedA.complete("hi")).rejects.toThrow(/rate-limited/);
+      // B is unaffected.
+      await expect(wrappedB.complete("hi")).resolves.toBeDefined();
+
+      // Same for signal side.
+      const innerSignalA: ProviderAdapter = {
+        name: "exa",
+        fetchSignals: vi.fn(async () => []),
+      };
+      const innerSignalB: ProviderAdapter = {
+        name: "exa",
+        fetchSignals: vi.fn(async () => []),
+      };
+      const wSignalA = wrapSignalWithGuards(innerSignalA, {
+        tenantId: "tenant-a",
+        rateLimiter: limiter,
+        rateLimitConfig: cfg,
+      });
+      const wSignalB = wrapSignalWithGuards(innerSignalB, {
+        tenantId: "tenant-b",
+        rateLimiter: limiter,
+        rateLimitConfig: cfg,
+      });
+
+      await wSignalA.fetchSignals("tenant-a", "Acme");
+      await expect(wSignalA.fetchSignals("tenant-a", "Acme")).rejects.toThrow(/rate-limited/);
+      await expect(wSignalB.fetchSignals("tenant-b", "Acme")).resolves.toBeDefined();
+    } finally {
+      __setLogSinkForTests(null);
+    }
   });
 });
