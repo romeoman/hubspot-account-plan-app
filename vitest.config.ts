@@ -8,6 +8,7 @@ export default defineConfig({
     // (packages/db schema tests, apps/api tenant middleware tests).
     // Run test files sequentially to prevent cross-file DELETE races.
     fileParallelism: false,
+    setupFiles: ["./vitest.setup.ts"],
     include: ["**/*.test.ts", "**/*.test.tsx"],
     exclude: [
       "**/node_modules/**",
