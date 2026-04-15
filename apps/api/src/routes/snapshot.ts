@@ -123,7 +123,21 @@ async function resolveLlmAdapter(
     return createMockLlmAdapter({ style: "short" });
   }
 
-  const real = createLlmAdapter(cfg);
+  // M24: construction can throw on malformed config (e.g., provider=custom
+  // with a missing endpoint_url, which is nullable in the schema). One
+  // misconfigured tenant MUST NOT 500 the route — degrade to mock + log.
+  let real: LlmAdapter;
+  try {
+    real = createLlmAdapter(cfg);
+  } catch (err) {
+    console.error("llm_adapter_construction_failed", {
+      tenantId,
+      provider: cfg.provider,
+      errorClass: err instanceof Error ? err.constructor.name : typeof err,
+    });
+    return createMockLlmAdapter({ style: "short" });
+  }
+
   return wrapWithGuards(real, {
     tenantId,
     correlationId,
@@ -168,6 +182,15 @@ type SignalResolution = {
   allowList?: string[];
   /** Block-list from the resolved provider row; undefined on mock fallback. */
   blockList?: string[];
+  /**
+   * Thresholds from the resolved provider row; undefined on mock fallback so
+   * the caller can fall back to `resolveThresholds()` (the legacy
+   * `mock-signal` probe) or {@link DEFAULT_THRESHOLDS}. CodeRabbit M1:
+   * without this, the route always used `mock-signal` thresholds even when
+   * a real provider with tenant-specific thresholds was selected, causing
+   * trust suppression + dominant-signal selection to run with stale values.
+   */
+  thresholds?: ThresholdConfig;
 };
 
 async function resolveSignalAdapter(
@@ -200,7 +223,29 @@ async function resolveSignalAdapter(
     return { adapter: createMockSignalAdapter({ fixture }) };
   }
 
-  const real = createSignalAdapter(chosen);
+  // M4: createSignalAdapter can throw at construction time — e.g., if a
+  // future provider (hubspot-enrichment / news) is added back to the probe
+  // list without injecting the required deps, or if a provider requires a
+  // non-null field that's nullable in the schema. Fall back to mock rather
+  // than 500 the snapshot response.
+  let real: ProviderAdapter;
+  try {
+    real = createSignalAdapter(chosen);
+  } catch (err) {
+    console.error("signal_adapter_construction_failed", {
+      tenantId,
+      provider: chosen.name,
+      errorClass: err instanceof Error ? err.constructor.name : typeof err,
+    });
+    await withObservability(async () => undefined, {
+      tenantId,
+      provider: "mock",
+      operation: "signal.fetch",
+      correlationId,
+    });
+    return { adapter: createMockSignalAdapter({ fixture }) };
+  }
+
   const adapter = wrapSignalWithGuards(real, {
     tenantId,
     correlationId,
@@ -210,6 +255,7 @@ async function resolveSignalAdapter(
     adapter,
     allowList: chosen.allowList,
     blockList: chosen.blockList,
+    thresholds: isValidThresholds(chosen.thresholds) ? chosen.thresholds : undefined,
   };
 }
 
@@ -307,10 +353,15 @@ snapshotRoutes.post("/:companyId", async (c) => {
 
   try {
     const db = getDb();
-    const thresholds = await resolveThresholds(db, tenantId);
     const correlationId = c.get("correlationId");
     const llmAdapter = await resolveLlmAdapter(db, tenantId, correlationId);
     const signal = await resolveSignalAdapter(db, tenantId, fixture, correlationId);
+    // M1: prefer thresholds from the resolved signal provider row when a
+    // real provider was selected. Only fall back to the legacy mock-signal
+    // probe when the signal resolution landed on the mock (no real row
+    // matched). This keeps tenant-specific thresholds in sync with the
+    // adapter actually fetching their evidence.
+    const thresholds = signal.thresholds ?? (await resolveThresholds(db, tenantId));
     const snapshot = await assembleSnapshot(
       {
         db,
@@ -321,6 +372,10 @@ snapshotRoutes.post("/:companyId", async (c) => {
         thresholds,
         allowList: signal.allowList,
         blockList: signal.blockList,
+        // M13: trace continuity — the assembler threads this into the
+        // next-move observability ctx so the whole request chain shares
+        // one correlation ID in logs.
+        correlationId,
       },
       { tenantId, companyId },
     );

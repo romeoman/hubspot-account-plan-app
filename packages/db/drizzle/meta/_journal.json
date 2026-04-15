@@ -29,6 +29,13 @@
       "when": 1776266131578,
       "tag": "0003_broad_ben_urich",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1776300000000,
+      "tag": "0004_key_version_positive_check",
+      "breakpoints": true
     }
   ]
 }

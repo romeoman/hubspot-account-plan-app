@@ -41,6 +41,11 @@ const wireSnapshotSchema = z.object({
   stateFlags: stateFlagsSchema,
   trustScore: z.number().min(0).max(1).optional(),
   createdAt: z.coerce.date(),
+  // Slice 2 Step 13 — LLM-generated recommended next action. Zod strips
+  // unknown keys by default, so missing this declaration silently drops
+  // `nextMove` from the parsed snapshot and hides `NextMoveCard` even
+  // when the backend returned a valid recommendation. (CodeRabbit M2 / P1.)
+  nextMove: z.string().optional(),
 }) satisfies z.ZodType<Snapshot, unknown>;
 
 /**

@@ -196,11 +196,22 @@ function requestUrl(rawUrl: string): string {
 export function hubspotSignatureMiddleware(): MiddlewareHandler<{
   Variables: HubSpotSignatureVariables;
 }> {
-  // Fail fast at construction if the env is not configured. Tests that mount
-  // the middleware always have `.env` loaded by `vitest.setup.ts`.
-  getClientSecret();
+  // Defer env validation to first request. Validating at construction-time
+  // throws during module import in any context that hasn't loaded .env yet
+  // (e.g., a future standalone utility script importing this for its types).
+  // vitest.setup.ts still loads defaults for test runs, so tests see a valid
+  // secret on their first mock request. (CodeRabbit C1.)
+  let secretValidated = false;
 
   return async (c, next) => {
+    if (!secretValidated) {
+      // Throws with a clear "HUBSPOT_CLIENT_SECRET not set" error if missing.
+      // The exception propagates to Hono's default 500 handler — operators
+      // see it on the first real request, which is what we want for a
+      // misconfigured deployment.
+      getClientSecret();
+      secretValidated = true;
+    }
     // --- Test bypass (gated on BOTH NODE_ENV=test AND ALLOW_TEST_AUTH=true).
     const bypassEligible =
       process.env.NODE_ENV === "test" && process.env.ALLOW_TEST_AUTH === "true";
