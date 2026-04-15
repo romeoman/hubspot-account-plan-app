@@ -267,6 +267,61 @@ describe("TrustEvaluator.applySuppression — stale / lowConfidence / degraded",
   });
 });
 
+describe("TrustEvaluator.applyAllowBlockLists", () => {
+  const evaluator = createTrustEvaluator();
+
+  it("allow-list permits matching domains and drops non-matches", () => {
+    const a = ev({ id: "ev-a", source: "reuters.com" });
+    const b = ev({ id: "ev-b", source: "shady.example" });
+    const out = evaluator.applyAllowBlockLists([a, b], {
+      allow: ["reuters.com"],
+    });
+    expect(out.map((e) => e.id)).toEqual(["ev-a"]);
+  });
+
+  it("block-list drops matching domains and allows non-matches", () => {
+    const a = ev({ id: "ev-a", source: "reuters.com" });
+    const b = ev({ id: "ev-b", source: "shady.example" });
+    const out = evaluator.applyAllowBlockLists([a, b], {
+      block: ["shady.example"],
+    });
+    expect(out.map((e) => e.id)).toEqual(["ev-a"]);
+  });
+
+  it("block wins over allow when a domain appears in both lists", () => {
+    const a = ev({ id: "ev-a", source: "evil.com" });
+    const out = evaluator.applyAllowBlockLists([a], {
+      allow: ["evil.com"],
+      block: ["evil.com"],
+    });
+    expect(out).toEqual([]);
+  });
+
+  it("block subdomain match: `example.com` blocks `news.example.com`", () => {
+    const a = ev({ id: "ev-a", source: "news.example.com" });
+    const out = evaluator.applyAllowBlockLists([a], { block: ["example.com"] });
+    expect(out).toEqual([]);
+  });
+
+  it("allow subdomain match: `example.com` permits `news.example.com`", () => {
+    const a = ev({ id: "ev-a", source: "news.example.com" });
+    const out = evaluator.applyAllowBlockLists([a], { allow: ["example.com"] });
+    expect(out.map((e) => e.id)).toEqual(["ev-a"]);
+  });
+
+  it("empty/missing lists are a no-op", () => {
+    const a = ev({ id: "ev-a", source: "anything.com" });
+    expect(evaluator.applyAllowBlockLists([a], {})).toEqual([a]);
+    expect(evaluator.applyAllowBlockLists([a], { allow: [], block: [] })).toEqual([a]);
+  });
+
+  it("is case-insensitive on source matching", () => {
+    const a = ev({ id: "ev-a", source: "News.Example.COM" });
+    const out = evaluator.applyAllowBlockLists([a], { block: ["example.com"] });
+    expect(out).toEqual([]);
+  });
+});
+
 describe("TrustEvaluator — tenant-specific thresholds produce different outcomes", () => {
   const evaluator = createTrustEvaluator();
   const now = new Date("2026-04-15T00:00:00Z");

@@ -80,6 +80,8 @@ type ProviderRow = {
   enabled: boolean;
   apiKeyEncrypted: string | null;
   thresholds: unknown;
+  allowList: unknown;
+  blockList: unknown;
 };
 type LlmRow = {
   providerName: string;
@@ -180,6 +182,20 @@ function parseThresholds(raw: unknown): Partial<ThresholdConfig> {
 }
 
 /**
+ * Parse a jsonb column expected to contain `string[]`. Returns `undefined`
+ * if the column is null/missing/empty/malformed so callers can treat
+ * "not configured" and "configured empty" as the same no-op.
+ *
+ * Non-string entries are dropped defensively (a malformed row shouldn't
+ * crash the pipeline or silently block all evidence).
+ */
+function parseStringArray(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out = raw.filter((v): v is string => typeof v === "string" && v.length > 0);
+  return out.length > 0 ? out : undefined;
+}
+
+/**
  * Deep-freeze a config object. We chose freeze-on-set over clone-on-read:
  *  - one allocation per DB read instead of one per cache hit
  *  - immediately crashes buggy callers that try to mutate shared state
@@ -255,6 +271,8 @@ export async function getProviderConfig(
       enabled: providerConfig.enabled,
       apiKeyEncrypted: providerConfig.apiKeyEncrypted,
       thresholds: providerConfig.thresholds,
+      allowList: providerConfig.allowList,
+      blockList: providerConfig.blockList,
     })
     .from(providerConfig)
     .where(
@@ -277,11 +295,15 @@ export async function getProviderConfig(
       ...DEFAULT_THRESHOLDS,
       ...parseThresholds(row.thresholds),
     };
+    const allowList = parseStringArray(row.allowList);
+    const blockList = parseStringArray(row.blockList);
     result = {
       name: row.providerName,
       enabled: row.enabled,
       apiKeyRef,
       thresholds,
+      ...(allowList ? { allowList } : {}),
+      ...(blockList ? { blockList } : {}),
     };
   }
 

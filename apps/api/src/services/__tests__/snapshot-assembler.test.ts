@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
+import { createEvidence, type Evidence } from "@hap/config";
 import { createDatabase, tenants } from "@hap/db";
 import { like } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { createMockLlmAdapter } from "../../adapters/mock-llm-adapter";
 import { createMockSignalAdapter } from "../../adapters/mock-signal-adapter";
+import type { ProviderAdapter } from "../../adapters/provider-adapter";
 import type { CompanyPropertyFetcher } from "../eligibility";
 import { clearEligibilityCache } from "../eligibility";
 import type { ContactFetcher } from "../people-selector";
@@ -306,5 +308,144 @@ describe("assembleSnapshot", () => {
     for (const ev of snap.evidence) {
       expect(ev.tenantId).toBe(tenantId);
     }
+  });
+
+  it("hygiene pipeline: dedup + staleness + block-list produce final survivor set with stale flag", async () => {
+    const tenantId = await seedTenant();
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const now = new Date();
+    // Build a mixed batch:
+    //   - A: fresh, kept
+    //   - B: dup of A (same id + content after prefix-strip) — drops
+    //   - C: stale (far outside freshnessMaxDays) — drops; sets stale flag
+    //   - D: fresh but blocked-domain — drops
+    //   - E: fresh, kept
+    const evA: Evidence = createEvidence(tenantId, {
+      id: "exa:https://good.com/a",
+      source: "good.com",
+      confidence: 0.9,
+      content: "signal A content",
+      timestamp: new Date(now.getTime() - 2 * DAY_MS),
+      isRestricted: false,
+    });
+    const evB: Evidence = createEvidence(tenantId, {
+      id: "news:https://good.com/a",
+      source: "good.com",
+      confidence: 0.9,
+      content: "signal A content", // identical content → dedup with A
+      timestamp: new Date(now.getTime() - 1 * DAY_MS),
+      isRestricted: false,
+    });
+    const evC: Evidence = createEvidence(tenantId, {
+      id: "exa:https://good.com/c-stale",
+      source: "good.com",
+      confidence: 0.9,
+      content: "aged signal",
+      timestamp: new Date(now.getTime() - 200 * DAY_MS),
+      isRestricted: false,
+    });
+    const evD: Evidence = createEvidence(tenantId, {
+      id: "exa:https://bad.example.com/d",
+      source: "bad.example.com",
+      confidence: 0.9,
+      content: "blocked signal",
+      timestamp: new Date(now.getTime() - 1 * DAY_MS),
+      isRestricted: false,
+    });
+    const evE: Evidence = createEvidence(tenantId, {
+      id: "exa:https://good.com/e",
+      source: "good.com",
+      confidence: 0.9,
+      content: "signal E content",
+      timestamp: new Date(now.getTime() - 3 * DAY_MS),
+      isRestricted: false,
+    });
+    const stubAdapter: ProviderAdapter = {
+      name: "stub-hygiene",
+      async fetchSignals() {
+        return [evA, evB, evC, evD, evE];
+      },
+    };
+    const snap = await assembleSnapshot(
+      {
+        db,
+        providerAdapter: stubAdapter,
+        llmAdapter: createMockLlmAdapter(),
+        propertyFetcher: ELIGIBLE,
+        contactFetcher: threeContacts,
+        thresholds: THRESHOLDS,
+        blockList: ["bad.example.com"],
+      },
+      { tenantId, companyId: "co-hygiene" },
+    );
+    // A, C (stale-but-kept per Slice 1 contract), and E survive. B is
+    // deduped (cross-provider dup of A). D is blocked by block-list.
+    // The `stale` flag fires because C is past the freshness threshold.
+    expect(snap.evidence.map((e) => e.id).sort()).toEqual([
+      "exa:https://good.com/a",
+      "exa:https://good.com/c-stale",
+      "exa:https://good.com/e",
+    ]);
+    expect(snap.stateFlags.stale).toBe(true);
+    expect(snap.stateFlags.restricted).toBe(false);
+    // D must be entirely gone — blocked domains leave no trace.
+    const serialized = JSON.stringify(snap);
+    expect(serialized).not.toContain("bad.example.com");
+    expect(serialized).not.toContain("blocked signal");
+  });
+
+  it("restricted state zero-leak holds with hygiene pipeline active", async () => {
+    const tenantId = await seedTenant();
+    // Signal batch has 10 rows, one of which is restricted. Assembler must
+    // short-circuit BEFORE dedup so no restricted metadata leaks into the
+    // hygiene stages or the final snapshot. Only `restricted=true` flag.
+    const now = new Date();
+    const rows: Evidence[] = [];
+    for (let i = 0; i < 9; i++) {
+      rows.push(
+        createEvidence(tenantId, {
+          id: `exa:https://site.com/${i}`,
+          source: "site.com",
+          confidence: 0.9,
+          content: `content ${i}`,
+          timestamp: now,
+          isRestricted: false,
+        }),
+      );
+    }
+    rows.push(
+      createEvidence(tenantId, {
+        id: "exa:https://restricted.example/secret",
+        source: "restricted.example",
+        confidence: 0.9,
+        content: "SECRET_PAYLOAD",
+        timestamp: now,
+        isRestricted: true,
+      }),
+    );
+    const stubAdapter: ProviderAdapter = {
+      name: "stub-restricted",
+      async fetchSignals() {
+        return rows;
+      },
+    };
+    const snap = await assembleSnapshot(
+      {
+        db,
+        providerAdapter: stubAdapter,
+        llmAdapter: createMockLlmAdapter(),
+        propertyFetcher: ELIGIBLE,
+        contactFetcher: threeContacts,
+        thresholds: THRESHOLDS,
+      },
+      { tenantId, companyId: "co-restricted" },
+    );
+    expect(snap.stateFlags.restricted).toBe(true);
+    expect(snap.evidence).toEqual([]);
+    expect(snap.people).toEqual([]);
+    expect(snap.reasonToContact).toBeUndefined();
+    const serialized = JSON.stringify(snap);
+    expect(serialized).not.toContain("SECRET_PAYLOAD");
+    expect(serialized).not.toContain("restricted.example");
   });
 });

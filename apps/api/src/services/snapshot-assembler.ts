@@ -33,6 +33,8 @@ import type { Database } from "@hap/db";
 import type { LlmAdapter } from "../adapters/llm-adapter";
 import type { ProviderAdapter } from "../adapters/provider-adapter";
 import { type CompanyPropertyFetcher, checkEligibility } from "./eligibility";
+import { dedupEvidence } from "./hygiene/dedup";
+import { sweepStaleness } from "./hygiene/staleness-sweeper";
 import { type ContactFetcher, fetchContacts, rankContacts, selectPeople } from "./people-selector";
 import { extractDominantSignal, generateReasonText } from "./reason-generator";
 import { createTrustEvaluator, type TrustEvaluator } from "./trust";
@@ -49,6 +51,16 @@ export type AssembleSnapshotDeps = {
    * tests may inject a stub to exercise specific suppression paths.
    */
   trustEvaluator?: TrustEvaluator;
+  /**
+   * Optional per-provider allow-list of source domains. Passed through to
+   * the trust evaluator's {@link TrustEvaluator.applyAllowBlockLists} hook
+   * AFTER dedup + staleness but BEFORE the trust suppression flow. Subdomain
+   * matching via `endsWith` is the responsibility of that method. Restricted
+   * state still short-circuits earlier.
+   */
+  allowList?: string[];
+  /** Optional per-provider block-list; block always wins over allow. */
+  blockList?: string[];
   /** Optional clock override for deterministic tests. */
   now?: Date;
 };
@@ -116,16 +128,16 @@ export async function assembleSnapshot(
     signals = [];
   }
 
-  // 3. Trust + suppression.
-  //    - restricted rows are stripped before any downstream stage sees them.
-  //    - stale / low-confidence / degraded-source flags flow into final flags.
   const trust = deps.trustEvaluator ?? createTrustEvaluator();
-  const suppression = trust.applySuppression(signals, deps.thresholds, now);
 
-  // Zero-leak: if ANY restricted evidence was present, the response must not
-  // contain any evidence, people, reason, or trustScore derived from ANY
-  // source in this request. The only signal surfaced is `restricted=true`.
-  if (suppression.stateFlags.restricted) {
+  // 3a. Restricted-state zero-leak SHORT-CIRCUIT — runs BEFORE any hygiene
+  //     stage so no restricted row can leak into dedup / staleness /
+  //     allow-block logs, caches, or intermediate buffers. If ANY restricted
+  //     evidence was present, the response must not contain any evidence,
+  //     people, reason, or trustScore derived from ANY source in this
+  //     request. The only signal surfaced is `restricted=true`.
+  const hasRestricted = signals.some((ev) => ev.isRestricted === true);
+  if (hasRestricted) {
     return createSnapshot(tenantId, {
       companyId,
       eligibilityState: "eligible",
@@ -138,8 +150,32 @@ export async function assembleSnapshot(
     });
   }
 
+  // 3b. Hygiene: dedup → staleness classification → per-provider allow/block.
+  //     - dedup collapses cross-provider duplicates.
+  //     - sweepStaleness CLASSIFIES rows into fresh/stale. We pass both
+  //       forward to applySuppression (Slice 1 contract: stale rows are
+  //       SUPPRESSED via flag, not dropped from `filteredEvidence`). We do,
+  //       however, track `sawStale` defensively so the flag still fires even
+  //       if allow/block drops every stale row afterward.
+  //     - allow/block runs on the deduped set — the tenant's explicit
+  //       domain policy applies uniformly regardless of age.
+  //     All stages are order-preserving within the survivor set.
+  const deduped = dedupEvidence(signals);
+  const swept = sweepStaleness(deduped, deps.thresholds, () => now);
+  const sawStale = swept.stale.length > 0;
+  const afterAllowBlock = trust.applyAllowBlockLists(deduped, {
+    allow: deps.allowList,
+    block: deps.blockList,
+  });
+
+  // 3c. Trust + suppression. `restricted` cannot fire here — we already
+  //     returned above. Remaining flags (lowConfidence / degraded / empty)
+  //     come from this call.
+  const suppression = trust.applySuppression(afterAllowBlock, deps.thresholds, now);
+
   // Merge transport-level degraded flag with source-validation degraded flag.
   const degraded = suppression.stateFlags.degraded || transportDegraded;
+  const stale = suppression.stateFlags.stale || sawStale;
 
   // 4. Dominant signal extraction (from filtered evidence only).
   const dominant = extractDominantSignal(suppression.filteredEvidence, deps.thresholds, now);
@@ -154,7 +190,7 @@ export async function assembleSnapshot(
       stateFlags: createStateFlags({
         empty: true,
         degraded,
-        stale: suppression.stateFlags.stale,
+        stale,
         lowConfidence: suppression.stateFlags.lowConfidence,
       }),
       createdAt: now,
@@ -177,7 +213,7 @@ export async function assembleSnapshot(
     evidence: suppression.filteredEvidence,
     stateFlags: createStateFlags({
       degraded,
-      stale: suppression.stateFlags.stale,
+      stale,
       lowConfidence: suppression.stateFlags.lowConfidence,
       empty: false,
     }),

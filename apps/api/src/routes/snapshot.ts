@@ -155,12 +155,20 @@ const REAL_SIGNAL_PROVIDERS = ["exa", "hubspot-enrichment", "news"] as const;
  * selecting `hubspot-enrichment` or `news` will throw at `fetchSignals` time
  * (Slice 3 deferral stubs) and the assembler will mark the snapshot degraded.
  */
+type SignalResolution = {
+  adapter: ProviderAdapter;
+  /** Allow-list from the resolved provider row; undefined on mock fallback. */
+  allowList?: string[];
+  /** Block-list from the resolved provider row; undefined on mock fallback. */
+  blockList?: string[];
+};
+
 async function resolveSignalAdapter(
   db: Database,
   tenantId: string,
   fixture: MockSignalFixture,
   correlationId: string | undefined,
-): Promise<ProviderAdapter> {
+): Promise<SignalResolution> {
   let chosen: ProviderConfig | null = null;
   for (const providerName of REAL_SIGNAL_PROVIDERS) {
     try {
@@ -182,15 +190,20 @@ async function resolveSignalAdapter(
       operation: "signal.fetch",
       correlationId,
     });
-    return createMockSignalAdapter({ fixture });
+    return { adapter: createMockSignalAdapter({ fixture }) };
   }
 
   const real = createSignalAdapter(chosen);
-  return wrapSignalWithGuards(real, {
+  const adapter = wrapSignalWithGuards(real, {
     tenantId,
     correlationId,
     rateLimiter: getProcessRateLimiter(),
   });
+  return {
+    adapter,
+    allowList: chosen.allowList,
+    blockList: chosen.blockList,
+  };
 }
 
 /**
@@ -290,15 +303,17 @@ snapshotRoutes.post("/:companyId", async (c) => {
     const thresholds = await resolveThresholds(db, tenantId);
     const correlationId = c.get("correlationId");
     const llmAdapter = await resolveLlmAdapter(db, tenantId, correlationId);
-    const signalAdapter = await resolveSignalAdapter(db, tenantId, fixture, correlationId);
+    const signal = await resolveSignalAdapter(db, tenantId, fixture, correlationId);
     const snapshot = await assembleSnapshot(
       {
         db,
-        providerAdapter: signalAdapter,
+        providerAdapter: signal.adapter,
         llmAdapter,
         propertyFetcher: pickPropertyFetcher(mode),
         contactFetcher: fixtureContactFetcher,
         thresholds,
+        allowList: signal.allowList,
+        blockList: signal.blockList,
       },
       { tenantId, companyId },
     );

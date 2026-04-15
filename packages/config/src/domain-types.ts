@@ -127,6 +127,18 @@ export type ProviderConfig = {
   enabled: boolean;
   apiKeyRef: string;
   thresholds: ThresholdConfig;
+  /**
+   * Optional per-provider allow-list of source domains. When non-empty,
+   * only evidence whose `source` matches one of these entries (subdomain
+   * match via `endsWith`) flows past the hygiene stage.
+   */
+  allowList?: string[];
+  /**
+   * Optional per-provider block-list of source domains. When non-empty,
+   * any evidence whose `source` matches one of these entries (subdomain
+   * match via `endsWith`) is dropped. Block always wins over allow.
+   */
+  blockList?: string[];
 };
 
 /**

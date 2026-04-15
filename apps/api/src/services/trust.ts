@@ -78,10 +78,30 @@ export type SuppressionResult = {
   warnings: string[];
 };
 
+export type AllowBlockLists = {
+  allow?: string[];
+  block?: string[];
+};
+
 export interface TrustEvaluator {
   evaluateFreshness(evidence: Evidence, thresholds: ThresholdConfig, now?: Date): FreshnessResult;
   evaluateConfidence(evidence: Evidence, thresholds: ThresholdConfig): ConfidenceResult;
   validateSource(evidence: Evidence): SourceValidationResult;
+  /**
+   * Apply per-provider allow/block lists to an Evidence[].
+   *
+   * - `block` runs first: any `evidence.source` ending with a blocked entry
+   *   (subdomain match, e.g. `news.example.com` blocked by `example.com`) is
+   *   dropped.
+   * - `allow` runs second: if provided (and non-empty), only evidence whose
+   *   source matches (via the same `endsWith` rule) is kept.
+   * - Both empty / missing → no-op.
+   * - Block ALWAYS wins over allow.
+   *
+   * Restricted-state short-circuit is the CALLER's responsibility. This
+   * method operates purely on the array it's given.
+   */
+  applyAllowBlockLists(evidence: Evidence[], lists: AllowBlockLists): Evidence[];
   applySuppression(
     evidence: Evidence[],
     thresholds: ThresholdConfig,
@@ -152,6 +172,27 @@ export function createTrustEvaluator(): TrustEvaluator {
     return { isValid: true };
   }
 
+  function applyAllowBlockLists(evidence: Evidence[], lists: AllowBlockLists): Evidence[] {
+    const block = lists.block?.filter((s) => typeof s === "string" && s.length > 0) ?? [];
+    const allow = lists.allow?.filter((s) => typeof s === "string" && s.length > 0) ?? [];
+    if (block.length === 0 && allow.length === 0) return evidence;
+
+    const matches = (source: string, patterns: string[]): boolean => {
+      const src = source.toLowerCase();
+      return patterns.some((p) => src === p.toLowerCase() || src.endsWith(`.${p.toLowerCase()}`));
+    };
+
+    const out: Evidence[] = [];
+    for (const ev of evidence) {
+      const source = typeof ev.source === "string" ? ev.source : "";
+      // Block always wins.
+      if (block.length > 0 && matches(source, block)) continue;
+      if (allow.length > 0 && !matches(source, allow)) continue;
+      out.push(ev);
+    }
+    return out;
+  }
+
   function applySuppression(
     evidence: Evidence[],
     thresholds: ThresholdConfig,
@@ -214,6 +255,7 @@ export function createTrustEvaluator(): TrustEvaluator {
     evaluateFreshness,
     evaluateConfidence,
     validateSource,
+    applyAllowBlockLists,
     applySuppression,
   };
 }
