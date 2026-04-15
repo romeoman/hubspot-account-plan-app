@@ -506,6 +506,8 @@ Build the security gate. Nothing else ships before this merges and passes indepe
 - Verify `pnpm test && pnpm typecheck`
 - Commit: `feat(adapters): add Exa, HubSpot enrichment, and news signal adapters`
 
+> Slice 1 had only the ProviderAdapter interface and a single mock — no real provider adapters shipped. Step 9 ships the factory + real Exa adapter; HubSpot enrichment and news are scaffolded with `@todo Slice 3` stubs that throw on call. HubSpot enrichment is blocked on `HUBSPOT_PRIVATE_APP_TOKEN` provisioning (Step 14 will need it anyway). News is blocked on choosing a news provider + provisioning its key.
+
 ### 10. Hygiene — Dedup + Staleness Sweeper + Trust Allow-List
 
 - **Task ID**: hygiene-layers

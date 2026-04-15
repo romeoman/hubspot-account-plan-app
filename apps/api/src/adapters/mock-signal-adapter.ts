@@ -6,12 +6,12 @@
  * snapshot route (via `?state=` fixture selection in Slice 1) to exercise
  * every state-flag branch without hitting real provider endpoints.
  *
- * Real adapters (Exa, HubSpot, news, enrichment) are Slice 2 and plug into the
- * same {@link ProviderAdapter} interface so the call sites never change.
- *
- * @todo Slice 2: replace with real adapter factory — one factory per provider
- * that accepts a resolved `ProviderConfig` (including decrypted `apiKeyRef`)
- * and honors tenant-specific thresholds. Do not expand this mock further.
+ * Real adapters plug into the same {@link ProviderAdapter} interface so the
+ * call sites never change. Slice 2 Step 9 ships the factory
+ * ({@link ./signal/factory.createSignalAdapter}) + real Exa adapter; HubSpot
+ * enrichment and news adapters are scaffolded as Slice 3 deferral stubs. This
+ * mock remains as the route-level fallback for tenants that predate the
+ * Slice 2 provider_config seed script (Step 14 removes the fallback).
  */
 
 import { createEvidence, type Evidence } from "@hap/config";

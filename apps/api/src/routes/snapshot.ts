@@ -1,4 +1,4 @@
-import type { LlmProviderConfig, ThresholdConfig } from "@hap/config";
+import type { LlmProviderConfig, ProviderConfig, ThresholdConfig } from "@hap/config";
 import { createDatabase, type Database } from "@hap/db";
 import { Hono } from "hono";
 import { createLlmAdapter, wrapWithGuards } from "../adapters/llm/factory";
@@ -9,6 +9,8 @@ import {
   isMockSignalFixture,
   type MockSignalFixture,
 } from "../adapters/mock-signal-adapter";
+import type { ProviderAdapter } from "../adapters/provider-adapter";
+import { createSignalAdapter, wrapSignalWithGuards } from "../adapters/signal/factory";
 import { DEFAULT_THRESHOLDS, getLlmConfig, getProviderConfig } from "../lib/config-resolver";
 import { withObservability } from "../lib/observability";
 import { getProcessRateLimiter } from "../lib/rate-limiter";
@@ -130,6 +132,68 @@ async function resolveLlmAdapter(
 }
 
 /**
+ * Real signal providers Slice 2 can resolve from `provider_config` rows.
+ * Probed in listed order; first match wins. Slice 2 ships single-provider
+ * per snapshot — Step 10 hygiene merges multiple when multiple rows exist.
+ */
+const REAL_SIGNAL_PROVIDERS = ["exa", "hubspot-enrichment", "news"] as const;
+
+/**
+ * Resolve the signal adapter for a tenant.
+ *
+ * Mirrors {@link resolveLlmAdapter}. Probes `provider_config` for each of the
+ * {@link REAL_SIGNAL_PROVIDERS} in order; on the first hit, builds the real
+ * adapter via {@link createSignalAdapter} and wraps it with
+ * {@link wrapSignalWithGuards} (rate limiter + observability). On no hit or
+ * any resolver error, falls back to the Slice 1 {@link createMockSignalAdapter}
+ * so fixture-driven behavior stays identical for tenants that predate the
+ * Slice 2 seed script (Step 14). A structured `outcome=fallback` log line is
+ * emitted so operators can see when a fallback fires.
+ *
+ * Slice 3: once every tenant has a provisioned `provider_config` row, the
+ * fallback is removed. Note: Slice 2 only wires the `exa` branch end-to-end;
+ * selecting `hubspot-enrichment` or `news` will throw at `fetchSignals` time
+ * (Slice 3 deferral stubs) and the assembler will mark the snapshot degraded.
+ */
+async function resolveSignalAdapter(
+  db: Database,
+  tenantId: string,
+  fixture: MockSignalFixture,
+  correlationId: string | undefined,
+): Promise<ProviderAdapter> {
+  let chosen: ProviderConfig | null = null;
+  for (const providerName of REAL_SIGNAL_PROVIDERS) {
+    try {
+      const cfg = await getProviderConfig({ db }, { tenantId, providerName });
+      if (cfg?.enabled) {
+        chosen = cfg;
+        break;
+      }
+    } catch {
+      // Resolver failure must not break the snapshot path — try the next
+      // provider, ultimately falling back to the mock adapter below.
+    }
+  }
+
+  if (!chosen) {
+    await withObservability(async () => undefined, {
+      tenantId,
+      provider: "mock",
+      operation: "signal.fetch",
+      correlationId,
+    });
+    return createMockSignalAdapter({ fixture });
+  }
+
+  const real = createSignalAdapter(chosen);
+  return wrapSignalWithGuards(real, {
+    tenantId,
+    correlationId,
+    rateLimiter: getProcessRateLimiter(),
+  });
+}
+
+/**
  * V1 fixture property fetchers. Selected via `?eligibility=` query param so
  * the route can produce the eligible / ineligible / unconfigured snapshot
  * shapes end-to-end. Slice 2 replaces these with a real HubSpot CRM property
@@ -226,10 +290,11 @@ snapshotRoutes.post("/:companyId", async (c) => {
     const thresholds = await resolveThresholds(db, tenantId);
     const correlationId = c.get("correlationId");
     const llmAdapter = await resolveLlmAdapter(db, tenantId, correlationId);
+    const signalAdapter = await resolveSignalAdapter(db, tenantId, fixture, correlationId);
     const snapshot = await assembleSnapshot(
       {
         db,
-        providerAdapter: createMockSignalAdapter({ fixture }),
+        providerAdapter: signalAdapter,
         llmAdapter,
         propertyFetcher: pickPropertyFetcher(mode),
         contactFetcher: fixtureContactFetcher,

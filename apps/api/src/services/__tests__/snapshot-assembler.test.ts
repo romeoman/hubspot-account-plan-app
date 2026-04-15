@@ -224,6 +224,70 @@ describe("assembleSnapshot", () => {
     expect(snap.tenantId).toBe(tenantId);
   });
 
+  it("uses a factory-built Exa signal adapter when one is injected (Step 9)", async () => {
+    const tenantId = await seedTenant();
+    // Simulate route-level wiring: the route resolves the tenant's
+    // provider_config (name='exa'), builds an Exa adapter via the signal
+    // factory with an injected fake fetch, wraps it with rate-limiter +
+    // observability, and passes the resulting adapter into the assembler.
+    // The assembler uses it verbatim.
+    const { createSignalAdapter, wrapSignalWithGuards } = await import(
+      "../../adapters/signal/factory"
+    );
+    const { RateLimiter } = await import("../../lib/rate-limiter");
+    const fakeFetch: typeof fetch = async () =>
+      new Response(
+        JSON.stringify({
+          requestId: "cassette-step9",
+          results: [
+            {
+              id: "https://example.com/acme-funding",
+              url: "https://example.com/acme-funding",
+              title: "Acme raises Series C",
+              publishedDate: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+              text: "Acme announced a Series C funding round led by Notable Ventures.",
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    const inner = createSignalAdapter(
+      {
+        name: "exa",
+        enabled: true,
+        apiKeyRef: "exa-test-key",
+        thresholds: THRESHOLDS,
+      },
+      { fetch: fakeFetch },
+    );
+    const providerAdapter = wrapSignalWithGuards(inner, {
+      tenantId,
+      correlationId: "corr-step9",
+      rateLimiter: new RateLimiter(),
+    });
+
+    const snap = await assembleSnapshot(
+      {
+        db,
+        providerAdapter,
+        llmAdapter: createMockLlmAdapter(),
+        propertyFetcher: ELIGIBLE,
+        contactFetcher: threeContacts,
+        thresholds: THRESHOLDS,
+      },
+      { tenantId, companyId: "co-exa" },
+    );
+
+    expect(snap.eligibilityState).toBe("eligible");
+    expect(snap.evidence.length).toBe(1);
+    // Evidence round-trips from the Exa cassette-shaped response, stamped
+    // with the caller tenantId (cross-tenant isolation check).
+    expect(snap.evidence[0]?.tenantId).toBe(tenantId);
+    expect(snap.evidence[0]?.source).toBe("example.com");
+    expect(snap.evidence[0]?.content).toMatch(/Acme/);
+    expect(snap.reasonToContact).toBeDefined();
+  });
+
   it("never leaks tenantId — uses caller arg, never anything else", async () => {
     const tenantId = await seedTenant();
     // A signal adapter whose internal fixture uses a different tenantId baked in
