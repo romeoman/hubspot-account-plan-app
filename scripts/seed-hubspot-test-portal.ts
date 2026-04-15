@@ -40,9 +40,19 @@
 
 import { HubSpotClient } from "../apps/api/src/lib/hubspot-client";
 
-/** Marker property + value used to find previously-seeded rows for idempotency. */
-export const SEED_MARKER_PROPERTY = "hap_seed_marker";
-export const SEED_MARKER_VALUE = "slice2-walkthrough-v1";
+/**
+ * Marker scheme used to find previously-seeded rows for idempotency.
+ *
+ * Originally used a custom `hap_seed_marker` property — that required the
+ * portal admin to pre-create the property definition (or grant
+ * `crm.schemas.companies.write`). To keep the seed self-contained and
+ * minimize scope on the dev-bridge token, we now search by the standard
+ * `name` property with `CONTAINS_TOKEN` on the common `Slice2-*` prefix —
+ * every seeded company's name already starts with `Slice2-`.
+ */
+export const SEED_MARKER_PROPERTY = "name";
+export const SEED_MARKER_VALUE = "Slice2*";
+export const SEED_MARKER_OPERATOR = "CONTAINS_TOKEN" as const;
 
 /**
  * Minimal interface the seed driver needs from the HubSpot client. Accepts
@@ -52,6 +62,7 @@ export interface SeedHubSpotClient {
   searchCompaniesByMarker(
     markerProperty: string,
     markerValue: string,
+    operator?: "EQ" | "CONTAINS_TOKEN",
   ): Promise<Array<{ id: string; properties: Record<string, string> }>>;
   createCompany(
     properties: Record<string, string | boolean | number>,
@@ -63,6 +74,9 @@ export interface SeedHubSpotClient {
   createContact(
     properties: Record<string, string>,
   ): Promise<{ id: string; properties: Record<string, string> }>;
+  findContactByEmail(
+    email: string,
+  ): Promise<{ id: string; properties: Record<string, string> } | null>;
   associateContactWithCompany(companyId: string, contactId: string): Promise<void>;
 }
 
@@ -100,9 +114,13 @@ export interface SeedPlanRow {
  * fixtures in `packages/config/src/factories.ts` so the live-rendered
  * state-semantics match the fixture semantics 1:1.
  *
- * `hap_seed_marker` is stamped on every company for idempotency. A custom
- * property `hap_state_tag` is ALSO stamped so the QA walkthrough can
- * distinguish states at a glance in the HubSpot UI.
+ * Idempotency: every company's `name` starts with `Slice2-`. On rerun the
+ * seed searches `name CONTAINS_TOKEN "Slice2*"` to find previously-seeded
+ * rows and UPDATEs them rather than duplicating. We intentionally DO NOT
+ * stamp a custom property (like `hap_seed_marker` or `hap_state_tag`) —
+ * those would require the portal admin to pre-create property definitions
+ * or grant `crm.schemas.companies.write`, which we're keeping out of the
+ * dev-bridge token scope.
  */
 export function buildSeedTargets(): SeedTarget[] {
   const mark = (extra: Record<string, string | boolean | number>) => ({
@@ -116,27 +134,26 @@ export function buildSeedTargets(): SeedTarget[] {
       companyName: "Slice2-EligibleStrong-AcmeCorp",
       companyProperties: mark({
         name: "Slice2-EligibleStrong-AcmeCorp",
-        domain: "slice2-acme.test",
+        domain: "slice2-acme.example.com",
         hs_is_target_account: true,
-        hap_state_tag: "eligible-strong",
       }),
       contacts: [
         {
           firstname: "Alex",
           lastname: "Champion",
-          email: "alex.champion@slice2-acme.test",
+          email: "alex.champion@slice2-acme.example.com",
           jobtitle: "VP Engineering",
         },
         {
           firstname: "Jordan",
           lastname: "Decider",
-          email: "jordan.decider@slice2-acme.test",
+          email: "jordan.decider@slice2-acme.example.com",
           jobtitle: "CTO",
         },
         {
           firstname: "Sam",
           lastname: "Influencer",
-          email: "sam.influencer@slice2-acme.test",
+          email: "sam.influencer@slice2-acme.example.com",
           jobtitle: "Head of Platform",
         },
       ],
@@ -146,15 +163,14 @@ export function buildSeedTargets(): SeedTarget[] {
       companyName: "Slice2-FewerContacts-BetaInc",
       companyProperties: mark({
         name: "Slice2-FewerContacts-BetaInc",
-        domain: "slice2-beta.test",
+        domain: "slice2-beta.example.com",
         hs_is_target_account: true,
-        hap_state_tag: "fewer-contacts",
       }),
       contacts: [
         {
           firstname: "Riley",
           lastname: "Only",
-          email: "riley.only@slice2-beta.test",
+          email: "riley.only@slice2-beta.example.com",
           jobtitle: "CEO",
         },
       ],
@@ -164,9 +180,8 @@ export function buildSeedTargets(): SeedTarget[] {
       companyName: "Slice2-Empty-GammaCo",
       companyProperties: mark({
         name: "Slice2-Empty-GammaCo",
-        domain: "slice2-gamma.test",
+        domain: "slice2-gamma.example.com",
         hs_is_target_account: true,
-        hap_state_tag: "empty",
       }),
       contacts: [],
     },
@@ -175,15 +190,14 @@ export function buildSeedTargets(): SeedTarget[] {
       companyName: "Slice2-Stale-DeltaLLC",
       companyProperties: mark({
         name: "Slice2-Stale-DeltaLLC",
-        domain: "slice2-delta.test",
+        domain: "slice2-delta.example.com",
         hs_is_target_account: true,
-        hap_state_tag: "stale",
       }),
       contacts: [
         {
           firstname: "Taylor",
           lastname: "Past",
-          email: "taylor.past@slice2-delta.test",
+          email: "taylor.past@slice2-delta.example.com",
           jobtitle: "Director",
         },
       ],
@@ -193,15 +207,14 @@ export function buildSeedTargets(): SeedTarget[] {
       companyName: "Slice2-Degraded-EpsilonGmbH",
       companyProperties: mark({
         name: "Slice2-Degraded-EpsilonGmbH",
-        domain: "slice2-epsilon.test",
+        domain: "slice2-epsilon.example.com",
         hs_is_target_account: true,
-        hap_state_tag: "degraded",
       }),
       contacts: [
         {
           firstname: "Morgan",
           lastname: "Partial",
-          email: "morgan.partial@slice2-epsilon.test",
+          email: "morgan.partial@slice2-epsilon.example.com",
           jobtitle: "Manager",
         },
       ],
@@ -211,15 +224,14 @@ export function buildSeedTargets(): SeedTarget[] {
       companyName: "Slice2-LowConfidence-ZetaSA",
       companyProperties: mark({
         name: "Slice2-LowConfidence-ZetaSA",
-        domain: "slice2-zeta.test",
+        domain: "slice2-zeta.example.com",
         hs_is_target_account: true,
-        hap_state_tag: "low-confidence",
       }),
       contacts: [
         {
           firstname: "Jamie",
           lastname: "Maybe",
-          email: "jamie.maybe@slice2-zeta.test",
+          email: "jamie.maybe@slice2-zeta.example.com",
           jobtitle: "VP Unknown",
         },
       ],
@@ -229,17 +241,16 @@ export function buildSeedTargets(): SeedTarget[] {
       companyName: "Slice2-Ineligible-EtaPLC",
       companyProperties: mark({
         name: "Slice2-Ineligible-EtaPLC",
-        domain: "slice2-eta.test",
+        domain: "slice2-eta.example.com",
         // Explicitly NOT a target account — the eligibility evaluator must
         // suppress this card entirely.
         hs_is_target_account: false,
-        hap_state_tag: "ineligible",
       }),
       contacts: [
         {
           firstname: "Dana",
           lastname: "Disqualified",
-          email: "dana.disqualified@slice2-eta.test",
+          email: "dana.disqualified@slice2-eta.example.com",
           jobtitle: "Operations Lead",
         },
       ],
@@ -249,17 +260,16 @@ export function buildSeedTargets(): SeedTarget[] {
       companyName: "Slice2-Restricted-ThetaInc",
       companyProperties: mark({
         name: "Slice2-Restricted-ThetaInc",
-        domain: "slice2-theta.test",
+        domain: "slice2-theta.example.com",
         hs_is_target_account: true,
         // Marker consumed by the trust evaluator to treat all associated
         // evidence as restricted. The UI MUST render empty-with-zero-leakage.
-        hap_state_tag: "restricted",
       }),
       contacts: [
         {
           firstname: "Sky",
           lastname: "Sealed",
-          email: "sky.sealed@slice2-theta.test",
+          email: "sky.sealed@slice2-theta.example.com",
           jobtitle: "Chief Privacy Officer",
         },
       ],
@@ -325,19 +335,34 @@ export async function executeSeedPlan(
 
   for (const row of plan) {
     let companyId: string;
-    if (row.action === "update" && row.existingCompanyId) {
-      const updated = await client.updateCompany(row.existingCompanyId, row.properties);
-      companyId = updated.id;
-    } else {
-      const created = await client.createCompany(row.properties);
-      companyId = created.id;
+    try {
+      if (row.action === "update" && row.existingCompanyId) {
+        const updated = await client.updateCompany(row.existingCompanyId, row.properties);
+        companyId = updated.id;
+      } else {
+        const created = await client.createCompany(row.properties);
+        companyId = created.id;
+      }
+    } catch (err) {
+      throw new Error(
+        `seed failed at ${row.action} ${row.state} (${row.companyName}): ${(err as Error).message}`,
+      );
     }
 
     const contactIds: string[] = [];
     for (const contactProps of row.contacts) {
-      const contact = await client.createContact(contactProps);
-      await client.associateContactWithCompany(companyId, contact.id);
-      contactIds.push(contact.id);
+      try {
+        // Idempotency: HubSpot rejects duplicate emails with 409. Search
+        // first; create only when absent. Association is applied either way.
+        const existing = await client.findContactByEmail(String(contactProps.email));
+        const contact = existing ?? (await client.createContact(contactProps));
+        await client.associateContactWithCompany(companyId, contact.id);
+        contactIds.push(contact.id);
+      } catch (err) {
+        throw new Error(
+          `seed failed at contact ${String(contactProps.email)} for ${row.companyName}: ${(err as Error).message}`,
+        );
+      }
     }
 
     results.push({
@@ -413,7 +438,11 @@ export async function runSeed(
   const client = deps.clientFactory
     ? deps.clientFactory()
     : (new HubSpotClient() as SeedHubSpotClient);
-  const existing = await client.searchCompaniesByMarker(SEED_MARKER_PROPERTY, SEED_MARKER_VALUE);
+  const existing = await client.searchCompaniesByMarker(
+    SEED_MARKER_PROPERTY,
+    SEED_MARKER_VALUE,
+    SEED_MARKER_OPERATOR,
+  );
   const plan = buildSeedPlan(targets, existing);
 
   log(

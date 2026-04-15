@@ -12,6 +12,7 @@ import {
   executeSeedPlan,
   parseArgs,
   runSeed,
+  SEED_MARKER_OPERATOR,
   SEED_MARKER_PROPERTY,
   SEED_MARKER_VALUE,
   type SeedHubSpotClient,
@@ -32,6 +33,7 @@ function stubClient(overrides: Partial<SeedHubSpotClient> = {}): SeedHubSpotClie
       id: `ct-${Math.random()}`,
       properties: props,
     })),
+    findContactByEmail: vi.fn(async () => null),
     associateContactWithCompany: vi.fn(async () => {
       /* noop */
     }),
@@ -74,9 +76,10 @@ describe("seed-hubspot-test-portal", () => {
       );
     });
 
-    it("stamps every target with the seed marker property", () => {
+    it("every target name starts with the Slice2- prefix (idempotency marker)", () => {
       for (const t of buildSeedTargets()) {
-        expect(t.companyProperties[SEED_MARKER_PROPERTY]).toBe(SEED_MARKER_VALUE);
+        expect(t.companyName.startsWith("Slice2-")).toBe(true);
+        expect(t.companyProperties.name).toBe(t.companyName);
       }
     });
 
@@ -162,7 +165,7 @@ describe("seed-hubspot-test-portal", () => {
       expect(client.updateCompany).toHaveBeenCalledWith(
         "co-EXISTING",
         expect.objectContaining({
-          [SEED_MARKER_PROPERTY]: SEED_MARKER_VALUE,
+          name: "Slice2-Empty-GammaCo",
         }),
       );
       expect(client.createCompany).not.toHaveBeenCalled();
@@ -213,6 +216,7 @@ describe("seed-hubspot-test-portal", () => {
       expect(client.searchCompaniesByMarker).toHaveBeenCalledWith(
         SEED_MARKER_PROPERTY,
         SEED_MARKER_VALUE,
+        SEED_MARKER_OPERATOR,
       );
       expect(plan.find((p) => p.state === "empty")?.action).toBe("update");
       expect(results).toBeDefined();

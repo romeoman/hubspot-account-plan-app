@@ -75,14 +75,14 @@ opening the company record in HubSpot and looking at the Account Signal
 
 | QA State        | Company Name                   | Company ID | Contact IDs | Expected Card Render                                                                                                                               |
 | --------------- | ------------------------------ | ---------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| eligible-strong | Slice2-EligibleStrong-AcmeCorp | TBD        | TBD         | reason-to-contact string + 3 people cards; evidence drill-in shows source, freshness, trust breakdown for each evidence row                        |
-| fewer-contacts  | Slice2-FewerContacts-BetaInc   | TBD        | TBD         | reason-to-contact + 1 person card + an explicit "fewer usable contacts" note (never fabricated filler people)                                      |
-| empty           | Slice2-Empty-GammaCo           | TBD        | (none)      | "no credible reason to contact this account now" empty state; zero people, zero evidence                                                           |
-| stale           | Slice2-Stale-DeltaLLC          | TBD        | TBD         | warning alert "signals are stale (N days ago)"; reason-to-contact still rendered but annotated                                                     |
-| degraded        | Slice2-Degraded-EpsilonGmbH    | TBD        | TBD         | warning alert "source degraded" / "partial data"; reason rendered with degraded-source badge                                                       |
-| low-confidence  | Slice2-LowConfidence-ZetaSA    | TBD        | TBD         | caution alert + confidence score surfaced in trust breakdown                                                                                       |
-| ineligible      | Slice2-Ineligible-EtaPLC       | TBD        | TBD         | "not a target account" suppression message; reason-to-contact NOT rendered; zero people                                                            |
-| restricted      | Slice2-Restricted-ThetaInc     | TBD        | TBD         | empty-with-zero-leakage render: NO evidence content, NO reason-to-contact text, NO people listed — the security-gate rule must suppress everything |
+| eligible-strong | Slice2-EligibleStrong-AcmeCorp | 426502882508 | 758304740581, 758306242797, 758361454786 | reason-to-contact string + 3 people cards; evidence drill-in shows source, freshness, trust breakdown for each evidence row                        |
+| fewer-contacts  | Slice2-FewerContacts-BetaInc   | 426504036557 | 758374480061                             | reason-to-contact + 1 person card + an explicit "fewer usable contacts" note (never fabricated filler people)                                      |
+| empty           | Slice2-Empty-GammaCo           | 426541219053 | (none)                                   | "no credible reason to contact this account now" empty state; zero people, zero evidence                                                           |
+| stale           | Slice2-Stale-DeltaLLC          | 426526728425 | 758306242799                             | warning alert "signals are stale (N days ago)"; reason-to-contact still rendered but annotated                                                     |
+| degraded        | Slice2-Degraded-EpsilonGmbH    | 426545848531 | 758415920352                             | warning alert "source degraded" / "partial data"; reason rendered with degraded-source badge                                                       |
+| low-confidence  | Slice2-LowConfidence-ZetaSA    | 426533489863 | 758424675522                             | caution alert + confidence score surfaced in trust breakdown                                                                                       |
+| ineligible      | Slice2-Ineligible-EtaPLC       | 426441736380 | 758368893124                             | "not a target account" suppression message; reason-to-contact NOT rendered; zero people                                                            |
+| restricted      | Slice2-Restricted-ThetaInc     | 426534524126 | 758315502837                             | empty-with-zero-leakage render: NO evidence content, NO reason-to-contact text, NO people listed — the security-gate rule must suppress everything |
 
 ## Manual walkthrough procedure
 

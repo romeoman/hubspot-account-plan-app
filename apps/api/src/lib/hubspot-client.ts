@@ -42,7 +42,7 @@ const HUBSPOT_API_ROOT = "https://api.hubapi.com";
  * Source: https://developers.hubspot.com/docs/api-reference/latest/crm/objects/companies/guide
  * (retrieved 2026-04-15). The Step 14 seed uses the "default" label form of
  * the association PUT endpoint to avoid hardcoding numeric type ids:
- *   `PUT /crm/v3/objects/companies/{companyId}/associations/default/contacts/{contactId}`
+ *   `PUT /crm/v4/objects/companies/{companyId}/associations/default/contacts/{contactId}`
  */
 
 /**
@@ -52,6 +52,23 @@ const HUBSPOT_API_ROOT = "https://api.hubapi.com";
 interface HubSpotObjectResponse {
   id: string;
   properties: Record<string, string>;
+}
+
+/**
+ * HubSpot CRM v3 requires ALL property values to be strings on the wire —
+ * native booleans and numbers are rejected with a 400 PROPERTY_VALUE_INVALID
+ * even for properties that semantically hold boolean/number data (the server
+ * parses the string back to the target type per the schema). We coerce
+ * at this boundary so callers can pass idiomatic JS values.
+ */
+function coercePropertiesToStrings(
+  properties: Record<string, string | boolean | number>,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(properties)) {
+    out[key] = typeof value === "string" ? value : String(value);
+  }
+  return out;
 }
 
 /**
@@ -140,7 +157,9 @@ export class HubSpotClient {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify({ properties }),
+      body: JSON.stringify({
+        properties: coercePropertiesToStrings(properties),
+      }),
     });
 
     if (!res.ok) {
@@ -157,6 +176,43 @@ export class HubSpotClient {
    *
    * @throws on non-2xx. Error message excludes the bearer token.
    */
+  /**
+   * Search for a contact by exact email match. Used by the seed script to
+   * make contact creation idempotent across reruns (HubSpot rejects
+   * duplicate emails with 409 Conflict).
+   *
+   * Endpoint: `POST /crm/v3/objects/contacts/search`.
+   *
+   * @throws on non-2xx. Error message excludes the bearer token.
+   */
+  async findContactByEmail(email: string): Promise<HubSpotObjectResponse | null> {
+    const url = `${HUBSPOT_API_ROOT}/crm/v3/objects/contacts/search`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        filterGroups: [
+          {
+            filters: [{ propertyName: "email", operator: "EQ", value: email }],
+          },
+        ],
+        properties: ["email", "firstname", "lastname"],
+        limit: 1,
+      }),
+    });
+    if (!res.ok) {
+      throw new Error(`hubspot: ${res.status} ${res.statusText}`);
+    }
+    const json = (await res.json()) as {
+      results?: Array<HubSpotObjectResponse>;
+    };
+    return json.results?.[0] ?? null;
+  }
+
   async createContact(properties: Record<string, string>): Promise<HubSpotObjectResponse> {
     const url = `${HUBSPOT_API_ROOT}/crm/v3/objects/contacts`;
     const res = await fetch(url, {
@@ -166,7 +222,9 @@ export class HubSpotClient {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify({ properties }),
+      body: JSON.stringify({
+        properties: coercePropertiesToStrings(properties),
+      }),
     });
 
     if (!res.ok) {
@@ -196,7 +254,9 @@ export class HubSpotClient {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify({ properties }),
+      body: JSON.stringify({
+        properties: coercePropertiesToStrings(properties),
+      }),
     });
 
     if (!res.ok) {
@@ -218,7 +278,7 @@ export class HubSpotClient {
    * @throws on non-2xx. Error message excludes the bearer token.
    */
   async associateContactWithCompany(companyId: string, contactId: string): Promise<void> {
-    const url = `${HUBSPOT_API_ROOT}/crm/v3/objects/companies/${encodeURIComponent(companyId)}/associations/default/contacts/${encodeURIComponent(contactId)}`;
+    const url = `${HUBSPOT_API_ROOT}/crm/v4/objects/companies/${encodeURIComponent(companyId)}/associations/default/contacts/${encodeURIComponent(contactId)}`;
     const res = await fetch(url, {
       method: "PUT",
       headers: {
@@ -246,6 +306,7 @@ export class HubSpotClient {
   async searchCompaniesByMarker(
     markerProperty: string,
     markerValue: string,
+    operator: "EQ" | "CONTAINS_TOKEN" = "EQ",
   ): Promise<Array<HubSpotObjectResponse>> {
     const url = `${HUBSPOT_API_ROOT}/crm/v3/objects/companies/search`;
     const body = {
@@ -254,7 +315,7 @@ export class HubSpotClient {
           filters: [
             {
               propertyName: markerProperty,
-              operator: "EQ",
+              operator,
               value: markerValue,
             },
           ],

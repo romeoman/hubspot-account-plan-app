@@ -102,11 +102,14 @@ describe("HubSpotClient", () => {
     expect(headers.get("authorization")).toBe("Bearer pat-test-abc-123");
     expect(headers.get("content-type")).toBe("application/json");
     const body = JSON.parse(init.body as string);
+    // HubSpot CRM v3 requires ALL property values to be strings on the
+    // wire (server parses back per the schema). Client coerces booleans
+    // and numbers at the boundary.
     expect(body).toEqual({
       properties: {
         name: "Slice2-EligibleStrong-AcmeCorp",
         domain: "acme.test",
-        hs_is_target_account: true,
+        hs_is_target_account: "true",
       },
     });
   });
@@ -162,7 +165,8 @@ describe("HubSpotClient", () => {
     expect(url).toBe("https://api.hubapi.com/crm/v3/objects/companies/co-55");
     expect(init.method).toBe("PATCH");
     const body = JSON.parse(init.body as string);
-    expect(body.properties.hs_is_target_account).toBe(false);
+    // Boolean coerced to "false" string at the wire boundary.
+    expect(body.properties.hs_is_target_account).toBe("false");
   });
 
   it("associateContactWithCompany PUTs to the default-association endpoint", async () => {
@@ -174,7 +178,7 @@ describe("HubSpotClient", () => {
 
     const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(
-      "https://api.hubapi.com/crm/v3/objects/companies/co-1/associations/default/contacts/ct-9",
+      "https://api.hubapi.com/crm/v4/objects/companies/co-1/associations/default/contacts/ct-9",
     );
     expect(init.method).toBe("PUT");
     const headers = new Headers(init.headers);
@@ -231,5 +235,33 @@ describe("HubSpotClient", () => {
     const client = new HubSpotClient();
     const rows = await client.searchCompaniesByMarker("hap_seed_marker", "unknown");
     expect(rows).toEqual([]);
+  });
+
+  it("findContactByEmail returns the first match", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          results: [
+            {
+              id: "ct-1",
+              properties: { email: "a@b.example.com", firstname: "A" },
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    const client = new HubSpotClient();
+    const contact = await client.findContactByEmail("a@b.example.com");
+    expect(contact?.id).toBe("ct-1");
+  });
+
+  it("findContactByEmail returns null when no match", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ results: [] }), { status: 200 }),
+    );
+    const client = new HubSpotClient();
+    const contact = await client.findContactByEmail("ghost@nowhere.example.com");
+    expect(contact).toBeNull();
   });
 });
