@@ -444,7 +444,10 @@ function cleanForTenant(target: string): ProviderAdapter {
           id: "ev-clean-1",
           tenantId,
           source: "hubspot",
-          timestamp: new Date(),
+          // 1 hour ago — must be strictly in the past so the assembler's
+          // earlier `now` capture doesn't see this as "future-dated" (which
+          // the trust evaluator + dominant-signal filter now reject).
+          timestamp: new Date(Date.now() - 60 * 60 * 1000),
           confidence: 0.9,
           content: "B's normal signal",
           isRestricted: false,

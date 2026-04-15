@@ -75,6 +75,41 @@ describe("getProviderConfig", () => {
     expect(res?.thresholds.minConfidence).toBe(0.5);
   });
 
+  it("returns DEFAULT_THRESHOLDS when the row has empty thresholds jsonb (no zero-coercion)", async () => {
+    // Regression for the zero-coercion bug: a tenant with a provider row but
+    // no explicit threshold fields used to come back as `{0, 0}` — every
+    // signal stale, confidence check disabled. Now defaults win.
+    const tenant = await seedTenant();
+    await db.insert(providerConfig).values({
+      tenantId: tenant.id,
+      providerName: "exa",
+      enabled: true,
+      thresholds: {}, // empty jsonb
+      settings: {},
+    });
+
+    const res = await getProviderConfig({ db }, { tenantId: tenant.id, providerName: "exa" });
+    expect(res?.thresholds.freshnessMaxDays).toBe(30);
+    expect(res?.thresholds.minConfidence).toBe(0.5);
+  });
+
+  it("merges partial tenant thresholds on top of defaults", async () => {
+    // A tenant that sets ONLY freshnessMaxDays still inherits the default
+    // minConfidence — not zero.
+    const tenant = await seedTenant();
+    await db.insert(providerConfig).values({
+      tenantId: tenant.id,
+      providerName: "exa",
+      enabled: true,
+      thresholds: { freshnessMaxDays: 7 },
+      settings: {},
+    });
+
+    const res = await getProviderConfig({ db }, { tenantId: tenant.id, providerName: "exa" });
+    expect(res?.thresholds.freshnessMaxDays).toBe(7);
+    expect(res?.thresholds.minConfidence).toBe(0.5);
+  });
+
   it("caches within TTL (no second DB query)", async () => {
     const tenant = await seedTenant();
     const ciphertext = encryptProviderKey(tenant.id, "sk-cached");

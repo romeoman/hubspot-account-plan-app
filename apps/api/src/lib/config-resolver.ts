@@ -41,6 +41,17 @@ import { decryptProviderKey } from "./encryption";
 /** Cache TTL: 5 minutes. Matches eligibility-service TTL for consistency. */
 export const CONFIG_RESOLVER_CACHE_TTL_MS = 5 * 60 * 1000;
 
+/**
+ * V1 default thresholds. Shared with `routes/snapshot.ts` so callers and
+ * config resolution agree on what "unconfigured" means. A tenant that has a
+ * provider row with no explicit threshold fields inherits these values —
+ * parsing the empty jsonb `{}` no longer coerces to `{0, 0}`.
+ */
+export const DEFAULT_THRESHOLDS: ThresholdConfig = {
+  freshnessMaxDays: 30,
+  minConfidence: 0.5,
+};
+
 const LLM_PROVIDER_TYPES: readonly LlmProviderType[] = [
   "anthropic",
   "openai",
@@ -117,14 +128,25 @@ function buildLlmKey(tenantId: string): string {
   return `${tenantId}:llm`;
 }
 
-function parseThresholds(raw: unknown): ThresholdConfig {
-  const out: ThresholdConfig = { freshnessMaxDays: 0, minConfidence: 0 };
+/**
+ * Parse the `thresholds` jsonb column into a PARTIAL ThresholdConfig. Only
+ * fields that are actually present in the row and are finite numbers are
+ * returned. Missing fields are omitted (not coerced to 0) so callers can
+ * distinguish "tenant left this blank, use the default" from "tenant
+ * explicitly set zero".
+ *
+ * The zero-coercion bug this replaces caused tenants with a provider row
+ * but no explicit thresholds to be treated as `{ freshnessMaxDays: 0,
+ * minConfidence: 0 }` — which made every piece of evidence stale.
+ */
+function parseThresholds(raw: unknown): Partial<ThresholdConfig> {
+  const out: Partial<ThresholdConfig> = {};
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
     const rec = raw as Record<string, unknown>;
-    if (typeof rec.freshnessMaxDays === "number") {
+    if (typeof rec.freshnessMaxDays === "number" && Number.isFinite(rec.freshnessMaxDays)) {
       out.freshnessMaxDays = rec.freshnessMaxDays;
     }
-    if (typeof rec.minConfidence === "number") {
+    if (typeof rec.minConfidence === "number" && Number.isFinite(rec.minConfidence)) {
       out.minConfidence = rec.minConfidence;
     }
   }
@@ -180,11 +202,18 @@ export async function getProviderConfig(
   const apiKeyRef = row.apiKeyEncrypted
     ? decryptProviderKey(args.tenantId, row.apiKeyEncrypted)
     : "";
+  // Merge parsed fields ON TOP of defaults. A tenant that sets only
+  // `freshnessMaxDays` still gets the default `minConfidence`; a completely
+  // empty jsonb returns DEFAULT_THRESHOLDS as-is rather than zeros.
+  const thresholds: ThresholdConfig = {
+    ...DEFAULT_THRESHOLDS,
+    ...parseThresholds(row.thresholds),
+  };
   return {
     name: row.providerName,
     enabled: row.enabled,
     apiKeyRef,
-    thresholds: parseThresholds(row.thresholds),
+    thresholds,
   };
 }
 

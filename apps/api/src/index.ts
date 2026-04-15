@@ -54,19 +54,46 @@ app.get("/health", (c) => {
 });
 
 /**
- * Lazily build the db handle so DATABASE_URL changes between test cases are
- * respected and so simple imports (e.g. health-only tests) don't pay for a
- * connection at module load.
+ * Memoized db handle, keyed by DATABASE_URL so test cases that mutate the
+ * env between requests still get a fresh client. In production the URL is
+ * stable and we keep one wrapper per process — postgres.js handles the
+ * actual connection pool internally. Without this we'd build a brand new
+ * client on every request, churning sockets in the hot path.
  */
+let cachedDb: { url: string; db: ReturnType<typeof createDatabase> } | null = null;
 function getDb() {
-  const url = process.env.DATABASE_URL ?? "postgresql://hap:hap_local_dev@localhost:5433/hap_dev";
-  return createDatabase(url);
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    // No production fallback. The app-level middleware runs before the
+    // snapshot route's own DB check, so without this guard a misconfigured
+    // deployment could silently authenticate tenants against localhost's
+    // dev database. Fail loud at the first request instead.
+    throw new Error(
+      "DATABASE_URL is not set. The API refuses to fall back to a default dev URL in any environment.",
+    );
+  }
+  if (cachedDb && cachedDb.url === url) return cachedDb.db;
+  const db = createDatabase(url);
+  cachedDb = { url, db };
+  return db;
+}
+
+// Memoize the tenant middleware too so we build it once per process,
+// not on every request. The middleware itself is stateless given a db handle.
+let cachedTenantMw: ReturnType<typeof tenantMiddleware> | null = null;
+let cachedTenantMwForDb: ReturnType<typeof createDatabase> | null = null;
+function getTenantMw() {
+  const db = getDb();
+  if (cachedTenantMw && cachedTenantMwForDb === db) return cachedTenantMw;
+  cachedTenantMw = tenantMiddleware({ db });
+  cachedTenantMwForDb = db;
+  return cachedTenantMw;
 }
 
 // Composed middleware chain for /api/* routes: auth -> tenant -> route.
 app.use("/api/*", authMiddleware());
 app.use("/api/*", async (c, next) => {
-  const mw = tenantMiddleware({ db: getDb() });
+  const mw = getTenantMw();
   return mw(c, next);
 });
 

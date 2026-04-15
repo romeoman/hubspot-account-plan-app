@@ -40,6 +40,12 @@ export function extractDominantSignal(
   const qualifying = signals.filter((s) => {
     if (s.confidence < thresholds.minConfidence) return false;
     const ageMs = nowMs - s.timestamp.getTime();
+    // Consistent with `trust.evaluateFreshness`: a future-dated row (clock
+    // skew or bad upstream data) is NOT fresh. Otherwise the assembler can
+    // mark the snapshot stale yet still pick that row as the dominant
+    // signal, producing a `reasonToContact` generated from evidence the
+    // same pipeline just flagged as untrustworthy.
+    if (ageMs < 0) return false;
     if (ageMs > maxAgeMs) return false;
     return true;
   });

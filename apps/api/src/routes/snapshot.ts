@@ -7,7 +7,7 @@ import {
   isMockSignalFixture,
   type MockSignalFixture,
 } from "../adapters/mock-signal-adapter";
-import { getProviderConfig } from "../lib/config-resolver";
+import { DEFAULT_THRESHOLDS, getProviderConfig } from "../lib/config-resolver";
 import type { TenantVariables } from "../middleware/tenant";
 import type { CompanyPropertyFetcher } from "../services/eligibility";
 import type { ContactFetcher } from "../services/people-selector";
@@ -52,10 +52,6 @@ function normalizeCompanyId(raw: string): string | null {
  */
 export const snapshotRoutes = new Hono<{ Variables: Vars }>();
 
-const DEFAULT_THRESHOLDS: ThresholdConfig = {
-  freshnessMaxDays: 30,
-  minConfidence: 0.5,
-};
 const SIGNAL_PROVIDER_NAME = "mock-signal";
 
 /** Reasonable bounds — guard against malformed or hostile DB rows. */
