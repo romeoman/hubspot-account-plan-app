@@ -59,6 +59,27 @@ describe("TrustEvaluator.evaluateFreshness", () => {
     expect(result.isFresh).toBe(true);
     expect(result.ageDays).toBe(30);
   });
+
+  it("coerces ISO-string timestamps instead of crashing", () => {
+    // Simulate an evidence row that round-tripped through JSON somewhere in
+    // the pipeline — timestamp is now a string, not a Date.
+    const e = ev({ timestamp: new Date(now.getTime() - 10 * DAY_MS) });
+    const serialized = {
+      ...e,
+      timestamp: (e.timestamp as Date).toISOString(),
+    } as unknown as Evidence;
+    const result = evaluator.evaluateFreshness(serialized, BASE_THRESHOLDS, now);
+    expect(result.ageDays).toBe(10);
+    expect(result.isFresh).toBe(true);
+  });
+
+  it("treats unparseable timestamp as extremely stale rather than throwing", () => {
+    const e = ev({ timestamp: new Date() });
+    const broken = { ...e, timestamp: "not-a-date" } as unknown as Evidence;
+    const result = evaluator.evaluateFreshness(broken, BASE_THRESHOLDS, now);
+    expect(result.isFresh).toBe(false);
+    expect(result.ageDays).toBeGreaterThan(365 * 30);
+  });
 });
 
 describe("TrustEvaluator.evaluateConfidence", () => {

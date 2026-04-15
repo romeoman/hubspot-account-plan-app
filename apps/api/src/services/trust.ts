@@ -95,13 +95,29 @@ export interface TrustEvaluator {
  * The evaluator is pure — no I/O, no logging. Callers inject thresholds
  * per-tenant so one instance can safely service many tenants.
  */
+/**
+ * Coerce a timestamp into a Date. The `Evidence.timestamp` field is typed as
+ * `Date`, but when evidence has been JSON-serialized (e.g., cached by a
+ * caller, or re-parsed from an API response) it comes back as an ISO string.
+ * Be permissive at the evaluator boundary so a single upstream slip cannot
+ * crash the whole snapshot pipeline with `getTime is not a function`.
+ */
+function coerceTimestamp(v: Evidence["timestamp"] | string): Date {
+  if (v instanceof Date) return v;
+  const d = new Date(v as string);
+  // If parse failed, treat as epoch so the row flows as "extremely stale"
+  // rather than throwing mid-evaluation.
+  return Number.isNaN(d.getTime()) ? new Date(0) : d;
+}
+
 export function createTrustEvaluator(): TrustEvaluator {
   function evaluateFreshness(
     evidence: Evidence,
     thresholds: ThresholdConfig,
     now: Date = new Date(),
   ): FreshnessResult {
-    const ageMs = now.getTime() - evidence.timestamp.getTime();
+    const ts = coerceTimestamp(evidence.timestamp);
+    const ageMs = now.getTime() - ts.getTime();
     const ageDays = Math.max(0, Math.floor(ageMs / DAY_MS));
     return {
       isFresh: ageDays <= thresholds.freshnessMaxDays,
