@@ -2,6 +2,11 @@ import type { Evidence } from "@hap/config";
 import { Flex, Modal, ModalBody, Text } from "@hubspot/ui-extensions";
 
 /**
+ * @deprecated Slice 1 legacy. Superseded by `./evidence-drill-in.tsx`
+ *   which exposes provenance, freshness, trust breakdown, and a redacted
+ *   raw payload section. Retained here so the Slice 1 test suite keeps
+ *   green; Slice 3 cleanup deletes this module once nothing imports it.
+ *
  * Modal that lists evidence rows supporting a person's reason-to-talk.
  *
  * Accessibility: the HubSpot `Modal` component dismisses on Escape natively
