@@ -4,8 +4,11 @@ import type { TenantVariables } from "./tenant";
 /**
  * Auth middleware options.
  *
- * `bypassMode` lets callers explicitly enable test-mode bypass regardless of
- * `NODE_ENV`. Bypass is otherwise auto-on when `NODE_ENV === 'test'`.
+ * `bypassMode` is honored ONLY when `NODE_ENV !== 'production'`. This means
+ * a misconfigured caller cannot pass `bypassMode: true` in prod and ship a
+ * silent auth bypass. In production the only way to avoid auth would be a
+ * deployment misconfiguration of NODE_ENV itself, which would surface
+ * loudly through other paths.
  */
 export interface AuthMiddlewareOptions {
   bypassMode?: boolean;
@@ -33,11 +36,19 @@ export function authMiddleware(
   opts: AuthMiddlewareOptions = {},
 ): MiddlewareHandler<{ Variables: TenantVariables & { portalId?: string } }> {
   return async (c, next) => {
-    const bypass = opts.bypassMode === true || process.env.NODE_ENV === "test";
+    // Production NEVER honors bypass — even if a caller passes
+    // `bypassMode: true`. Auto-bypass on NODE_ENV === 'test' is also
+    // gated against production for the same reason.
+    const isProduction = process.env.NODE_ENV === "production";
+    const bypass = !isProduction && (opts.bypassMode === true || process.env.NODE_ENV === "test");
 
+    // RFC 6750: the bearer scheme is case-insensitive. `bearer abc` and
+    // `Bearer abc` are both valid Authorization headers.
     const authHeader = c.req.header("Authorization") ?? c.req.header("authorization");
-    const hasBearer = typeof authHeader === "string" && authHeader.startsWith("Bearer ");
-    const token = hasBearer ? authHeader.slice("Bearer ".length).trim() : "";
+    const bearerMatch =
+      typeof authHeader === "string" ? authHeader.match(/^Bearer\s+(.+)$/i) : null;
+    const token = bearerMatch?.[1]?.trim() ?? "";
+    const hasBearer = token.length > 0;
 
     if (bypass) {
       // Must still see *some* bearer so we don't mask a bug where the client

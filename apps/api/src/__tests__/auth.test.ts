@@ -81,8 +81,8 @@ describe("auth middleware", () => {
     expect(body.portalId).toBe("test-portal");
   });
 
-  it("explicit bypassMode flag overrides NODE_ENV", async () => {
-    process.env.NODE_ENV = "production";
+  it("bypassMode is honored in non-production environments", async () => {
+    process.env.NODE_ENV = "development";
     const app = buildApp({ bypassMode: true });
     const res = await app.request("/probe", {
       headers: {
@@ -93,6 +93,31 @@ describe("auth middleware", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { portalId: string | null };
     expect(body.portalId).toBe("portal-explicit");
+  });
+
+  it("bypassMode is REFUSED in production — must not be a silent auth disable", async () => {
+    process.env.NODE_ENV = "production";
+    // No API_TOKENS configured → bypass would be the only path to success.
+    const app = buildApp({ bypassMode: true });
+    const res = await app.request("/probe", {
+      headers: {
+        Authorization: "Bearer anything",
+        "x-test-portal-id": "portal-explicit",
+      },
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("accepts case-insensitive bearer scheme per RFC 6750", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.API_TOKENS = "tok-a:portal-a";
+    const app = buildApp();
+    const res = await app.request("/probe", {
+      headers: { Authorization: "bearer tok-a" },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { portalId: string | null };
+    expect(body.portalId).toBe("portal-a");
   });
 
   it("malformed Authorization header returns 401", async () => {
