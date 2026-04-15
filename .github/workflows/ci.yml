@@ -64,4 +64,6 @@ jobs:
           node-version-file: ".nvmrc"
           cache: "pnpm"
       - run: pnpm install --frozen-lockfile
+      - name: Apply Drizzle migrations
+        run: pnpm db:migrate
       - run: pnpm test

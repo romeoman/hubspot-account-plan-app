@@ -9,6 +9,24 @@ Implement Slice 1 of the HubSpot Signal-First Account Workspace: database schema
 **Branch:** `feature/slice-1-core-domain` (worktree at `.worktrees/slice-1/`)
 **Execution model:** sequential (single worktree, no parallel agent writes)
 
+## Pre-flight Status (as of 2026-04-14)
+
+Before Step 1 begins, two pre-flight adjustments were completed on `main` and rebased into the worktree:
+
+- **Pre-flight A — DONE (commit `a999d40`):** Pinned `apps/hubspot-extension` React to `^18.3.1` (was `^19.0.0`). HubSpot SDK `@hubspot/ui-extensions` peer-requires React 18. CLAUDE.md stack table updated to match. Peer dep warnings eliminated.
+- **Pre-flight B — DONE (commit `a999d40`):** Moved plan document from gitignored `.claude/tasks/` to tracked `docs/superpowers/plans/2026-04-14-slice-1-core-domain.md` so it stays in sync between main and worktree. All future Slice 1 edits to this plan happen through the worktree.
+
+Additional tooling fixes shipped ahead of Slice 1 (commits `c1a3030`, `7a6bac0`):
+
+- Root `dev`/`build` scripts use quoted pnpm filter (`--filter="./apps/*"`)
+- Biome config excludes `.worktrees` and `.taskmaster` using root-relative patterns so lint works from both main and worktrees
+- `drizzle.config.ts` loads `.env` via dotenv so `db:migrate`/`db:generate` work without shell-exported env vars
+
+Outstanding items surfaced by audit but intentionally deferred:
+
+- `apps/hubspot-extension/src/index.tsx` has 2 lint warnings (`any` on `context`, unused `context` parameter). **Resolved in Step 1** alongside the render smoke test — typing `context` properly is required to write a meaningful `createRenderer` test, so the stub fix is adjacent work.
+- `pnpm dev:extension` is an echo-only placeholder. **Resolved in Step 10** (extension hooks) when real local dev is actually needed.
+
 ## Objective
 
 When complete, the HubSpot `crm.record.tab` extension will:
@@ -228,13 +246,31 @@ Build user surface + verify:
 - **Agent Type**: general-purpose
 - **Parallel**: false
 - Working directory: `.worktrees/slice-1/`
+
+**Infrastructure checks (already green on main — verify worktree inherits):**
+
 - Verify Docker Postgres is running on port 5433: `docker compose ps | grep hap-postgres | grep healthy` — if not, run `docker compose up -d` and wait for healthcheck
-- Verify DATABASE_URL can connect: `DATABASE_URL=postgresql://hap:hap_local_dev@localhost:5433/hap_dev psql -c "SELECT 1;"` (or equivalent with pnpm)
-- Verify Drizzle migration pipeline works with existing tenants table: `cd packages/db && DATABASE_URL=... pnpm drizzle-kit push --config=drizzle.config.ts` (use `push` for quick iteration in V1)
-- Verify HubSpot testing: write minimal test using `createRenderer('crm.record.tab')` from `@hubspot/ui-extensions/testing` that renders a simple `<Text>` component. Confirm it passes in Vitest.
-- If HubSpot testing fails, research working pattern via Context7/HubSpot docs and document finding. Do NOT proceed to Phase 3 until this works.
-- Report: all three checks green, with proof (command outputs)
-- Commit if any fixes needed: `chore: preflight fixes for postgres/drizzle/hubspot testing`
+- Verify `pnpm db:generate` and `pnpm db:migrate` work (these load `.env` via dotenv — should already work)
+- Verify `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build` all pass
+
+**HubSpot testing verification (the new work):**
+
+- Add `@hubspot/ui-extensions/testing` as a devDep on `apps/hubspot-extension` if not already present
+- Write minimal render smoke test in `apps/hubspot-extension/src/index.test.tsx` using `createRenderer('crm.record.tab')` from `@hubspot/ui-extensions/testing`. Test should render a simple `<Text>` component and assert it appears.
+- Run test under Vitest 4: `pnpm test` must pass with the new test included
+- **Fix adjacent lint warnings**: typing `context` in `apps/hubspot-extension/src/index.tsx` properly (remove `any`, remove unused-param warning). This is unavoidable to write a meaningful render test — the stub's `context: any` and unused-param warnings disappear naturally when we type the component correctly. Target: 0 warnings after this step.
+- If HubSpot testing setup fails, research working pattern via Context7/HubSpot docs. Document finding inline in the test file header. Do NOT proceed to Phase 3 until this works.
+
+**Acceptance:**
+
+- `pnpm lint` → 0 errors, 0 warnings (down from 2 warnings)
+- `pnpm test` → all tests pass including new render smoke test
+- `pnpm typecheck` → clean
+- `docker compose ps` → `hap-postgres` healthy
+- `pnpm db:migrate` → applies cleanly (no-op is fine, just proves pipeline works)
+
+**Report:** all checks green, with command output evidence pasted into PR description.
+**Commit:** `chore: preflight — HubSpot render smoke test and extension stub typing`
 
 ---
 
@@ -571,7 +607,7 @@ Build user surface + verify:
 15. **Config-driven**: Thresholds, providers, gating property — all from DB
 16. **TDD**: Every feature has tests written before implementation (verified via commit history)
 17. **Slice 2 boundaries clear**: Real adapters, encryption, auth validation marked with TODO + JSDoc
-18. **All checks pass**: `pnpm test`, `pnpm lint`, `pnpm typecheck` — zero errors
+18. **All checks pass**: `pnpm test`, `pnpm lint`, `pnpm typecheck` — zero errors **and zero warnings** (Step 1 fixes the 2 pre-existing stub warnings)
 
 ## Validation Commands
 
@@ -579,7 +615,7 @@ Execute these commands to validate the task is complete:
 
 - `cd .worktrees/slice-1 && docker compose ps | grep healthy` — Postgres healthy
 - `cd .worktrees/slice-1 && pnpm test` — All tests pass (target: 60+ tests)
-- `cd .worktrees/slice-1 && pnpm lint` — Zero errors
+- `cd .worktrees/slice-1 && pnpm lint` — Zero errors AND zero warnings
 - `cd .worktrees/slice-1 && pnpm typecheck` — Zero TypeScript errors
 - `cd .worktrees/slice-1 && grep -r "TODO.*Slice 2\|FIXME\|HACK" apps/ packages/ --include="*.ts" --include="*.tsx"` — Verify Slice 2 markers present and nothing else
 - `cd .worktrees/slice-1 && pnpm test -- --coverage` — Review coverage report for critical paths

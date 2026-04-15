@@ -1,0 +1,1 @@
+CREATE INDEX "evidence_snapshot_idx" ON "evidence" USING btree ("snapshot_id");

@@ -1,8 +1,12 @@
 /**
- * Shared configuration types for the HubSpot Account Plan App.
- * Provider settings, thresholds, and tenant config types live here.
+ * Public surface of `@hap/config`.
+ *
+ * Consumers: `@hap/api`, `@hap/hubspot-extension`, `@hap/validators`, tests.
+ *
+ * - `domain-types`: wire-level types (Snapshot, Evidence, Person, StateFlags,
+ *   EligibilityState, ThresholdConfig, ProviderConfig, LlmProviderConfig,
+ *   LlmProviderType, TenantSettings, TenantConfig).
+ * - `factories`: tenant-aware constructors + 8 distinct QA fixtures.
  */
-export type TenantConfig = {
-  tenantId: string;
-  hubspotPortalId: string;
-};
+export * from "./domain-types";
+export * from "./factories";
