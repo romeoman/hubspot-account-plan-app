@@ -11,7 +11,9 @@ export const snapshots = pgTable(
     companyId: text("company_id").notNull(),
     eligibilityState: text("eligibility_state").notNull(),
     reasonToContact: text("reason_to_contact"),
-    trustScore: numeric("trust_score"),
+    // mode:"number" — domain type is `number | undefined`. Without this,
+    // Drizzle hands back a string and downstream Zod validation drifts.
+    trustScore: numeric("trust_score", { mode: "number" }),
     stateFlags: jsonb("state_flags").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

@@ -15,6 +15,13 @@
       "when": 1776207329928,
       "tag": "0001_uneven_miss_america",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776253508836,
+      "tag": "0002_sudden_miss_america",
+      "breakpoints": true
     }
   ]
 }

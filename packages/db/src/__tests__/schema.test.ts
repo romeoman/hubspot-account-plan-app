@@ -89,7 +89,7 @@ describe("schema: tenant isolation + cascade", () => {
       snapshotId: required(snap, "snap").id,
       source: "mock",
       timestamp: new Date(),
-      confidence: "0.9",
+      confidence: 0.9,
       content: "evidence content",
     });
 

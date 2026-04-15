@@ -14,9 +14,16 @@ export const evidence = pgTable(
       .references(() => snapshots.id, { onDelete: "cascade" }),
     source: text("source").notNull(),
     timestamp: timestamp("timestamp", { withTimezone: true }).notNull(),
-    confidence: numeric("confidence").notNull(),
+    // mode:"number" — without it Drizzle returns the column as a string and
+    // every numeric comparison downstream (`confidence >= minConfidence`)
+    // silently coerces. The domain type is `number`, so be explicit.
+    confidence: numeric("confidence", { mode: "number" }).notNull(),
     content: text("content").notNull(),
     isRestricted: boolean("is_restricted").notNull().default(false),
   },
-  (table) => [index("evidence_tenant_timestamp_idx").on(table.tenantId, table.timestamp)],
+  (table) => [
+    index("evidence_tenant_timestamp_idx").on(table.tenantId, table.timestamp),
+    // FK joins / cascade deletes on snapshotId go full table scan without this.
+    index("evidence_snapshot_idx").on(table.snapshotId),
+  ],
 );

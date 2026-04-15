@@ -47,6 +47,9 @@ describe("EvidenceModal", () => {
     // Content
     expect(body).toContain("Funding round announced");
     expect(body).toContain("Email open from champion");
+    // Timestamps — ISO date prefix only (matches `formatTimestamp`).
+    expect(body).toContain("2026-04-01");
+    expect(body).toContain("2026-04-05");
   });
 
   it("invokes onClose when the Modal's onClose fires (a11y dismiss path)", () => {
