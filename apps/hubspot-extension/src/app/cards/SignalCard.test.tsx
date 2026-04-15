@@ -2,7 +2,7 @@ import { Alert, Text } from "@hubspot/ui-extensions";
 import { createRenderer } from "@hubspot/ui-extensions/testing";
 import { describe, expect, it, vi } from "vitest";
 import { collectAllText } from "./features/snapshot/components/__tests__/test-utils";
-import { Extension } from "./index";
+import { Extension } from "./SignalCard";
 
 /**
  * Preflight smoke tests (kept green from commit 6267f1a) plus Step 10

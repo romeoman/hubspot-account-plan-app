@@ -1,0 +1,26 @@
+{
+  "uid": "hap_signal_workspace_app",
+  "type": "app",
+  "config": {
+    "description": "Signal-First Account Workspace — one credible reason to contact this account now, plus 0 to 3 people with reason-to-talk, rendered on the company record.",
+    "name": "HAP Signal Workspace",
+    "distribution": "private",
+    "auth": {
+      "type": "static",
+      "requiredScopes": ["oauth", "crm.objects.companies.read", "crm.objects.contacts.read"],
+      "optionalScopes": [],
+      "conditionallyRequiredScopes": []
+    },
+    "permittedUrls": {
+      "fetch": ["http://localhost:3001"],
+      "iframe": [],
+      "img": []
+    },
+    "support": {
+      "supportEmail": "support@man-digital.com",
+      "documentationUrl": "https://github.com/romeoman/hubspot-account-plan-app",
+      "supportUrl": "https://github.com/romeoman/hubspot-account-plan-app/issues",
+      "supportPhone": "+18005555555"
+    }
+  }
+}
