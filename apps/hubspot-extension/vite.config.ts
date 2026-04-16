@@ -8,8 +8,7 @@ export default defineConfig({
     emptyOutDir: true,
     lib: {
       entry: resolve(__dirname, "src/hubspot-card-entry.tsx"),
-      formats: ["iife"],
-      name: "HapSignalCard",
+      formats: ["es"],
     },
     rollupOptions: {
       output: {

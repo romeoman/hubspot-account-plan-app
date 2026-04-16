@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import appHsmeta from "../src/app/app-hsmeta.json";
 import cardHsmeta from "../src/app/cards/card-hsmeta.json";
@@ -52,5 +54,12 @@ describe("HubSpot project scaffold (Slice 3 Task 5)", () => {
     expect(cardHsmeta.config.location).toBe("crm.record.tab");
     expect(cardHsmeta.config.objectTypes).toContain("companies");
     expect(cardHsmeta.config.entrypoint).toBe("/app/cards/SignalCard.tsx");
+  });
+
+  it("SignalCard.tsx re-exports the bundled default export directly", () => {
+    const signalCardPath = resolve(import.meta.dirname, "../src/app/cards/SignalCard.tsx");
+    const signalCardSource = readFileSync(signalCardPath, "utf8").trim();
+
+    expect(signalCardSource).toBe('export { default } from "./dist/index.js";');
   });
 });

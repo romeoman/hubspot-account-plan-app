@@ -1,10 +1,9 @@
 /**
  * Provider adapter interface (signals / evidence sources).
  *
- * Slice 2 Step 9 ships the real {@link ./signal/exa.ExaAdapter} + the
- * {@link ./signal/factory.createSignalAdapter} factory; HubSpot enrichment and
- * news are scaffolded as Slice 3 deferral stubs. The Slice 1
- * {@link ./mock-signal-adapter} remains as the route-level fallback.
+ * Slice 3 ships the real signal factory plus the `exa`, `news`, and
+ * `hubspot-enrichment` adapters. The Slice 1
+ * {@link ./mock-signal-adapter} remains test-only fixture infrastructure.
  *
  * Contract expectations for ALL implementations:
  *  - `fetchSignals` MUST tag every returned Evidence with the caller-supplied

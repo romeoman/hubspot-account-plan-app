@@ -41,11 +41,9 @@ import type { TenantVariables } from "./tenant";
 /**
  * HubSpot v3 signature freshness window.
  *
- * @todo Slice 3 (security audit advisory A1): within this window, the same
- * (body, signature, timestamp) triple can be replayed. Defense-in-depth fix
- * is a nonce store keyed on the signature hash with a 5-minute TTL. Phase 2
- * PRD does not require it; Slice 3 should add Redis-backed nonce tracking
- * once the rate-limiter cache adapter from Step 6 is in place.
+ * Signature validation still enforces HubSpot's 5-minute skew bound; Slice 3's
+ * replay defense is layered separately in `nonceMiddleware()`, which records a
+ * tenant-scoped nonce after auth + tenant resolution.
  */
 const MAX_TIMESTAMP_SKEW_MS = 5 * 60 * 1000;
 
