@@ -10,20 +10,21 @@ import cardHsmeta from "../src/app/cards/card-hsmeta.json";
 // only walks src/, so anything placed here is invisible to the upload but
 // still picked up by vitest (root config: include "**/*.test.ts").
 
-describe("HubSpot project scaffold (Slice 2 Step 1.5)", () => {
-  it("app-hsmeta.json uses static private auth (anti-regression: no OAuth reversion)", () => {
+describe("HubSpot project scaffold (Slice 3 Task 5)", () => {
+  it("app-hsmeta.json uses OAuth marketplace auth (Slice 3 migration from static/private)", () => {
     expect(appHsmeta.type).toBe("app");
-    expect(appHsmeta.config.distribution).toBe("private");
-    expect(appHsmeta.config.auth.type).toBe("static");
+    expect(appHsmeta.config.distribution).toBe("marketplace");
+    expect(appHsmeta.config.auth.type).toBe("oauth");
   });
 
-  it("app-hsmeta.json permittedUrls.fetch is HTTPS-only (HubSpot rejects http and localhost on upload)", () => {
-    const urls = appHsmeta.config.permittedUrls.fetch;
+  it("app-hsmeta.json has redirectUrls with localhost for dev", () => {
+    const urls = (appHsmeta.config.auth as { redirectUrls?: string[] }).redirectUrls ?? [];
     expect(urls.length).toBeGreaterThan(0);
-    for (const url of urls) {
-      expect(url.startsWith("https://")).toBe(true);
-      expect(url).not.toContain("localhost");
-    }
+    expect(urls.some((u: string) => u.includes("localhost"))).toBe(true);
+  });
+
+  it("app-hsmeta.json permittedUrls.fetch includes https://api.hubapi.com for OAuth token exchange", () => {
+    expect(appHsmeta.config.permittedUrls.fetch).toContain("https://api.hubapi.com");
   });
 
   it("app-hsmeta.json permittedUrls.fetch includes the default API origin that api-fetcher.ts uses (Step 11 anti-regression)", () => {
