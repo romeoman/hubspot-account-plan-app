@@ -1,18 +1,17 @@
-import type { LlmProviderConfig, ProviderConfig, ThresholdConfig } from "@hap/config";
+import {
+  createSnapshot,
+  createStateFlags,
+  type LlmProviderConfig,
+  type ProviderConfig,
+  type ThresholdConfig,
+} from "@hap/config";
 import { createDatabase, type Database } from "@hap/db";
 import { Hono } from "hono";
 import { createLlmAdapter, wrapWithGuards } from "../adapters/llm/factory";
 import type { LlmAdapter } from "../adapters/llm-adapter";
-import { createMockLlmAdapter } from "../adapters/mock-llm-adapter";
-import {
-  createMockSignalAdapter,
-  isMockSignalFixture,
-  type MockSignalFixture,
-} from "../adapters/mock-signal-adapter";
 import type { ProviderAdapter } from "../adapters/provider-adapter";
 import { createSignalAdapter, wrapSignalWithGuards } from "../adapters/signal/factory";
 import { DEFAULT_THRESHOLDS, getLlmConfig, getProviderConfig } from "../lib/config-resolver";
-import { withObservability } from "../lib/observability";
 import { getProcessRateLimiter } from "../lib/rate-limiter";
 import type { CorrelationVariables } from "../middleware/correlation";
 import type { TenantVariables } from "../middleware/tenant";
@@ -43,23 +42,21 @@ function normalizeCompanyId(raw: string): string | null {
  *
  * Mounted under `/api/snapshot` in `index.ts`. Full route: `POST /api/snapshot/:companyId`.
  *
- * V1 pipeline (Step 8):
- *   eligibility gate → mock signal adapter → dominant signal → reason text
- *   → mock contact fetcher → ranked people → assembled Snapshot.
+ * Slice 3 pipeline:
+ *   resolve adapters → if either missing, return `unconfigured` →
+ *   eligibility gate → signal fetch → dominant signal → reason text
+ *   → contact fetcher → ranked people → assembled Snapshot.
  *
  * Tenant safety: `tenantId` is ALWAYS sourced from `c.get('tenantId')` set by
  * the upstream tenant middleware. Body-provided tenantIds are ignored and the
  * assembler re-stamps evidence with the middleware-resolved tenantId.
  *
- * Trust thresholds: resolved per-tenant from `provider_config.thresholds`
- * (provider name `mock-signal` in V1, matching {@link createMockSignalAdapter}).
- * Falls back to {@link DEFAULT_THRESHOLDS} when the tenant has no row yet so
- * the route stays usable on a fresh install. Slice 2 will replace the
- * `mock-signal` provider name with the real adapter family selected per call.
+ * Adapter resolution: if a tenant has no `llm_config` or no enabled
+ * `provider_config` row (or adapter construction fails), the route
+ * short-circuits with `eligibilityState: "unconfigured"` instead of silently
+ * serving mock data. Mock adapters remain only in `__tests__/` fixtures.
  */
 export const snapshotRoutes = new Hono<{ Variables: Vars }>();
-
-const SIGNAL_PROVIDER_NAME = "mock-signal";
 
 /** Reasonable bounds — guard against malformed or hostile DB rows. */
 function isValidThresholds(t: ThresholdConfig): boolean {
@@ -72,15 +69,13 @@ function isValidThresholds(t: ThresholdConfig): boolean {
   );
 }
 
-async function resolveThresholds(db: Database, tenantId: string): Promise<ThresholdConfig> {
-  try {
-    const cfg = await getProviderConfig({ db }, { tenantId, providerName: SIGNAL_PROVIDER_NAME });
-    if (cfg && isValidThresholds(cfg.thresholds)) {
-      return cfg.thresholds;
-    }
-  } catch {
-    // Resolver failure must not break the snapshot path — fall back to defaults.
-  }
+/**
+ * Fallback thresholds when the resolved signal provider row does not carry
+ * valid thresholds. In Slice 3 this only fires when the signal resolution
+ * DID find a real provider row (otherwise the route short-circuits to
+ * unconfigured). Returns {@link DEFAULT_THRESHOLDS}.
+ */
+function fallbackThresholds(): ThresholdConfig {
   return DEFAULT_THRESHOLDS;
 }
 
@@ -89,19 +84,16 @@ async function resolveThresholds(db: Database, tenantId: string): Promise<Thresh
  *
  * 1. Look up the tenant's default `llm_config` row via the resolver.
  * 2. If present, build the real provider adapter via {@link createLlmAdapter}
- *    and wrap with rate-limiter + observability so every outbound call is
- *    structured-logged and correlation-ID-traced.
- * 3. If absent, fall back to the Slice 1 mock adapter. This preserves
- *    existing-fixture behavior for tenants that predate the Slice 2 seed
- *    script (Step 14). A structured `outcome=fallback` log line is emitted so
- *    operators can see when a fallback fires. Slice 3 removes this fallback
- *    once every tenant has a provisioned LLM row.
+ *    and wrap with rate-limiter + observability.
+ * 3. If absent or construction fails, return `null`. The caller short-circuits
+ *    to an `eligibilityState: "unconfigured"` snapshot. Mock adapters are no
+ *    longer used in route code (Slice 3).
  */
 async function resolveLlmAdapter(
   db: Database,
   tenantId: string,
   correlationId: string | undefined,
-): Promise<LlmAdapter> {
+): Promise<LlmAdapter | null> {
   let cfg: LlmProviderConfig | null = null;
   try {
     cfg = await getLlmConfig({ db }, { tenantId });
@@ -110,22 +102,12 @@ async function resolveLlmAdapter(
   }
 
   if (!cfg) {
-    await withObservability(
-      async () => undefined,
-      {
-        tenantId,
-        provider: "mock",
-        operation: "llm.complete",
-        correlationId,
-      },
-      () => ({ tokenUsage: { inputTokens: 0, outputTokens: 0 } }),
-    );
-    return createMockLlmAdapter({ style: "short" });
+    return null;
   }
 
   // M24: construction can throw on malformed config (e.g., provider=custom
   // with a missing endpoint_url, which is nullable in the schema). One
-  // misconfigured tenant MUST NOT 500 the route — degrade to mock + log.
+  // misconfigured tenant returns unconfigured — not a 500.
   let real: LlmAdapter;
   try {
     real = createLlmAdapter(cfg);
@@ -135,7 +117,7 @@ async function resolveLlmAdapter(
       provider: cfg.provider,
       errorClass: err instanceof Error ? err.constructor.name : typeof err,
     });
-    return createMockLlmAdapter({ style: "short" });
+    return null;
   }
 
   return wrapWithGuards(real, {
@@ -146,59 +128,39 @@ async function resolveLlmAdapter(
 }
 
 /**
- * Real signal providers Slice 2 can resolve from `provider_config` rows.
- * Probed in listed order; first match wins.
+ * Signal providers probed from `provider_config` rows in listed order; first
+ * enabled match wins.
  *
- * Slice 2 ONLY wires `exa` end-to-end. `hubspot-enrichment` and `news` are
- * scaffolded stubs that throw on call — including them here would 500 any
- * tenant that configures them (surfaced by cubic review P1). They are
- * re-added in Slice 3 alongside the adapter bodies. Tenants with those
- * provider rows today silently fall back to the mock adapter, which is
- * the same behavior as if the row didn't exist.
+ * Slice 3 adds `news` (now a real adapter). `hubspot-enrichment` stays out
+ * until the adapter body is implemented — its factory throws at construction,
+ * which `resolveSignalAdapter` treats the same as "no config row" = `null`.
  */
-const REAL_SIGNAL_PROVIDERS = ["exa"] as const;
+const REAL_SIGNAL_PROVIDERS = ["exa", "news"] as const;
+
+/**
+ * Successful signal resolution — contains the adapter plus per-provider
+ * config (allow/block lists, thresholds).
+ */
+type SignalResolution = {
+  adapter: ProviderAdapter;
+  allowList?: string[];
+  blockList?: string[];
+  thresholds?: ThresholdConfig;
+};
 
 /**
  * Resolve the signal adapter for a tenant.
  *
- * Mirrors {@link resolveLlmAdapter}. Probes `provider_config` for each of the
- * {@link REAL_SIGNAL_PROVIDERS} in order; on the first hit, builds the real
- * adapter via {@link createSignalAdapter} and wraps it with
- * {@link wrapSignalWithGuards} (rate limiter + observability). On no hit or
- * any resolver error, falls back to the Slice 1 {@link createMockSignalAdapter}
- * so fixture-driven behavior stays identical for tenants that predate the
- * Slice 2 seed script (Step 14). A structured `outcome=fallback` log line is
- * emitted so operators can see when a fallback fires.
- *
- * Slice 3: once every tenant has a provisioned `provider_config` row AND
- * the stub adapters (`hubspot-enrichment`, `news`) are replaced with real
- * bodies, the fallback is removed and the probe list in
- * {@link REAL_SIGNAL_PROVIDERS} is expanded to include them. Slice 2 only
- * probes `exa` — other provider rows fall through to the mock fallback.
+ * Probes `provider_config` for each of {@link REAL_SIGNAL_PROVIDERS} in order.
+ * On the first enabled hit, builds the real adapter and wraps with guards.
+ * Returns `null` when no enabled provider row exists or adapter construction
+ * fails. The caller short-circuits to `eligibilityState: "unconfigured"`.
  */
-type SignalResolution = {
-  adapter: ProviderAdapter;
-  /** Allow-list from the resolved provider row; undefined on mock fallback. */
-  allowList?: string[];
-  /** Block-list from the resolved provider row; undefined on mock fallback. */
-  blockList?: string[];
-  /**
-   * Thresholds from the resolved provider row; undefined on mock fallback so
-   * the caller can fall back to `resolveThresholds()` (the legacy
-   * `mock-signal` probe) or {@link DEFAULT_THRESHOLDS}. CodeRabbit M1:
-   * without this, the route always used `mock-signal` thresholds even when
-   * a real provider with tenant-specific thresholds was selected, causing
-   * trust suppression + dominant-signal selection to run with stale values.
-   */
-  thresholds?: ThresholdConfig;
-};
-
 async function resolveSignalAdapter(
   db: Database,
   tenantId: string,
-  fixture: MockSignalFixture,
   correlationId: string | undefined,
-): Promise<SignalResolution> {
+): Promise<SignalResolution | null> {
   let chosen: ProviderConfig | null = null;
   for (const providerName of REAL_SIGNAL_PROVIDERS) {
     try {
@@ -209,25 +171,17 @@ async function resolveSignalAdapter(
       }
     } catch {
       // Resolver failure must not break the snapshot path — try the next
-      // provider, ultimately falling back to the mock adapter below.
+      // provider, ultimately returning null below.
     }
   }
 
   if (!chosen) {
-    await withObservability(async () => undefined, {
-      tenantId,
-      provider: "mock",
-      operation: "signal.fetch",
-      correlationId,
-    });
-    return { adapter: createMockSignalAdapter({ fixture }) };
+    return null;
   }
 
-  // M4: createSignalAdapter can throw at construction time — e.g., if a
-  // future provider (hubspot-enrichment / news) is added back to the probe
-  // list without injecting the required deps, or if a provider requires a
-  // non-null field that's nullable in the schema. Fall back to mock rather
-  // than 500 the snapshot response.
+  // Construction can throw — e.g., hubspot-enrichment requires an injected
+  // client, or a provider config row has a non-null field that's nullable in
+  // the schema. Treat as unconfigured, not a 500.
   let real: ProviderAdapter;
   try {
     real = createSignalAdapter(chosen);
@@ -237,13 +191,7 @@ async function resolveSignalAdapter(
       provider: chosen.name,
       errorClass: err instanceof Error ? err.constructor.name : typeof err,
     });
-    await withObservability(async () => undefined, {
-      tenantId,
-      provider: "mock",
-      operation: "signal.fetch",
-      correlationId,
-    });
-    return { adapter: createMockSignalAdapter({ fixture }) };
+    return null;
   }
 
   const adapter = wrapSignalWithGuards(real, {
@@ -342,12 +290,6 @@ snapshotRoutes.post("/:companyId", async (c) => {
     return c.json({ error: "unauthorized" }, 401);
   }
 
-  // V1 fixture selectors. Default behavior unchanged: eligible + strong.
-  // Invalid values silently fall back to defaults so callers can't induce
-  // 4xx noise with typos. Slice 2 removes both selectors when real adapters
-  // and a real property fetcher land.
-  const stateParam = c.req.query("state");
-  const fixture: MockSignalFixture = isMockSignalFixture(stateParam) ? stateParam : "strong";
   const eligibilityParam = c.req.query("eligibility");
   const mode: EligibilityMode = isEligibilityMode(eligibilityParam) ? eligibilityParam : "eligible";
 
@@ -355,13 +297,25 @@ snapshotRoutes.post("/:companyId", async (c) => {
     const db = getDb();
     const correlationId = c.get("correlationId");
     const llmAdapter = await resolveLlmAdapter(db, tenantId, correlationId);
-    const signal = await resolveSignalAdapter(db, tenantId, fixture, correlationId);
-    // M1: prefer thresholds from the resolved signal provider row when a
-    // real provider was selected. Only fall back to the legacy mock-signal
-    // probe when the signal resolution landed on the mock (no real row
-    // matched). This keeps tenant-specific thresholds in sync with the
-    // adapter actually fetching their evidence.
-    const thresholds = signal.thresholds ?? (await resolveThresholds(db, tenantId));
+    const signal = await resolveSignalAdapter(db, tenantId, correlationId);
+
+    // Short-circuit: if either adapter could not be resolved, the tenant's
+    // provider configuration is incomplete. Return an explicit unconfigured
+    // snapshot instead of silently serving mock data.
+    if (!llmAdapter || !signal) {
+      const unconfiguredSnapshot = createSnapshot(tenantId, {
+        companyId,
+        eligibilityState: "unconfigured",
+        reasonToContact: undefined,
+        people: [],
+        evidence: [],
+        stateFlags: createStateFlags({ empty: true }),
+        createdAt: new Date(),
+      });
+      return c.json(unconfiguredSnapshot, 200);
+    }
+
+    const thresholds = signal.thresholds ?? fallbackThresholds();
     const snapshot = await assembleSnapshot(
       {
         db,
@@ -387,7 +341,6 @@ snapshotRoutes.post("/:companyId", async (c) => {
     console.error("snapshot_route_error", {
       tenantId,
       companyId,
-      fixture,
       eligibilityMode: mode,
       errorClass: err instanceof Error ? err.constructor.name : typeof err,
     });
