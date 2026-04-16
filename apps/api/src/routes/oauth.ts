@@ -91,10 +91,13 @@ function isAllowedReturnUrl(url: string): boolean {
   }
 }
 
+function escapeHtml(s: string): string {
+  return s.replace(/[<>&"']/g, (c) => `&#${c.charCodeAt(0)};`);
+}
+
 function htmlError(title: string, detail: string): string {
-  // Intentionally minimal, no CSS. Dev-only visual; prod has a nicer page.
-  const safeTitle = title.replace(/[<>&]/g, "");
-  const safeDetail = detail.replace(/[<>&]/g, "");
+  const safeTitle = escapeHtml(title);
+  const safeDetail = escapeHtml(detail);
   return `<!doctype html><html><head><meta charset="utf-8"><title>${safeTitle}</title></head><body><h1>${safeTitle}</h1><p>${safeDetail}</p></body></html>`;
 }
 

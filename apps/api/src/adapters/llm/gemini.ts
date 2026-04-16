@@ -147,6 +147,12 @@ export class GeminiAdapter implements LlmAdapter {
         body,
         signal: abortController.signal,
       });
+    } catch (err) {
+      clearTimeout(timeoutHandle);
+      if (err instanceof DOMException && err.name === "AbortError") {
+        throw new GeminiError({ status: 408, code: "timeout" });
+      }
+      throw err;
     } finally {
       clearTimeout(timeoutHandle);
     }

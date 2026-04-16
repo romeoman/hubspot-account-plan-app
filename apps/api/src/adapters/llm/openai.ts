@@ -154,6 +154,16 @@ export class OpenAiAdapter implements LlmAdapter {
         body,
         signal: abortController.signal,
       });
+    } catch (err) {
+      clearTimeout(timeoutHandle);
+      if (err instanceof DOMException && err.name === "AbortError") {
+        throw new OpenAiError({
+          status: 408,
+          code: "timeout",
+          retryAfterSeconds: null,
+        });
+      }
+      throw err;
     } finally {
       clearTimeout(timeoutHandle);
     }

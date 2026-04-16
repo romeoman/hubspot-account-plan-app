@@ -75,6 +75,7 @@ export class HubSpotClient {
   private readonly db: Database;
   private readonly fetchImpl: typeof globalThis.fetch;
   private tokenCache: TokenCache | null = null;
+  private refreshInFlight: Promise<string> | null = null;
 
   constructor(options: HubSpotClientOptions) {
     this.tenantId = options.tenantId;
@@ -106,8 +107,7 @@ export class HubSpotClient {
 
     // Check if token is within the pre-expiry window (or already expired)
     if (row.expiresAt.getTime() - PRE_EXPIRY_WINDOW_MS < Date.now()) {
-      // Proactively refresh
-      const refreshed = await this.performTokenRefresh(row.refreshTokenEncrypted);
+      const refreshed = await this.serializedRefresh(row.refreshTokenEncrypted);
       return refreshed;
     }
 
@@ -121,10 +121,23 @@ export class HubSpotClient {
   }
 
   /**
+   * Serialized refresh — ensures only one refresh runs at a time per client
+   * instance. Concurrent callers await the same in-flight promise instead
+   * of racing (HubSpot rotates refresh tokens, so a second concurrent
+   * refresh with the old token would fail).
+   */
+  private async serializedRefresh(refreshTokenEncrypted: string): Promise<string> {
+    if (this.refreshInFlight) {
+      return this.refreshInFlight;
+    }
+    this.refreshInFlight = this.performTokenRefresh(refreshTokenEncrypted).finally(() => {
+      this.refreshInFlight = null;
+    });
+    return this.refreshInFlight;
+  }
+
+  /**
    * Refresh the access token, persist rotated tokens to DB, update cache.
-   *
-   * @param refreshTokenEncrypted - the encrypted refresh token from the DB row
-   * @returns the new decrypted access token
    */
   private async performTokenRefresh(refreshTokenEncrypted: string): Promise<string> {
     const env = loadEnv();
@@ -191,7 +204,7 @@ export class HubSpotClient {
         throw new Error(`HubSpotClient: no OAuth tokens found for tenant ${this.tenantId}`);
       }
 
-      await this.performTokenRefresh(row.refreshTokenEncrypted);
+      await this.serializedRefresh(row.refreshTokenEncrypted);
       return this.authenticatedFetch(url, init, true);
     }
 

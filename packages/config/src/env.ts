@@ -72,10 +72,11 @@ const envSchema = z.object({
   EXA_API_KEY: z.preprocess(emptyToUndef, z.string().min(1).optional()),
   ANTHROPIC_API_KEY: z.preprocess(emptyToUndef, z.string().min(1).optional()),
   GEMINI_API_KEY: z.preprocess(emptyToUndef, z.string().min(1).optional()),
+  HUBSPOT_OAUTH_REDIRECT_URI: z.preprocess(emptyToUndef, z.string().url().optional()),
   ALLOW_TEST_AUTH: z.preprocess(emptyToUndef, z.literal("true").optional()),
 });
 
-/** Validated, typed Slice 2 runtime environment. */
+/** Validated, typed Slice 3 runtime environment. */
 export type Env = z.infer<typeof envSchema>;
 
 /**
