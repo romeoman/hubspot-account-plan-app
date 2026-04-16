@@ -1,6 +1,8 @@
 import type { LlmProviderConfig } from "@hap/config";
 import { describe, expect, it } from "vitest";
+import { AnthropicAdapter } from "../anthropic";
 import { createLlmAdapter } from "../factory";
+import { GeminiAdapter } from "../gemini";
 import { OpenAiAdapter } from "../openai";
 
 function cfg(
@@ -20,16 +22,43 @@ describe("createLlmAdapter", () => {
     expect(adapter.provider).toBe("openai");
   });
 
-  it("resolves anthropic to a stub that throws a clear Slice 3 error", async () => {
-    const adapter = createLlmAdapter(cfg({ provider: "anthropic" }));
+  it("resolves anthropic to a real AnthropicAdapter", async () => {
+    const fakeFetch: typeof fetch = async () => {
+      return new Response(
+        JSON.stringify({
+          content: [{ type: "text", text: "ok" }],
+          usage: { input_tokens: 3, output_tokens: 1 },
+          stop_reason: "end_turn",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+    const adapter = createLlmAdapter(cfg({ provider: "anthropic" }), {
+      fetch: fakeFetch,
+    });
+    expect(adapter).toBeInstanceOf(AnthropicAdapter);
     expect(adapter.provider).toBe("anthropic");
-    await expect(adapter.complete("hi")).rejects.toThrow(/Slice 3: real anthropic adapter/);
+    const res = await adapter.complete("hi");
+    expect(res.content).toBe("ok");
   });
 
-  it("resolves gemini to a stub that throws a clear Slice 3 error", async () => {
-    const adapter = createLlmAdapter(cfg({ provider: "gemini" }));
+  it("resolves gemini to a real GeminiAdapter", async () => {
+    const fakeFetch: typeof fetch = async () => {
+      return new Response(
+        JSON.stringify({
+          candidates: [{ content: { role: "model", parts: [{ text: "ok" }] } }],
+          usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 1 },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+    const adapter = createLlmAdapter(cfg({ provider: "gemini" }), {
+      fetch: fakeFetch,
+    });
+    expect(adapter).toBeInstanceOf(GeminiAdapter);
     expect(adapter.provider).toBe("gemini");
-    await expect(adapter.complete("hi")).rejects.toThrow(/Slice 3: real gemini adapter/);
+    const res = await adapter.complete("hi");
+    expect(res.content).toBe("ok");
   });
 
   it("resolves openrouter to a stub that throws a clear Slice 3 error", async () => {
