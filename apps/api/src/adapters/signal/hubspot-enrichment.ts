@@ -12,9 +12,9 @@
  * + notes/engagement fetch and emits Evidence rows.
  */
 
-import type { Evidence } from "@hap/config";
+import { createEvidence, type Evidence } from "@hap/config";
 import type { HubSpotClient } from "../../lib/hubspot-client";
-import type { ProviderAdapter } from "../provider-adapter";
+import type { ProviderAdapter, ProviderCompanyContext } from "../provider-adapter";
 
 export const HUBSPOT_ENRICHMENT_PROVIDER_NAME = "hubspot-enrichment" as const;
 
@@ -26,14 +26,26 @@ export class HubSpotEnrichmentAdapter implements ProviderAdapter {
     this.client = client;
   }
 
-  fetchSignals(_tenantId: string, _companyName: string, _domain?: string): Promise<Evidence[]> {
-    // Touch the field so `noUnusedLocals` stays quiet without losing the closure
-    // capture the Slice 3 implementation will need.
-    void this.client;
-    return Promise.reject(
-      new Error(
-        "HubSpot enrichment adapter not yet implemented; deferred to Phase 3 (needs per-tenant OAuth + RLS tx context).",
-      ),
+  async fetchSignals(tenantId: string, company: ProviderCompanyContext): Promise<Evidence[]> {
+    const companyProperties = await this.client.getCompanyProperties(company.companyId, [
+      "name",
+      "domain",
+    ]);
+    const companyName = company.companyName ?? companyProperties.name ?? company.companyId;
+    const domain = company.domain ?? companyProperties.domain;
+    const engagements = await this.client.getCompanyEngagements(company.companyId);
+
+    return engagements.map((engagement) =>
+      createEvidence(tenantId, {
+        id: `hubspot-enrichment:${company.companyId}:${engagement.id}`,
+        source: HUBSPOT_ENRICHMENT_PROVIDER_NAME,
+        timestamp: engagement.timestamp,
+        confidence: 0.8,
+        content: domain
+          ? `${companyName} (${domain}) ${engagement.type}: ${engagement.content}`
+          : `${companyName} ${engagement.type}: ${engagement.content}`,
+        isRestricted: false,
+      }),
     );
   }
 }

@@ -1,6 +1,6 @@
 import type { ProviderConfig } from "@hap/config";
+import type { Database } from "@hap/db";
 import { describe, expect, it } from "vitest";
-import type { HubSpotClient } from "../../../lib/hubspot-client";
 import { ExaAdapter } from "../exa";
 import { createSignalAdapter } from "../factory";
 import { HubSpotEnrichmentAdapter } from "../hubspot-enrichment";
@@ -15,9 +15,7 @@ function cfg(partial: Partial<ProviderConfig> & Pick<ProviderConfig, "name">): P
   } as ProviderConfig;
 }
 
-// Minimal HubSpotClient stub — the Slice 3 stub adapter just captures and
-// rejects, so we only need a plausibly-typed object.
-const stubHubSpotClient = {} as unknown as HubSpotClient;
+const stubDb = {} as unknown as Database;
 
 describe("createSignalAdapter", () => {
   it("resolves exa to a real ExaAdapter", () => {
@@ -26,17 +24,17 @@ describe("createSignalAdapter", () => {
     expect(adapter.name).toBe("exa");
   });
 
-  it("resolves hubspot-enrichment to a stub that throws a clear deferral error", async () => {
+  it("resolves hubspot-enrichment from tenantId + db deps", async () => {
     const adapter = createSignalAdapter(cfg({ name: "hubspot-enrichment" }), {
-      hubspotClient: stubHubSpotClient,
+      db: stubDb,
+      tenantId: "tenant-1",
     });
     expect(adapter).toBeInstanceOf(HubSpotEnrichmentAdapter);
     expect(adapter.name).toBe("hubspot-enrichment");
-    await expect(adapter.fetchSignals("t1", "Acme")).rejects.toThrow(/not yet implemented/);
   });
 
-  it("refuses hubspot-enrichment when no client is injected", () => {
-    expect(() => createSignalAdapter(cfg({ name: "hubspot-enrichment" }))).toThrow(/HubSpotClient/);
+  it("refuses hubspot-enrichment when tenantId/db deps are missing", () => {
+    expect(() => createSignalAdapter(cfg({ name: "hubspot-enrichment" }))).toThrow(/tenantId.*db/i);
   });
 
   it("resolves news to a real NewsAdapter", () => {
@@ -67,7 +65,7 @@ describe("createSignalAdapter", () => {
     const adapter = createSignalAdapter(cfg({ name: "exa" }), {
       fetch: fakeFetch,
     });
-    const ev = await adapter.fetchSignals("t1", "Acme");
+    const ev = await adapter.fetchSignals("t1", { companyId: "co-acme", companyName: "Acme" });
     expect(called).toBe(true);
     expect(ev).toEqual([]);
   });

@@ -91,6 +91,7 @@ export function __resetHubspotSignatureCacheForTests(): void {
 export type HubSpotSignatureVariables = TenantVariables & {
   portalId?: string;
   userId?: string;
+  rawBody?: string;
 };
 
 /** Opaque 401 response body — never includes the offending signature. */
@@ -261,6 +262,7 @@ export function hubspotSignatureMiddleware(): MiddlewareHandler<{
         return c.json(unauthorized(), 401);
       }
     }
+    c.set("rawBody", body);
 
     // Per HubSpot reference implementation: decode the URI before hashing.
     let decodedUrl: string;

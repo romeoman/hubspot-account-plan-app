@@ -1296,5 +1296,212 @@
         "master"
       ]
     }
+  },
+  "slice-3-phase-3": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "RLS Migration (0007)",
+        "description": "Add migration 0007 to enable and force RLS policies on all tenant-scoped tables except tenants.",
+        "details": "Task ID: rls-migration. Create packages/db/drizzle/0007_rls_policies.sql for snapshots, evidence, people, provider_config, llm_config, tenant_hubspot_oauth, and signed_request_nonce. Add migration tests proving RLS is enabled and forced. Keep tenants out of RLS because it is the bootstrap lookup table.",
+        "testStrategy": "Write a failing migration test first, verify it fails, implement migration, rerun the targeted test, then rerun the broader test suite.",
+        "priority": "high",
+        "dependencies": [],
+        "status": "done",
+        "subtasks": [],
+        "updatedAt": "2026-04-16T16:22:01.972Z"
+      },
+      {
+        "id": "2",
+        "title": "Tenant Transaction Helpers",
+        "description": "Create withTenantTx and withTenantTxHandle so request and script queries run with SET LOCAL app.tenant_id.",
+        "details": "Task ID: tenant-tx. Add apps/api/src/lib/tenant-tx.ts with transaction helpers and tests proving the session variable is set and tenant scoping works under RLS.",
+        "testStrategy": "Write failing tests for current_setting and cross-tenant visibility first, confirm failure, implement helpers, and rerun focused plus broad tests.",
+        "priority": "high",
+        "dependencies": [
+          "1"
+        ],
+        "status": "done",
+        "subtasks": [],
+        "updatedAt": "2026-04-16T16:30:05.941Z"
+      },
+      {
+        "id": "3",
+        "title": "Replay Nonce Library",
+        "description": "Implement nonce recording, body hashing, and nonce sweeping support.",
+        "details": "Task ID: replay-nonce-lib. Add apps/api/src/lib/replay-nonce.ts and scripts/sweep-nonces.ts. recordNonce uses INSERT ... ON CONFLICT DO NOTHING; computeBodyHash uses SHA-256. Tests must cover duplicate and tenant-scoped nonce behavior.",
+        "testStrategy": "Write failing unit tests for duplicate detection and body hashing first, confirm failure, implement the library and sweep script, then rerun tests.",
+        "priority": "high",
+        "dependencies": [],
+        "status": "done",
+        "subtasks": [],
+        "updatedAt": "2026-04-16T16:34:40.891Z"
+      },
+      {
+        "id": "4",
+        "title": "RLS Middleware Wiring",
+        "description": "Inject the RLS-bound DB handle in index.ts and remove route/service reliance on process-wide DB construction.",
+        "details": "Task ID: rls-wiring. Add the request-scoped DB middleware after tenantMiddleware in apps/api/src/index.ts, update snapshot route to use c.get('db'), and add cross-tenant regression coverage proving RLS blocks cross-tenant access.",
+        "testStrategy": "Write failing route/integration tests first, confirm failure, wire the middleware and route changes, then rerun tests and regression checks.",
+        "priority": "high",
+        "dependencies": [
+          "1",
+          "2"
+        ],
+        "status": "done",
+        "subtasks": [],
+        "updatedAt": "2026-04-16T16:38:57.438Z"
+      },
+      {
+        "id": "5",
+        "title": "Nonce Middleware Wiring",
+        "description": "Wire replay detection into the request path after auth and tenant resolution.",
+        "details": "Task ID: nonce-wiring. Add apps/api/src/middleware/nonce.ts, stash rawBody in hubspot-signature middleware, and reject duplicate replay attempts with 401 replay_detected while preserving tenant-scoped behavior.",
+        "testStrategy": "Write failing middleware tests for duplicate and cross-tenant success cases first, confirm failure, implement wiring, and rerun focused plus broad tests.",
+        "priority": "high",
+        "dependencies": [
+          "3",
+          "4"
+        ],
+        "status": "done",
+        "subtasks": [],
+        "updatedAt": "2026-04-16T16:41:34.513Z"
+      },
+      {
+        "id": "6",
+        "title": "Provider Contract Fix",
+        "description": "Change ProviderAdapter.fetchSignals to accept a structured SignalContext argument and update all callers and tests.",
+        "details": "Task ID: provider-contract-fix. Update the adapter interface, snapshot assembler, wrappers, all signal adapters, and tests so the contract is fetchSignals(tenantId, { companyId, companyName?, domain? }).",
+        "testStrategy": "Write failing contract and call-site tests first, confirm failure, implement the interface change, then rerun affected tests and the full suite.",
+        "priority": "high",
+        "dependencies": [
+          "4"
+        ],
+        "status": "done",
+        "subtasks": [],
+        "updatedAt": "2026-04-16T16:53:58.804Z"
+      },
+      {
+        "id": "7",
+        "title": "HubSpot Enrichment Adapter",
+        "description": "Replace the stub with a real adapter that uses companyId and the tenant-aware HubSpot client.",
+        "details": "Task ID: hubspot-enrichment. Implement the real adapter, add getCompanyEngagements to apps/api/src/lib/hubspot-client.ts, extend signal factory deps with db and tenantId, and cover both injected and default-construction paths with tests and cassettes.",
+        "testStrategy": "Write failing adapter tests first, confirm failure, implement the adapter and client changes, then rerun cassette-backed tests and the full suite.",
+        "priority": "high",
+        "dependencies": [
+          "4",
+          "6"
+        ],
+        "status": "done",
+        "subtasks": [],
+        "updatedAt": "2026-04-16T16:59:26.466Z"
+      },
+      {
+        "id": "8",
+        "title": "Card Bundling Bridge",
+        "description": "Bundle the real HubSpot extension into the HubSpot project card entry as a locked dist/index.js build.",
+        "details": "Task ID: card-bundler. Add the Vite IIFE build, hubspot-card-entry.tsx, shared ExtensionRoot, bundle script, and re-export-based SignalCard bridge. Ensure the bundle script verifies dist/index.js exists.",
+        "testStrategy": "Write failing bundle existence or re-export tests first, confirm failure, implement the bundling bridge, then rerun targeted tests and the bundle command.",
+        "priority": "high",
+        "dependencies": [],
+        "status": "done",
+        "subtasks": [],
+        "updatedAt": "2026-04-16T17:04:03.654Z"
+      },
+      {
+        "id": "9",
+        "title": "Biome DB Import Restriction",
+        "description": "Add a Biome restriction that blocks runtime DB client construction in routes and services without blocking schema/type imports.",
+        "details": "Task ID: lint-db-imports. Update biome.json so createDatabase is restricted in apps/api/src/routes and apps/api/src/services while legitimate @hap/db schema, type, eq, and sql imports remain allowed.",
+        "testStrategy": "Add or run failing lint cases first, confirm the rule catches banned imports but permits allowed ones, implement the config, then rerun lint.",
+        "priority": "medium",
+        "dependencies": [
+          "4"
+        ],
+        "status": "done",
+        "subtasks": [],
+        "updatedAt": "2026-04-16T17:05:11.714Z"
+      },
+      {
+        "id": "10",
+        "title": "Docs Sweep",
+        "description": "Update security docs and remove stale Slice 3 TODO references after implementation lands.",
+        "details": "Task ID: docs-sweep. Update docs/security/SECURITY.md with the RLS and replay-nonce sections and clean stale comments or references, including any necessary CLAUDE.md cleanup from doc-path drift.",
+        "testStrategy": "Review docs after implementation against the accepted architecture and acceptance criteria, then verify referenced commands and sections are accurate.",
+        "priority": "medium",
+        "dependencies": [
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "status": "done",
+        "subtasks": [],
+        "updatedAt": "2026-04-16T17:07:34.876Z"
+      },
+      {
+        "id": "11",
+        "title": "Security Audit",
+        "description": "Perform a PASS/FAIL audit of OAuth, RLS, replay-nonce, and card bundling after implementation and docs are complete.",
+        "details": "Task ID: security-audit. Review the completed Phase 3 changes against the intended security posture and record PASS or concrete findings for each area.",
+        "testStrategy": "Use code inspection and the implemented tests plus validation commands to determine PASS/FAIL per audited area.",
+        "priority": "medium",
+        "dependencies": [
+          "10"
+        ],
+        "status": "done",
+        "subtasks": [],
+        "updatedAt": "2026-04-16T17:12:58.771Z"
+      },
+      {
+        "id": "12",
+        "title": "Code Review Follow-Up",
+        "description": "Push the branch, run external review tools, and address real findings.",
+        "details": "Task ID: code-review. After security audit passes, push the branch, run CodeRabbit CLI plus an independent review pass, and fix any substantive issues that come back.",
+        "testStrategy": "Review tool output, reproduce real findings where needed, fix them under TDD, and rerun the affected validation commands.",
+        "priority": "medium",
+        "dependencies": [
+          "11"
+        ],
+        "status": "in-progress",
+        "subtasks": [],
+        "updatedAt": "2026-04-16T17:12:58.795Z"
+      },
+      {
+        "id": "13",
+        "title": "Final Validation",
+        "description": "Run the full validation matrix and verify all Phase 3 acceptance criteria are satisfied.",
+        "details": "Task ID: validate-all. Run install, lint, test, typecheck, db:migrate, bundle, and grep-based validation commands. Confirm acceptance criteria for RLS, replay-nonce, provider contract, card bundling, and documentation updates.",
+        "testStrategy": "Execute the full validation command list from the approved plan and record pass/fail outcomes against every acceptance criterion.",
+        "priority": "high",
+        "dependencies": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9",
+          "10",
+          "11",
+          "12"
+        ],
+        "status": "pending",
+        "subtasks": [],
+        "updatedAt": "2026-04-16T18:20:00.000Z"
+      }
+    ],
+    "metadata": {
+      "version": "1.0.0",
+      "lastModified": "2026-04-16T17:12:58.795Z",
+      "taskCount": 13,
+      "completedCount": 11,
+      "tags": [
+        "slice-3-phase-3"
+      ]
+    }
   }
 }

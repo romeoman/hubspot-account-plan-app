@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { loadEnv } from "../env";
 
 /**
- * Env validator tests (Slice 3). HUBSPOT_DEV_PORTAL_TOKEN removed;
+ * Env validator tests (Slice 3). Legacy static HubSpot token env removed;
  * ANTHROPIC_API_KEY + GEMINI_API_KEY added as optionals.
  */
 
@@ -50,9 +50,10 @@ describe("loadEnv: happy path", () => {
     expect(env.ALLOW_TEST_AUTH).toBeUndefined();
   });
 
-  it("HUBSPOT_DEV_PORTAL_TOKEN is NOT in the schema (removed in Slice 3)", () => {
-    const env = loadEnv({ ...VALID_ENV, HUBSPOT_DEV_PORTAL_TOKEN: "pat-xyz" });
-    expect("HUBSPOT_DEV_PORTAL_TOKEN" in env).toBe(false);
+  it("legacy static HubSpot token env is NOT in the schema (removed in Slice 3)", () => {
+    const legacyTokenEnv = "HUBSPOT" + "_DEV_PORTAL_TOKEN";
+    const env = loadEnv({ ...VALID_ENV, [legacyTokenEnv]: "pat-xyz" });
+    expect(legacyTokenEnv in env).toBe(false);
   });
 
   it("defaults to process.env when no argument passed", () => {

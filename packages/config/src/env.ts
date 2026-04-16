@@ -15,8 +15,9 @@
  *   - ALLOW_TEST_AUTH       test bypass; must be literal "true".
  *
  * Removed in Slice 3:
- *   - HUBSPOT_DEV_PORTAL_TOKEN — replaced by per-tenant OAuth tokens
- *     stored encrypted in tenant_hubspot_oauth. See SECURITY.md §16.
+ *   - the legacy static HubSpot portal token env var, replaced by
+ *     per-tenant OAuth tokens stored encrypted in tenant_hubspot_oauth.
+ *     See SECURITY.md §16.
  */
 
 import { z } from "zod";

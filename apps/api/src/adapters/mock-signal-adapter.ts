@@ -60,11 +60,7 @@ export function createMockSignalAdapter(opts: MockSignalAdapterOptions = {}): Pr
 
   return {
     name: "mock-signal",
-    async fetchSignals(
-      tenantId: string,
-      _companyName: string,
-      _domain?: string,
-    ): Promise<Evidence[]> {
+    async fetchSignals(tenantId: string): Promise<Evidence[]> {
       switch (fixture) {
         case "empty":
           return [];

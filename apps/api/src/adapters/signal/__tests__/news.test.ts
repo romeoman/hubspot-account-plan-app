@@ -60,7 +60,11 @@ describe("NewsAdapter", () => {
       fetch: fakeFetch(cassette),
     });
 
-    const evidence = await adapter.fetchSignals("tenant-uuid", "Acme Corp", "acme.example.com");
+    const evidence = await adapter.fetchSignals("tenant-uuid", {
+      companyId: "co-acme",
+      companyName: "Acme Corp",
+      domain: "acme.example.com",
+    });
     expect(evidence.length).toBeGreaterThan(0);
     for (const e of evidence) {
       expect(e.source).toMatch(/\./); // hostname from URL, e.g. "techcrunch.example.com"
@@ -85,7 +89,7 @@ describe("NewsAdapter", () => {
     }) as unknown as typeof fetch;
 
     const adapter = new NewsAdapter({ apiKey: "exa-test-key", fetch: spy });
-    await adapter.fetchSignals("t1", "Acme Corp");
+    await adapter.fetchSignals("t1", { companyId: "co-acme", companyName: "Acme Corp" });
 
     expect(capturedUrl).toBe("https://api.exa.ai/search");
     const body = JSON.parse(capturedBody);
@@ -106,7 +110,7 @@ describe("NewsAdapter", () => {
     }) as unknown as typeof fetch;
 
     const adapter = new NewsAdapter({ apiKey: "secret-exa-key", fetch: spy });
-    await adapter.fetchSignals("t1", "Acme Corp");
+    await adapter.fetchSignals("t1", { companyId: "co-acme", companyName: "Acme Corp" });
 
     expect(capturedHeaders["x-api-key"]).toBe("secret-exa-key");
   });
@@ -120,7 +124,9 @@ describe("NewsAdapter", () => {
     }) as unknown as typeof fetch;
 
     const adapter = new NewsAdapter({ apiKey: "key", fetch: spy });
-    await expect(adapter.fetchSignals("t1", "Acme Corp")).rejects.toThrow();
+    await expect(
+      adapter.fetchSignals("t1", { companyId: "co-acme", companyName: "Acme Corp" }),
+    ).rejects.toThrow();
   });
 
   it("returns empty array when Exa returns zero results", async () => {
@@ -132,7 +138,10 @@ describe("NewsAdapter", () => {
     }) as unknown as typeof fetch;
 
     const adapter = new NewsAdapter({ apiKey: "key", fetch: spy });
-    const evidence = await adapter.fetchSignals("t1", "Unknown Corp");
+    const evidence = await adapter.fetchSignals("t1", {
+      companyId: "co-unknown",
+      companyName: "Unknown Corp",
+    });
     expect(evidence).toEqual([]);
   });
 });

@@ -570,4 +570,37 @@ describe("assembleSnapshot", () => {
     expect(snap.nextMove).toBeUndefined();
     expect(JSON.stringify(snap)).not.toContain("SHOULD NOT APPEAR");
   });
+
+  it("passes structured company context to the provider adapter", async () => {
+    const tenantId = await seedTenant();
+    const calls: Array<{ tenantId: string; company: unknown }> = [];
+    const stub: ProviderAdapter = {
+      name: "stub-structured-company",
+      async fetchSignals(callTenantId, company) {
+        calls.push({ tenantId: callTenantId, company });
+        return [];
+      },
+    };
+
+    await assembleSnapshot(
+      {
+        db,
+        providerAdapter: stub,
+        llmAdapter: createMockLlmAdapter(),
+        propertyFetcher: ELIGIBLE,
+        contactFetcher: threeContacts,
+        thresholds: THRESHOLDS,
+      },
+      { tenantId, companyId: "co-structured" },
+    );
+
+    expect(calls).toEqual([
+      {
+        tenantId,
+        company: {
+          companyId: "co-structured",
+        },
+      },
+    ]);
+  });
 });

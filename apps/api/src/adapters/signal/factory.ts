@@ -23,14 +23,14 @@
  */
 
 import type { Evidence, ProviderConfig } from "@hap/config";
-import type { HubSpotClient } from "../../lib/hubspot-client";
+import { HubSpotClient, type HubSpotClientOptions } from "../../lib/hubspot-client";
 import { type ObservabilityContext, withObservability } from "../../lib/observability";
 import {
   DEFAULT_RATE_LIMIT_CONFIG,
   type RateLimitConfig,
   type RateLimiter,
 } from "../../lib/rate-limiter";
-import type { ProviderAdapter } from "../provider-adapter";
+import type { ProviderAdapter, ProviderCompanyContext } from "../provider-adapter";
 import { ExaAdapter } from "./exa";
 import { HubSpotEnrichmentAdapter } from "./hubspot-enrichment";
 import { NewsAdapter } from "./news";
@@ -39,12 +39,8 @@ import { NewsAdapter } from "./news";
 export interface SignalFactoryDeps {
   /** Override global `fetch` (cassette tests). Propagated to the adapter. */
   fetch?: typeof fetch;
-  /**
-   * Injected HubSpot client. When omitted, the HubSpot enrichment branch
-   * constructs a new {@link HubSpotClient} — which reads the env-held
-   * `HUBSPOT_DEV_PORTAL_TOKEN`. Tests MUST inject a stub to avoid the env
-   * read in unit tests.
-   */
+  db?: HubSpotClientOptions["db"];
+  tenantId?: string;
   hubspotClient?: HubSpotClient;
 }
 
@@ -85,21 +81,20 @@ export function createSignalAdapter(
         fetch: fetchImpl,
       });
     case "hubspot-enrichment": {
-      // Tests MUST inject a client. Production wiring constructs one lazily
-      // from the env — the client itself throws at construction if
-      // HUBSPOT_DEV_PORTAL_TOKEN is missing, which surfaces a misconfigured
-      // deploy loudly at first adapter call.
-      const client = deps?.hubspotClient;
-      if (!client) {
-        // Defer the env read to call-site-level: we can't construct a
-        // HubSpotClient here without importing it eagerly, which would pull a
-        // hard env dependency into every factory call (including tests). The
-        // Slice 3 implementation will either inject the client upstream or
-        // lazily construct one — matching the existing llm-factory pattern.
-        throw new Error(
-          "createSignalAdapter: hubspot-enrichment requires an injected HubSpotClient (deps.hubspotClient).",
-        );
-      }
+      const client =
+        deps?.hubspotClient ??
+        (() => {
+          if (!deps?.db || !deps.tenantId) {
+            throw new Error(
+              "createSignalAdapter: hubspot-enrichment requires deps.tenantId and deps.db when no HubSpotClient is injected.",
+            );
+          }
+          return new HubSpotClient({
+            tenantId: deps.tenantId,
+            db: deps.db,
+            fetch: fetchImpl,
+          });
+        })();
       return new HubSpotEnrichmentAdapter(client);
     }
     case "news":
@@ -142,11 +137,7 @@ export function wrapSignalWithGuards(
 
   return {
     name: adapter.name,
-    async fetchSignals(
-      tenantId: string,
-      companyName: string,
-      domain?: string,
-    ): Promise<Evidence[]> {
+    async fetchSignals(tenantId: string, company: ProviderCompanyContext): Promise<Evidence[]> {
       // Tenant binding: ctx.tenantId is the authoritative tenant (the wrapper
       // is built per-tenant in resolveSignalAdapter). The `tenantId` parameter
       // on the ProviderAdapter interface must match. We assert here because a
@@ -175,7 +166,7 @@ export function wrapSignalWithGuards(
         if (!allowed) {
           throw new SignalRateLimitedError(retryAfterMs ?? 0);
         }
-        return adapter.fetchSignals(ctx.tenantId, companyName, domain);
+        return adapter.fetchSignals(ctx.tenantId, company);
       }, obsCtx);
     },
   };

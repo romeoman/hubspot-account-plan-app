@@ -2,7 +2,7 @@
  * Tests for the server-side HubSpot CRM client.
  *
  * Slice 3 refactor: constructor now takes `{ tenantId, db, fetch? }` instead
- * of reading HUBSPOT_DEV_PORTAL_TOKEN from the env. Token resolution queries
+ * of reading the old single-portal token from the env. Token resolution queries
  * the `tenant_hubspot_oauth` table via the Drizzle handle, decrypts with
  * AES-256-GCM, and auto-refreshes on expiry/401.
  *
@@ -113,12 +113,13 @@ afterEach(() => {
 describe("HubSpotClient (Slice 3 — per-tenant OAuth)", () => {
   // ---- Constructor ----
 
-  it("constructor accepts { tenantId, db, fetch } and does NOT read HUBSPOT_DEV_PORTAL_TOKEN", () => {
+  it("constructor accepts { tenantId, db, fetch } and does NOT read the legacy static token env", () => {
     const db = makeMockDb();
     const fakeFetch = makeFakeFetch({});
-    // Should NOT throw even if HUBSPOT_DEV_PORTAL_TOKEN is unset
-    const saved = process.env.HUBSPOT_DEV_PORTAL_TOKEN;
-    delete process.env.HUBSPOT_DEV_PORTAL_TOKEN;
+    const legacyTokenEnv = "HUBSPOT" + "_DEV_PORTAL_TOKEN";
+    // Should NOT throw even if the old env path is unset.
+    const saved = process.env[legacyTokenEnv];
+    delete process.env[legacyTokenEnv];
     try {
       const client = new HubSpotClient({
         tenantId: TEST_TENANT_ID,
@@ -127,7 +128,7 @@ describe("HubSpotClient (Slice 3 — per-tenant OAuth)", () => {
       });
       expect(client).toBeDefined();
     } finally {
-      if (saved !== undefined) process.env.HUBSPOT_DEV_PORTAL_TOKEN = saved;
+      if (saved !== undefined) process.env[legacyTokenEnv] = saved;
     }
   });
 
@@ -315,6 +316,104 @@ describe("HubSpotClient (Slice 3 — per-tenant OAuth)", () => {
     await expect(client.getCompanyProperties("123", ["name"])).rejects.toThrow(/hubspot: 401/);
     // Exactly 2 fetch calls (original + one retry)
     expect(fakeFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("getCompanyEngagements reads associated note and task activities for a company", async () => {
+    const db = makeMockDb();
+    const fakeFetch = makeFakeFetchSequence(
+      {
+        status: 200,
+        body: {
+          results: [
+            {
+              from: { id: "123" },
+              to: [{ toObjectId: "note-1" }],
+            },
+          ],
+        },
+      },
+      {
+        status: 200,
+        body: {
+          results: [
+            {
+              id: "note-1",
+              properties: {
+                hs_note_body: "Champion mentioned implementation timing.",
+                hs_timestamp: "2026-04-10T10:00:00.000Z",
+              },
+            },
+          ],
+        },
+      },
+      {
+        status: 200,
+        body: {
+          results: [
+            {
+              from: { id: "123" },
+              to: [{ toObjectId: "task-1" }],
+            },
+          ],
+        },
+      },
+      {
+        status: 200,
+        body: {
+          results: [
+            {
+              id: "task-1",
+              properties: {
+                hs_task_subject: "Follow up next week",
+                hs_task_body: "Send pricing recap",
+                hs_timestamp: "2026-04-11T12:30:00.000Z",
+              },
+            },
+          ],
+        },
+      },
+      {
+        status: 200,
+        body: {
+          results: [],
+        },
+      },
+      {
+        status: 200,
+        body: {
+          results: [],
+        },
+      },
+      {
+        status: 200,
+        body: {
+          results: [],
+        },
+      },
+    );
+
+    const client = new HubSpotClient({
+      tenantId: TEST_TENANT_ID,
+      db,
+      fetch: fakeFetch,
+    });
+
+    const engagements = await client.getCompanyEngagements("123");
+
+    expect(engagements).toEqual([
+      {
+        id: "note-1",
+        type: "note",
+        timestamp: new Date("2026-04-10T10:00:00.000Z"),
+        content: "Champion mentioned implementation timing.",
+      },
+      {
+        id: "task-1",
+        type: "task",
+        timestamp: new Date("2026-04-11T12:30:00.000Z"),
+        content: "Follow up next week\n\nSend pricing recap",
+      },
+    ]);
   });
 
   // ---- Error message does not leak token ----

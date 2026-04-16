@@ -5,7 +5,7 @@ import {
   type ProviderConfig,
   type ThresholdConfig,
 } from "@hap/config";
-import { createDatabase, type Database } from "@hap/db";
+import type { Database } from "@hap/db";
 import { Hono } from "hono";
 import { createLlmAdapter, wrapWithGuards } from "../adapters/llm/factory";
 import type { LlmAdapter } from "../adapters/llm-adapter";
@@ -184,7 +184,10 @@ async function resolveSignalAdapter(
   // the schema. Treat as unconfigured, not a 500.
   let real: ProviderAdapter;
   try {
-    real = createSignalAdapter(chosen);
+    real = createSignalAdapter(chosen, {
+      db,
+      tenantId,
+    });
   } catch (err) {
     console.error("signal_adapter_construction_failed", {
       tenantId,
@@ -244,32 +247,6 @@ const fixtureContactFetcher: ContactFetcher = async () => [
   { id: "contact-3", name: "Sam Influencer", title: "Head of Platform" },
 ];
 
-/**
- * Memoized DB handle, keyed by DATABASE_URL so tests that flip the env
- * between cases still get a fresh handle. In production the URL is stable,
- * so we create one client wrapper per process and let postgres.js pool
- * connections internally.
- */
-let cachedDb: { url: string; db: Database } | null = null;
-
-/**
- * Lazy DB handle. No production fallback. If DATABASE_URL is unset, fail
- * loudly so a misconfigured deployment surfaces immediately instead of
- * quietly trying to connect to the dev Postgres on `localhost:5433`.
- */
-function getDb(): Database {
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    throw new Error(
-      "DATABASE_URL is not set. The snapshot route refuses to connect to a default dev URL in any environment.",
-    );
-  }
-  if (cachedDb && cachedDb.url === url) return cachedDb.db;
-  const db = createDatabase(url);
-  cachedDb = { url, db };
-  return db;
-}
-
 snapshotRoutes.post("/:companyId", async (c) => {
   const rawCompanyId = c.req.param("companyId") ?? "";
   const decoded = decodeURIComponent(rawCompanyId);
@@ -294,7 +271,10 @@ snapshotRoutes.post("/:companyId", async (c) => {
   const mode: EligibilityMode = isEligibilityMode(eligibilityParam) ? eligibilityParam : "eligible";
 
   try {
-    const db = getDb();
+    const db = c.get("db");
+    if (!db) {
+      throw new Error("tenant-scoped db handle missing from request context");
+    }
     const correlationId = c.get("correlationId");
     const llmAdapter = await resolveLlmAdapter(db, tenantId, correlationId);
     const signal = await resolveSignalAdapter(db, tenantId, correlationId);

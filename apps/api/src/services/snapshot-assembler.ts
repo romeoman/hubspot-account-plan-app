@@ -118,7 +118,7 @@ export async function assembleSnapshot(
   let signals: Evidence[] = [];
   let transportDegraded = false;
   try {
-    signals = await deps.providerAdapter.fetchSignals(tenantId, companyId);
+    signals = await deps.providerAdapter.fetchSignals(tenantId, { companyId });
   } catch (err) {
     // Transport error → mark degraded; continue with empty signal set.
     // Log a STABLE error code/class only — never the raw message. External

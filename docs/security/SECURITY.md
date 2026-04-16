@@ -375,7 +375,7 @@ The backend makes authenticated calls to HubSpot's CRM v3 API — today only fro
 
 ### 14.3 OAuth (Slice 3+)
 
-Marketplace distribution (multiple installing portals, per-install token storage) requires the OAuth 2.0 authorization-code flow plus refresh-token rotation. That is explicitly deferred to Slice 3; a `@todo Slice 3` JSDoc note on `HubSpotClient` tracks it.
+Marketplace distribution (multiple installing portals, per-install token storage) requires the OAuth 2.0 authorization-code flow plus refresh-token rotation. Slice 3 delivered that migration; the shipped design is documented in section 16 below.
 
 ## 15. Phase 1 Security Audit (Slice 2 Step 5)
 
@@ -385,8 +385,8 @@ Independent review of commits `9fbccc5` (provider config + env validator), `2b47
 
 ### 15.1 Advisory dispositions
 
-- **A1 — Replay window within freshness bound** (`hubspot-signature.ts`). Within the 5-minute freshness window the same `(body, signature, timestamp)` triple can be replayed. Defense-in-depth fix is a nonce store with 5-minute TTL keyed on the signature hash. **Disposition:** `@todo Slice 3` marker added at the freshness constant; Slice 3 wires Redis-backed nonce tracking on top of the Step 6 cache adapter.
-- **A2 — `HubSpotClient` token validation deferred to first call** (`hubspot-client.ts`). Missing `HUBSPOT_DEV_PORTAL_TOKEN` throws only when the class is first instantiated. **Disposition:** `@todo Slice 3` marker added at the class declaration; Step 9 (Exa + HubSpot signal adapters) adds a startup health-check that instantiates the client once, surfacing missing credentials at process start.
+- **A1 — Replay window within freshness bound** (`hubspot-signature.ts`). Within the 5-minute freshness window the same `(body, signature, timestamp)` triple can be replayed. **Disposition:** completed in Slice 3 via `signed_request_nonce` plus `nonceMiddleware()` after auth + tenant resolution. Duplicate `(tenant_id, timestamp, body_hash)` tuples now return `401 { error: "replay_detected" }`.
+- **A2 — `HubSpotClient` token validation deferred to first call** (`hubspot-client.ts`). Slice 2 used `HUBSPOT_DEV_PORTAL_TOKEN`; Slice 3 replaced that model entirely. **Disposition:** completed in Slice 3 via per-tenant OAuth token storage in `tenant_hubspot_oauth`, request-scoped `HubSpotClient({ tenantId, db })`, proactive refresh, and one-time retry on 401.
 - **A3 — `safeEquals` unequal-length branch timing** (`hubspot-signature.ts`). When the inbound and expected signatures differ in length, the implementation runs `timingSafeEqual` against a zero-padded buffer sized to the inbound (attacker-controlled) length. The branch is distinguishable in wall time from the equal-length path but does not leak the expected signature — the expected length is the public 44-char base64 of SHA-256, and the timing reveals only the length the attacker already supplied. Risk is low and bounded; documented here for future readers.
 - **A4 — HKDF salt as plaintext constant** (`kek.ts`). The salt `"hap-tenant-kek-v1"` is a correct design choice per RFC 5869 (HKDF salt is non-secret; per-tenant binding lives in `info`). Recorded so a future reviewer does not "fix" it to a random or per-tenant salt — that change would invalidate every existing ciphertext. An invariant comment was added at the constant declaration.
 
@@ -454,3 +454,66 @@ Verified limitations (HubSpot docs + Exa research, 2026-04-15):
 - OAuth `state` tests prove tampering + expiry rejection. Single-use replay of an unexpired state is explicitly documented as out of scope for the stateless Slice 3 design.
 - Security audit PASS on the OAuth flow.
 - Deployable to `distribution: "marketplace"` (listing submission is a separate business step, but the CODE is ready for it).
+
+## 17. Row Level Security (Slice 3 shipped)
+
+Slice 3 enables Postgres row-level security on every tenant-scoped data table that is touched after tenant resolution:
+
+- `snapshots`
+- `evidence`
+- `people`
+- `provider_config`
+- `llm_config`
+- `tenant_hubspot_oauth`
+- `signed_request_nonce`
+
+`tenants` is deliberately excluded. It is the bootstrap lookup table used by `tenantMiddleware` before `app.tenant_id` can be set.
+
+### 17.1 Policy model
+
+- RLS is enabled and forced in migration `0007_rls_policies.sql`.
+- Each protected table uses `current_setting('app.tenant_id', true)` so missing tenant context yields `NULL` instead of a hard error.
+- The request path sets `SET LOCAL app.tenant_id = <tenant uuid>` inside a transaction via `withTenantTxHandle()`.
+- The request-scoped DB handle is injected exactly once in `apps/api/src/index.ts`, immediately after `tenantMiddleware`.
+- Routes and services consume `c.get("db")` instead of constructing process-wide DB clients.
+
+### 17.2 Why this closes the gap
+
+- App code can no longer accidentally read or write tenant-scoped rows outside the current tenant transaction context.
+- The RLS boundary sits in the database, not just in application `where tenant_id = ...` discipline.
+- `signed_request_nonce` and `tenant_hubspot_oauth` now inherit the same tenant boundary as snapshots and provider config.
+
+### 17.3 Verification notes
+
+- Local dev role `hap` has `BYPASSRLS`, so truthful enforcement tests use a dedicated non-bypass role in `tenant-tx.test.ts`.
+- Regression coverage proves the snapshot route uses the request-scoped DB handle and no longer constructs its own DB client.
+- Biome now forbids importing `createDatabase` in live `apps/api/src/routes/**` and `apps/api/src/services/**` code.
+
+## 18. Replay Nonce (Slice 3 shipped)
+
+HubSpot's signed-request freshness window protects against stale requests, but by itself it does not reject duplicate requests inside that window. Slice 3 closes that gap with a tenant-scoped nonce store.
+
+### 18.1 Design
+
+- Table: `signed_request_nonce`
+- Primary key: `(tenant_id, timestamp, body_hash)`
+- `body_hash` is raw SHA-256 over the exact raw request body captured by `hubspot-signature.ts`
+- `nonceMiddleware()` runs after auth, tenant resolution, and request-scoped DB injection
+- On duplicate insert, the request is rejected with `401 { error: "replay_detected" }`
+
+### 18.2 Why it is tenant-scoped
+
+- Two tenants can receive identical HubSpot payloads at the same timestamp without colliding.
+- The nonce is bound to the resolved internal tenant ID, not just to the body hash.
+- RLS additionally protects nonce rows from cross-tenant reads/writes.
+
+### 18.3 Lifecycle
+
+- `recordNonce()` uses `INSERT ... ON CONFLICT DO NOTHING`, so duplicate detection is atomic.
+- `sweepExpiredNonces()` removes rows older than the replay window buffer.
+- `scripts/sweep-nonces.ts` provides the operational sweep hook.
+
+### 18.4 Verification notes
+
+- Unit tests cover duplicate detection, cross-tenant independence, and TTL sweeping.
+- Middleware tests prove the same signed request succeeds once and then fails with `replay_detected` on the second call within the freshness window.

@@ -39,7 +39,7 @@
  */
 
 import { createEvidence, type Evidence } from "@hap/config";
-import type { ProviderAdapter } from "../provider-adapter";
+import type { ProviderAdapter, ProviderCompanyContext } from "../provider-adapter";
 
 /** Stable provider identifier — used by the factory and `provider_config.provider_name`. */
 export const EXA_PROVIDER_NAME = "exa" as const;
@@ -209,8 +209,9 @@ export class ExaAdapter implements ProviderAdapter {
     this.fetchImpl = options.fetch ?? fetch;
   }
 
-  async fetchSignals(tenantId: string, companyName: string, domain?: string): Promise<Evidence[]> {
-    const query = domain ? `${companyName} ${domain}` : companyName;
+  async fetchSignals(tenantId: string, company: ProviderCompanyContext): Promise<Evidence[]> {
+    const companyName = company.companyName ?? company.companyId;
+    const query = company.domain ? `${companyName} ${company.domain}` : companyName;
 
     const body: Record<string, unknown> = {
       query,

@@ -13,10 +13,12 @@ import { createDatabase, tenants } from "@hap/db";
 import { like } from "drizzle-orm";
 import { Hono } from "hono";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { withTenantTxHandle } from "../../lib/tenant-tx";
 import {
   __resetHubspotSignatureCacheForTests,
   hubspotSignatureMiddleware,
 } from "../hubspot-signature";
+import { nonceMiddleware } from "../nonce";
 import type { TenantVariables } from "../tenant";
 import { tenantMiddleware } from "../tenant";
 
@@ -30,16 +32,34 @@ const portalId = () => `${PORTAL_PREFIX}${randomUUID().slice(0, 8)}`;
 type Vars = TenantVariables & {
   portalId?: string;
   userId?: string;
+  rawBody?: string;
 };
 
 /**
  * Build a Hono app that runs the real signature middleware + tenant middleware
  * and exposes a probe GET/POST returning the resolved context.
  */
-function buildApp() {
+function buildApp(options?: { withNonce?: boolean }) {
   const app = new Hono<{ Variables: Vars }>();
   app.use("*", hubspotSignatureMiddleware());
   app.use("*", tenantMiddleware({ db }));
+  if (options?.withNonce) {
+    app.use("*", async (c, next) => {
+      const tenantId = c.get("tenantId");
+      if (!tenantId) {
+        return next();
+      }
+
+      const handle = await withTenantTxHandle(db, tenantId);
+      c.set("db", handle);
+      try {
+        await next();
+      } finally {
+        await handle.release();
+      }
+    });
+    app.use("*", nonceMiddleware());
+  }
   app.all("/probe", (c) =>
     c.json({
       portalId: c.get("portalId") ?? null,
@@ -280,6 +300,44 @@ describe("hubspotSignatureMiddleware — rejection paths", () => {
       body,
     });
     expect(res.status).toBe(401);
+  });
+
+  it("rejects a duplicate signed request within the freshness window with replay_detected", async () => {
+    const secret = process.env.HUBSPOT_CLIENT_SECRET ?? "";
+    const portal = portalId();
+    await db.insert(tenants).values({ hubspotPortalId: portal, name: "ReplayNonce" });
+    const body = JSON.stringify({ portalId: portal, userId: "u-1" });
+    const timestamp = Date.now();
+    const signature = signV3({
+      clientSecret: secret,
+      method: "POST",
+      uri: TEST_URL,
+      body,
+      timestamp,
+    });
+
+    const app = buildApp({ withNonce: true });
+    const headers = {
+      "Content-Type": "application/json",
+      "X-HubSpot-Signature-v3": signature,
+      "X-HubSpot-Request-Timestamp": String(timestamp),
+    };
+
+    const first = await app.request("/probe", {
+      method: "POST",
+      headers,
+      body,
+    });
+    expect(first.status).toBe(200);
+
+    const second = await app.request("/probe", {
+      method: "POST",
+      headers,
+      body,
+    });
+    expect(second.status).toBe(401);
+    const json = (await second.json()) as { error: string };
+    expect(json.error).toBe("replay_detected");
   });
 
   it("rejects a malformed timestamp header with 401", async () => {
