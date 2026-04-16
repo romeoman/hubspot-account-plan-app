@@ -416,6 +416,59 @@ describe("HubSpotClient (Slice 3 — per-tenant OAuth)", () => {
     ]);
   });
 
+  it("getCompanyEngagements parses HubSpot epoch-millisecond timestamps", async () => {
+    const db = makeMockDb();
+    const fakeFetch = makeFakeFetchSequence(
+      {
+        status: 200,
+        body: {
+          results: [
+            {
+              from: { id: "123" },
+              to: [{ toObjectId: "note-epoch" }],
+            },
+          ],
+        },
+      },
+      {
+        status: 200,
+        body: {
+          results: [
+            {
+              id: "note-epoch",
+              properties: {
+                hs_note_body: "Budget approved for rollout.",
+                hs_timestamp: "1710000000000",
+              },
+            },
+          ],
+        },
+      },
+      { status: 200, body: { results: [] } },
+      { status: 200, body: { results: [] } },
+      { status: 200, body: { results: [] } },
+      { status: 200, body: { results: [] } },
+      { status: 200, body: { results: [] } },
+    );
+
+    const client = new HubSpotClient({
+      tenantId: TEST_TENANT_ID,
+      db,
+      fetch: fakeFetch,
+    });
+
+    const engagements = await client.getCompanyEngagements("123");
+
+    expect(engagements).toEqual([
+      {
+        id: "note-epoch",
+        type: "note",
+        timestamp: new Date(1_710_000_000_000),
+        content: "Budget approved for rollout.",
+      },
+    ]);
+  });
+
   // ---- Error message does not leak token ----
 
   it("error messages do not leak the access token", async () => {

@@ -82,6 +82,12 @@ function combineText(parts: Array<string | undefined>): string {
 
 function parseTimestamp(raw: string | undefined): Date {
   if (!raw) return new Date(0);
+  if (/^\d+$/.test(raw)) {
+    const millis = Number(raw);
+    if (Number.isFinite(millis)) {
+      return new Date(millis);
+    }
+  }
   const parsed = new Date(raw);
   return Number.isNaN(parsed.getTime()) ? new Date(0) : parsed;
 }
