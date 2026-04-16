@@ -1,49 +1,35 @@
 /**
- * Server-side HubSpot CRM client — Slice 2 dev-only bridge.
+ * Server-side HubSpot CRM client — Slice 3 per-tenant OAuth.
  *
- * DEV-ONLY, SINGLE-PORTAL. This client reads `HUBSPOT_DEV_PORTAL_TOKEN` from
- * the environment — a long-lived, single-portal legacy private-app token. It
- * exists ONLY because Slice 2's app is configured `auth.type: "static"` +
- * `distribution: "private"`, which per HubSpot docs is installable on the
- * dev portal only.
+ * Each install yields per-tenant access_token + refresh_token, stored
+ * encrypted in the `tenant_hubspot_oauth` table via AES-256-GCM.
  *
- * Slice 3 replaces this entirely:
- *   - App switches to `auth.type: "oauth"` + `distribution: "marketplace"`
- *     (or `"private"` with allowlist for pilot).
- *   - Each install yields per-tenant access_token + refresh_token, stored
- *     encrypted in the `tenants` table via the Slice 2 AES-256-GCM envelope.
- *   - Constructor takes a `tenantId`, reads that tenant's token, refreshes
- *     on 401 using the refresh_token, swaps the bearer per request.
- *   - `HUBSPOT_DEV_PORTAL_TOKEN` env var is REMOVED.
+ * Constructor takes `{ tenantId, db, fetch? }`:
+ *   - `tenantId` — the tenant UUID from auth middleware.
+ *   - `db` — a Drizzle handle (from `@hap/db createDatabase()`).
+ *   - `fetch?` — optional injectable fetch for tests.
  *
- * See `docs/security/SECURITY.md` §16 for the full migration plan.
+ * Token lifecycle:
+ *   - On first API call, queries `tenant_hubspot_oauth` for the tenant.
+ *   - Decrypts the access token using `decryptProviderKey(tenantId, ciphertext)`.
+ *   - Caches the decrypted token + `expires_at` to avoid re-decrypting.
+ *   - If `expires_at - 60_000 < Date.now()`, proactively refreshes before use.
+ *   - On any 401, refreshes and retries once (no infinite loop).
  *
- * The token NEVER reaches the UI extension or the inbound request — it is
- * resolved from the environment at client construction time only.
- *
- * Slice 2 scope:
- *   - Required scopes: `crm.objects.companies.read`, `crm.objects.contacts.read`.
- *   - Step 14 seed extends writes: `crm.objects.companies.write`,
- *     `crm.objects.contacts.write` (write scopes granted on the dev portal's
- *     private-app settings page).
- *
- * @todo Slice 3: replace `HUBSPOT_DEV_PORTAL_TOKEN` env-var path with
- *   per-tenant OAuth tokens from the `tenants` table (encrypted via
- *   Step 3 AES-256-GCM). See SECURITY.md §16.
+ * See `docs/security/SECURITY.md` section 16 for the full migration plan.
  */
 
 import { loadEnv } from "@hap/config";
+import type { Database } from "@hap/db";
+import { tenantHubspotOauth } from "@hap/db";
+import { eq } from "drizzle-orm";
+import { decryptProviderKey, encryptProviderKey } from "./encryption";
+import { refreshAccessToken } from "./oauth";
 
 const HUBSPOT_API_ROOT = "https://api.hubapi.com";
 
-/**
- * HUBSPOT_DEFINED primary association type id for `companies → contacts`.
- *
- * Source: https://developers.hubspot.com/docs/api-reference/latest/crm/objects/companies/guide
- * (retrieved 2026-04-15). The Step 14 seed uses the "default" label form of
- * the association PUT endpoint to avoid hardcoding numeric type ids:
- *   `PUT /crm/v4/objects/companies/{companyId}/associations/default/contacts/{contactId}`
- */
+/** Pre-expiry refresh window: refresh when token expires within 60 seconds. */
+const PRE_EXPIRY_WINDOW_MS = 60_000;
 
 /**
  * Minimal record shape returned by the CRM v3 object endpoints for the
@@ -55,11 +41,7 @@ interface HubSpotObjectResponse {
 }
 
 /**
- * HubSpot CRM v3 requires ALL property values to be strings on the wire —
- * native booleans and numbers are rejected with a 400 PROPERTY_VALUE_INVALID
- * even for properties that semantically hold boolean/number data (the server
- * parses the string back to the target type per the schema). We coerce
- * at this boundary so callers can pass idiomatic JS values.
+ * HubSpot CRM v3 requires ALL property values to be strings on the wire.
  */
 function coercePropertiesToStrings(
   properties: Record<string, string | boolean | number>,
@@ -71,42 +53,155 @@ function coercePropertiesToStrings(
   return out;
 }
 
+/** Cached decrypted token + expiry to avoid decrypting on every call. */
+interface TokenCache {
+  accessToken: string;
+  expiresAt: Date;
+}
+
+/** Constructor options for per-tenant OAuth client. */
+export interface HubSpotClientOptions {
+  tenantId: string;
+  db: Database;
+  fetch?: typeof globalThis.fetch;
+}
+
 /**
- * Thin CRM client. Construct once per request/task (Step 9 will plumb it
- * behind the signal adapter). The token is bound at construction so callers
- * cannot accidentally pass in tenant-inbound credentials.
- */
-/**
- * @todo Slice 3 (security audit advisory A2): add a startup health-check in
- * `apps/api/src/index.ts` that instantiates `HubSpotClient` once when the
- * Step 9 enrichment adapter ships, so a missing `HUBSPOT_DEV_PORTAL_TOKEN`
- * fails loud at process start instead of latent-until-first-call.
+ * Per-tenant HubSpot CRM client. Resolves OAuth tokens from the database,
+ * decrypts them, caches locally, and auto-refreshes on expiry or 401.
  */
 export class HubSpotClient {
-  private readonly token: string;
+  private readonly tenantId: string;
+  private readonly db: Database;
+  private readonly fetchImpl: typeof globalThis.fetch;
+  private tokenCache: TokenCache | null = null;
 
-  constructor() {
-    const env = loadEnv();
-    const token = env.HUBSPOT_DEV_PORTAL_TOKEN;
-    if (!token || token.length === 0) {
-      throw new Error(
-        "HubSpotClient: HUBSPOT_DEV_PORTAL_TOKEN is not set; required for server-to-HubSpot calls (Step 9 onward).",
-      );
-    }
-    this.token = token;
+  constructor(options: HubSpotClientOptions) {
+    this.tenantId = options.tenantId;
+    this.db = options.db;
+    this.fetchImpl = options.fetch ?? globalThis.fetch;
   }
 
   /**
-   * Fetch a company record's properties via the CRM v3 API.
-   *
-   * Returns a plain `{ propertyName: value }` map. Missing properties are
-   * simply absent from the response object. Step 9 will wire real semantics
-   * (caching, rate-limit handling); for Step 4 we only lock in the token
-   * and header shape.
-   *
-   * @throws on non-2xx responses. The error message does NOT include the
-   *   bearer token.
+   * Resolve the current access token. Queries DB on first call, then uses
+   * cache. Proactively refreshes if within the pre-expiry window.
    */
+  private async getAccessToken(): Promise<string> {
+    // Return cached token if still valid (outside pre-expiry window)
+    if (
+      this.tokenCache &&
+      this.tokenCache.expiresAt.getTime() - PRE_EXPIRY_WINDOW_MS > Date.now()
+    ) {
+      return this.tokenCache.accessToken;
+    }
+
+    // Query DB for the tenant's OAuth row
+    const row = await this.db.query.tenantHubspotOauth.findFirst({
+      where: eq(tenantHubspotOauth.tenantId, this.tenantId),
+    });
+
+    if (!row) {
+      throw new Error(`HubSpotClient: no OAuth tokens found for tenant ${this.tenantId}`);
+    }
+
+    // Check if token is within the pre-expiry window (or already expired)
+    if (row.expiresAt.getTime() - PRE_EXPIRY_WINDOW_MS < Date.now()) {
+      // Proactively refresh
+      const refreshed = await this.performTokenRefresh(row.refreshTokenEncrypted);
+      return refreshed;
+    }
+
+    // Decrypt and cache
+    const accessToken = decryptProviderKey(this.tenantId, row.accessTokenEncrypted);
+    this.tokenCache = {
+      accessToken,
+      expiresAt: row.expiresAt,
+    };
+    return accessToken;
+  }
+
+  /**
+   * Refresh the access token, persist rotated tokens to DB, update cache.
+   *
+   * @param refreshTokenEncrypted - the encrypted refresh token from the DB row
+   * @returns the new decrypted access token
+   */
+  private async performTokenRefresh(refreshTokenEncrypted: string): Promise<string> {
+    const env = loadEnv();
+    const refreshToken = decryptProviderKey(this.tenantId, refreshTokenEncrypted);
+
+    const result = await refreshAccessToken({
+      clientId: env.HUBSPOT_CLIENT_ID,
+      clientSecret: env.HUBSPOT_CLIENT_SECRET,
+      refreshToken,
+      // Use the injected fetch for refresh calls too
+      fetch: this.fetchImpl,
+    });
+
+    const newExpiresAt = new Date(Date.now() + result.expiresIn * 1000);
+
+    // Encrypt + persist the rotated tokens
+    const newAccessTokenEncrypted = encryptProviderKey(this.tenantId, result.accessToken);
+    const newRefreshTokenEncrypted = encryptProviderKey(this.tenantId, result.refreshToken);
+
+    await this.db
+      .update(tenantHubspotOauth)
+      .set({
+        accessTokenEncrypted: newAccessTokenEncrypted,
+        refreshTokenEncrypted: newRefreshTokenEncrypted,
+        expiresAt: newExpiresAt,
+        updatedAt: new Date(),
+      })
+      .where(eq(tenantHubspotOauth.tenantId, this.tenantId));
+
+    // Update local cache
+    this.tokenCache = {
+      accessToken: result.accessToken,
+      expiresAt: newExpiresAt,
+    };
+
+    return result.accessToken;
+  }
+
+  /**
+   * Execute a fetch request with the tenant's Bearer token. On 401, refresh
+   * and retry once. On second 401, throw (no infinite loop).
+   */
+  private async authenticatedFetch(
+    url: string,
+    init: RequestInit,
+    isRetry = false,
+  ): Promise<Response> {
+    const token = await this.getAccessToken();
+    const headers = new Headers(init.headers);
+    headers.set("Authorization", `Bearer ${token}`);
+
+    const res = await this.fetchImpl(url, { ...init, headers });
+
+    if (res.status === 401 && !isRetry) {
+      // Invalidate cache and refresh
+      this.tokenCache = null;
+
+      // Re-fetch the DB row to get the current refresh token
+      const row = await this.db.query.tenantHubspotOauth.findFirst({
+        where: eq(tenantHubspotOauth.tenantId, this.tenantId),
+      });
+
+      if (!row) {
+        throw new Error(`HubSpotClient: no OAuth tokens found for tenant ${this.tenantId}`);
+      }
+
+      await this.performTokenRefresh(row.refreshTokenEncrypted);
+      return this.authenticatedFetch(url, init, true);
+    }
+
+    return res;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Public API — signatures unchanged from Slice 2
+  // ---------------------------------------------------------------------------
+
   async getCompanyProperties(
     companyId: string,
     properties: readonly string[],
@@ -116,17 +211,12 @@ export class HubSpotClient {
 
     const url = `${HUBSPOT_API_ROOT}/crm/v3/objects/companies/${encodeURIComponent(companyId)}?${params.toString()}`;
 
-    const res = await fetch(url, {
+    const res = await this.authenticatedFetch(url, {
       method: "GET",
-      headers: {
-        Authorization: `Bearer ${this.token}`,
-        Accept: "application/json",
-      },
+      headers: { Accept: "application/json" },
     });
 
     if (!res.ok) {
-      // Never include the token in the error. We also avoid echoing the
-      // response body which could contain server-side hints.
       throw new Error(`hubspot: ${res.status} ${res.statusText}`);
     }
 
@@ -136,24 +226,13 @@ export class HubSpotClient {
     return json.properties ?? {};
   }
 
-  /**
-   * Create a company via `POST /crm/v3/objects/companies`.
-   *
-   * Used by the Step 14 seed script. Accepts string/boolean/number property
-   * values — HubSpot stringifies everything server-side, but the caller is
-   * in charge of matching the target property's declared type (e.g.,
-   * `hs_is_target_account` is a boolean).
-   *
-   * @throws on non-2xx. Error message excludes the bearer token.
-   */
   async createCompany(
     properties: Record<string, string | boolean | number>,
   ): Promise<HubSpotObjectResponse> {
     const url = `${HUBSPOT_API_ROOT}/crm/v3/objects/companies`;
-    const res = await fetch(url, {
+    const res = await this.authenticatedFetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${this.token}`,
         "Content-Type": "application/json",
         Accept: "application/json",
       },
@@ -170,27 +249,11 @@ export class HubSpotClient {
     return { id: json.id, properties: json.properties ?? {} };
   }
 
-  /**
-   * Create a contact via `POST /crm/v3/objects/contacts`. Used by the seed
-   * script; associations are applied in a follow-up call for clarity.
-   *
-   * @throws on non-2xx. Error message excludes the bearer token.
-   */
-  /**
-   * Search for a contact by exact email match. Used by the seed script to
-   * make contact creation idempotent across reruns (HubSpot rejects
-   * duplicate emails with 409 Conflict).
-   *
-   * Endpoint: `POST /crm/v3/objects/contacts/search`.
-   *
-   * @throws on non-2xx. Error message excludes the bearer token.
-   */
   async findContactByEmail(email: string): Promise<HubSpotObjectResponse | null> {
     const url = `${HUBSPOT_API_ROOT}/crm/v3/objects/contacts/search`;
-    const res = await fetch(url, {
+    const res = await this.authenticatedFetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${this.token}`,
         "Content-Type": "application/json",
         Accept: "application/json",
       },
@@ -215,10 +278,9 @@ export class HubSpotClient {
 
   async createContact(properties: Record<string, string>): Promise<HubSpotObjectResponse> {
     const url = `${HUBSPOT_API_ROOT}/crm/v3/objects/contacts`;
-    const res = await fetch(url, {
+    const res = await this.authenticatedFetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${this.token}`,
         "Content-Type": "application/json",
         Accept: "application/json",
       },
@@ -235,22 +297,14 @@ export class HubSpotClient {
     return { id: json.id, properties: json.properties ?? {} };
   }
 
-  /**
-   * Update a company's properties via `PATCH /crm/v3/objects/companies/{id}`.
-   *
-   * Used by the seed script when the marker lookup finds an existing row.
-   *
-   * @throws on non-2xx. Error message excludes the bearer token.
-   */
   async updateCompany(
     companyId: string,
     properties: Record<string, string | boolean | number>,
   ): Promise<HubSpotObjectResponse> {
     const url = `${HUBSPOT_API_ROOT}/crm/v3/objects/companies/${encodeURIComponent(companyId)}`;
-    const res = await fetch(url, {
+    const res = await this.authenticatedFetch(url, {
       method: "PATCH",
       headers: {
-        Authorization: `Bearer ${this.token}`,
         "Content-Type": "application/json",
         Accept: "application/json",
       },
@@ -267,24 +321,11 @@ export class HubSpotClient {
     return { id: json.id, properties: json.properties ?? {} };
   }
 
-  /**
-   * Associate an existing contact with an existing company via the default
-   * (primary) HUBSPOT_DEFINED association type.
-   *
-   * Uses the `default` label form of the PUT endpoint so we don't have to
-   * hardcode the numeric association-type id (which has changed historically).
-   * Source: HubSpot CRM v3 Companies guide, retrieved 2026-04-15.
-   *
-   * @throws on non-2xx. Error message excludes the bearer token.
-   */
   async associateContactWithCompany(companyId: string, contactId: string): Promise<void> {
     const url = `${HUBSPOT_API_ROOT}/crm/v4/objects/companies/${encodeURIComponent(companyId)}/associations/default/contacts/${encodeURIComponent(contactId)}`;
-    const res = await fetch(url, {
+    const res = await this.authenticatedFetch(url, {
       method: "PUT",
-      headers: {
-        Authorization: `Bearer ${this.token}`,
-        Accept: "application/json",
-      },
+      headers: { Accept: "application/json" },
     });
 
     if (!res.ok) {
@@ -292,17 +333,6 @@ export class HubSpotClient {
     }
   }
 
-  /**
-   * Search for companies by an exact-match value on a marker property.
-   *
-   * Used by the Step 14 seed script to find previously-seeded rows (keyed
-   * by a known property name + constant value) so a rerun can UPDATE
-   * instead of creating duplicate companies.
-   *
-   * Endpoint: `POST /crm/v3/objects/companies/search`.
-   *
-   * @throws on non-2xx. Error message excludes the bearer token.
-   */
   async searchCompaniesByMarker(
     markerProperty: string,
     markerValue: string,
@@ -325,10 +355,9 @@ export class HubSpotClient {
       limit: 100,
     };
 
-    const res = await fetch(url, {
+    const res = await this.authenticatedFetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${this.token}`,
         "Content-Type": "application/json",
         Accept: "application/json",
       },
