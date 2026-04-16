@@ -57,13 +57,20 @@ const CONFIG = {
 };
 
 const ROOT_KEK_BASE64 = Buffer.alloc(32, 7).toString("base64");
+let savedRootKek: string | undefined;
 
 beforeAll(async () => {
   await sqlClient`SELECT 1`;
+  savedRootKek = process.env.ROOT_KEK;
   process.env.ROOT_KEK = ROOT_KEK_BASE64;
 });
 
 afterAll(async () => {
+  if (savedRootKek !== undefined) {
+    process.env.ROOT_KEK = savedRootKek;
+  } else {
+    delete process.env.ROOT_KEK;
+  }
   await sqlClient.end({ timeout: 5 });
 });
 

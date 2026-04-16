@@ -145,6 +145,12 @@ export class AnthropicAdapter implements LlmAdapter {
         body,
         signal: abortController.signal,
       });
+    } catch (err) {
+      clearTimeout(timeoutHandle);
+      if (err instanceof DOMException && err.name === "AbortError") {
+        throw new AnthropicError({ status: 408, errorType: "timeout" });
+      }
+      throw err;
     } finally {
       clearTimeout(timeoutHandle);
     }

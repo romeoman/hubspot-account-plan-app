@@ -96,14 +96,27 @@ export class NewsAdapter implements ProviderAdapter {
       contents: { text: { maxCharacters: EXA_TEXT_MAX_CHARACTERS } },
     };
 
-    const response = await this.fetchImpl(EXA_SEARCH_URL, {
-      method: "POST",
-      headers: {
-        "x-api-key": this.apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
+    let response: Response;
+    try {
+      response = await this.fetchImpl(EXA_SEARCH_URL, {
+        method: "POST",
+        headers: {
+          "x-api-key": this.apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        throw new NewsError(408);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (!response.ok) {
       throw new NewsError(response.status);

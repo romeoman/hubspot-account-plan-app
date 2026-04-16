@@ -71,6 +71,26 @@ type OAuthDb = {
   };
 };
 
+/**
+ * Validate returnUrl to prevent open-redirect (CodeRabbit C1).
+ * Only allow HubSpot-origin URLs — the returnUrl is supplied by HubSpot's
+ * install flow and should always point back to a HubSpot domain.
+ */
+function isAllowedReturnUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    return (
+      host === "app.hubspot.com" ||
+      host.endsWith(".hubspot.com") ||
+      host.endsWith(".hubspotpreview-na1.com") ||
+      /\.hubspotpreview-[a-z0-9-]+\.com$/.test(host)
+    );
+  } catch {
+    return false;
+  }
+}
+
 function htmlError(title: string, detail: string): string {
   // Intentionally minimal, no CSS. Dev-only visual; prod has a nicer page.
   const safeTitle = title.replace(/[<>&]/g, "");
@@ -230,11 +250,11 @@ export function createOAuthRoutes(deps: OAuthDeps) {
       })
       .returning();
 
-    // Step 7 — redirect. HubSpot passes `returnUrl` on some install flows
-    // so the user lands back in the portal. Fall back to a minimal HTML
-    // success page.
+    // Step 7 — redirect. HubSpot passes `returnUrl` on some install flows.
+    // SECURITY (CodeRabbit C1): validate returnUrl to prevent open-redirect.
+    // Only allow HubSpot-origin URLs or relative paths.
     const returnUrl = c.req.query("returnUrl");
-    if (returnUrl) {
+    if (returnUrl && isAllowedReturnUrl(returnUrl)) {
       return c.redirect(returnUrl, 302);
     }
     return c.html(
