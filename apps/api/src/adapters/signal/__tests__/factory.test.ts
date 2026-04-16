@@ -26,15 +26,13 @@ describe("createSignalAdapter", () => {
     expect(adapter.name).toBe("exa");
   });
 
-  it("resolves hubspot-enrichment to a stub that throws a clear Slice 3 error", async () => {
+  it("resolves hubspot-enrichment to a stub that throws a clear deferral error", async () => {
     const adapter = createSignalAdapter(cfg({ name: "hubspot-enrichment" }), {
       hubspotClient: stubHubSpotClient,
     });
     expect(adapter).toBeInstanceOf(HubSpotEnrichmentAdapter);
     expect(adapter.name).toBe("hubspot-enrichment");
-    await expect(adapter.fetchSignals("t1", "Acme")).rejects.toThrow(
-      /Slice 3: real HubSpot enrichment adapter/,
-    );
+    await expect(adapter.fetchSignals("t1", "Acme")).rejects.toThrow(/not yet implemented/);
   });
 
   it("refuses hubspot-enrichment when no client is injected", () => {
