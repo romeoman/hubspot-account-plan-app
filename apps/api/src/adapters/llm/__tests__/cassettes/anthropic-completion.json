@@ -1,0 +1,44 @@
+{
+  "_comment": "Recorded cassette for Anthropic Messages API. Scrubbed of API keys before commit. Shape matches https://docs.anthropic.com/en/api/messages as of 2026-04-15. Replayed by apps/api/src/adapters/llm/__tests__/anthropic.test.ts via fetch injection.",
+  "_recordedAt": "2026-04-15",
+  "request": {
+    "url": "https://api.anthropic.com/v1/messages",
+    "method": "POST",
+    "headers": {
+      "x-api-key": "[REDACTED]",
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json"
+    },
+    "body": {
+      "model": "claude-sonnet-4-6",
+      "max_tokens": 256,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Reply with the word OK and nothing else."
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "id": "msg-cassette-0001",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "OK"
+        }
+      ],
+      "model": "claude-sonnet-4-6",
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "usage": {
+        "input_tokens": 12,
+        "output_tokens": 1
+      }
+    }
+  }
+}

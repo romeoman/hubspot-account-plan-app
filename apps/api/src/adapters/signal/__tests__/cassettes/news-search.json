@@ -1,0 +1,41 @@
+{
+  "_meta": {
+    "source": "Exa search API (news vertical) — POST https://api.exa.ai/search",
+    "verified": "slice-3-preflight-notes.md §7, same API as exa-search.json but news-focused query",
+    "scrubbed": true
+  },
+  "request": {
+    "url": "https://api.exa.ai/search",
+    "method": "POST",
+    "body": {
+      "query": "Acme Corp recent news",
+      "numResults": 5,
+      "category": "news",
+      "contents": { "text": { "maxCharacters": 1500 } }
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "requestId": "news-cassette-fake-request-id",
+      "resolvedSearchType": "neural",
+      "results": [
+        {
+          "id": "https://techcrunch.example.com/2026/04/acme-series-c",
+          "title": "Acme Corp raises $50M Series C to expand AI platform",
+          "url": "https://techcrunch.example.com/2026/04/acme-series-c",
+          "publishedDate": "2026-04-10T09:00:00.000Z",
+          "text": "Acme Corp announced a $50M Series C round led by Benchmark. The funding will accelerate development of their AI-powered workflow platform targeting mid-market enterprises.",
+          "author": "Jane Reporter"
+        },
+        {
+          "id": "https://reuters.example.com/technology/acme-partnership-2026",
+          "title": "Acme Corp partners with major cloud provider on enterprise rollout",
+          "url": "https://reuters.example.com/technology/acme-partnership-2026",
+          "publishedDate": "2026-04-05T14:30:00.000Z",
+          "text": "Acme Corp signed a strategic partnership with a major cloud provider to distribute its workflow automation tools to enterprise customers globally."
+        }
+      ]
+    }
+  }
+}

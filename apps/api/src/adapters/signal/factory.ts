@@ -10,13 +10,11 @@
  * `api_key_encrypted` into `apiKeyRef` before returning, so this factory just
  * reads plaintext from the config. The factory never touches ciphertext.
  *
- * Scope adjustment (Slice 2):
+ * Provider status (Slice 3):
  *  - `exa` → real {@link ./exa.ExaAdapter}.
- *  - `hubspot-enrichment` / `news` → scaffolded stubs whose `fetchSignals()`
- *    throws a clear `Slice 3: real <provider> adapter not yet implemented`
- *    error. Tenants can ALREADY configure these providers in
- *    `provider_config`; Slice 3 ships the bodies once the required credentials
- *    are available (HUBSPOT_DEV_PORTAL_TOKEN, chosen news provider key).
+ *  - `news` → real {@link ./news.NewsAdapter} (Exa news vertical).
+ *  - `hubspot-enrichment` → stub; real implementation deferred to Phase 3
+ *    (needs per-tenant OAuth client via `withTenantTxHandle`).
  *
  * Guardrails: {@link wrapSignalWithGuards} returns a new {@link ProviderAdapter}
  * whose `fetchSignals()` is rate-limited (token bucket, per-tenant × provider)

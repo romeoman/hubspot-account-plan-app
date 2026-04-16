@@ -4,15 +4,17 @@
   "config": {
     "description": "Signal-First Account Workspace — one credible reason to contact this account now, plus 0 to 3 people with reason-to-talk, rendered on the company record.",
     "name": "HAP Signal Workspace",
-    "distribution": "private",
+    "distribution": "marketplace",
     "auth": {
-      "type": "static",
+      "type": "oauth",
+      "redirectUrls": ["http://localhost:3000/oauth/callback"],
       "requiredScopes": ["crm.objects.companies.read", "crm.objects.contacts.read"],
       "optionalScopes": [],
       "conditionallyRequiredScopes": []
     },
     "permittedUrls": {
       "fetch": [
+        "https://api.hubapi.com",
         "https://hap-signal-workspace.vercel.app",
         "https://hap-signal-workspace-staging.vercel.app"
       ],

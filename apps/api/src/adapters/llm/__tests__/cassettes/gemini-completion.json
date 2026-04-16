@@ -1,0 +1,51 @@
+{
+  "_comment": "Recorded cassette for Google Gemini generateContent. Scrubbed of API keys before commit. Shape matches https://generativelanguage.googleapis.com/v1beta docs as of 2026-04-15. Replayed by apps/api/src/adapters/llm/__tests__/gemini.test.ts via fetch injection.",
+  "_recordedAt": "2026-04-15",
+  "request": {
+    "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent",
+    "method": "POST",
+    "headers": {
+      "x-goog-api-key": "[REDACTED]",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "contents": [
+        {
+          "parts": [
+            {
+              "text": "Reply with the word OK and nothing else."
+            }
+          ]
+        }
+      ],
+      "generationConfig": {
+        "maxOutputTokens": 256
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "candidates": [
+        {
+          "content": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "OK"
+              }
+            ]
+          },
+          "finishReason": "STOP",
+          "index": 0
+        }
+      ],
+      "usageMetadata": {
+        "promptTokenCount": 12,
+        "candidatesTokenCount": 1,
+        "totalTokenCount": 13
+      },
+      "modelVersion": "gemini-3.1-flash-lite-preview"
+    }
+  }
+}

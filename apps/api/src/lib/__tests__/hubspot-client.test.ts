@@ -1,92 +1,364 @@
 /**
  * Tests for the server-side HubSpot CRM client.
  *
- * Slice 2 Step 4 established the constructor contract and the
- * Authorization-header wiring for `getCompanyProperties`. Step 14 extends
- * the client with write + search methods consumed by the test-portal
- * seed script (`scripts/seed-hubspot-test-portal.ts`).
+ * Slice 3 refactor: constructor now takes `{ tenantId, db, fetch? }` instead
+ * of reading HUBSPOT_DEV_PORTAL_TOKEN from the env. Token resolution queries
+ * the `tenant_hubspot_oauth` table via the Drizzle handle, decrypts with
+ * AES-256-GCM, and auto-refreshes on expiry/401.
  *
- * All tests stub `fetch`; no live HubSpot calls.
+ * All tests stub `fetch` and mock the DB layer; no live HubSpot or Postgres.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { Database } from "@hap/db";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { encryptProviderKey } from "../encryption";
 import { HubSpotClient } from "../hubspot-client";
 
-const ORIGINAL_TOKEN = process.env.HUBSPOT_DEV_PORTAL_TOKEN;
+// ---------------------------------------------------------------------------
+// Helpers — fake DB + fetch
+// ---------------------------------------------------------------------------
 
-beforeEach(() => {
-  process.env.HUBSPOT_DEV_PORTAL_TOKEN = "pat-test-abc-123";
-});
+const TEST_TENANT_ID = "00000000-0000-0000-0000-000000000001";
+const TEST_ACCESS_TOKEN = "access-token-abc-123";
+const TEST_REFRESH_TOKEN = "refresh-token-xyz-789";
+/** Far-future so the token is not expired in normal tests. */
+const FAR_FUTURE = new Date(Date.now() + 3_600_000);
+
+/**
+ * Build a mock DB handle that returns a single OAuth row for the test tenant.
+ * The `findFirst` mock resolves with encrypted tokens.
+ */
+function makeMockDb(overrides?: {
+  expiresAt?: Date;
+  accessToken?: string;
+  refreshToken?: string;
+  missing?: boolean;
+}): Database {
+  const accessToken = overrides?.accessToken ?? TEST_ACCESS_TOKEN;
+  const refreshToken = overrides?.refreshToken ?? TEST_REFRESH_TOKEN;
+  const expiresAt = overrides?.expiresAt ?? FAR_FUTURE;
+
+  const row = overrides?.missing
+    ? undefined
+    : {
+        tenantId: TEST_TENANT_ID,
+        accessTokenEncrypted: encryptProviderKey(TEST_TENANT_ID, accessToken),
+        refreshTokenEncrypted: encryptProviderKey(TEST_TENANT_ID, refreshToken),
+        expiresAt,
+        scopes: ["crm.objects.companies.read", "crm.objects.contacts.read"],
+        keyVersion: 1,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+  const findFirstMock = vi.fn().mockResolvedValue(row);
+
+  // Drizzle query pattern: db.query.tenantHubspotOauth.findFirst({ where: ... })
+  // We mock the minimal chain needed.
+  const mockDb = {
+    query: {
+      tenantHubspotOauth: {
+        findFirst: findFirstMock,
+      },
+    },
+    // For UPDATE (token refresh persist)
+    update: vi.fn().mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      }),
+    }),
+  } as unknown as Database;
+
+  return mockDb;
+}
+
+/**
+ * Build a fake fetch that resolves with a canned response.
+ */
+function makeFakeFetch(responseBody: unknown, status = 200): typeof globalThis.fetch {
+  return vi.fn().mockResolvedValue(
+    new Response(JSON.stringify(responseBody), {
+      status,
+      headers: { "content-type": "application/json" },
+    }),
+  );
+}
+
+/**
+ * Build a fake fetch that returns different responses per call.
+ */
+function makeFakeFetchSequence(
+  ...responses: Array<{ body: unknown; status: number }>
+): typeof globalThis.fetch {
+  const fn = vi.fn();
+  for (const [, r] of responses.entries()) {
+    fn.mockResolvedValueOnce(
+      new Response(JSON.stringify(r.body), {
+        status: r.status,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+  }
+  return fn as typeof globalThis.fetch;
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 afterEach(() => {
-  if (ORIGINAL_TOKEN === undefined) {
-    delete process.env.HUBSPOT_DEV_PORTAL_TOKEN;
-  } else {
-    process.env.HUBSPOT_DEV_PORTAL_TOKEN = ORIGINAL_TOKEN;
-  }
   vi.restoreAllMocks();
 });
 
-describe("HubSpotClient", () => {
-  it("constructor throws when HUBSPOT_DEV_PORTAL_TOKEN is missing", () => {
+describe("HubSpotClient (Slice 3 — per-tenant OAuth)", () => {
+  // ---- Constructor ----
+
+  it("constructor accepts { tenantId, db, fetch } and does NOT read HUBSPOT_DEV_PORTAL_TOKEN", () => {
+    const db = makeMockDb();
+    const fakeFetch = makeFakeFetch({});
+    // Should NOT throw even if HUBSPOT_DEV_PORTAL_TOKEN is unset
+    const saved = process.env.HUBSPOT_DEV_PORTAL_TOKEN;
     delete process.env.HUBSPOT_DEV_PORTAL_TOKEN;
-    expect(() => new HubSpotClient()).toThrowError(/HUBSPOT_DEV_PORTAL_TOKEN/);
+    try {
+      const client = new HubSpotClient({
+        tenantId: TEST_TENANT_ID,
+        db,
+        fetch: fakeFetch,
+      });
+      expect(client).toBeDefined();
+    } finally {
+      if (saved !== undefined) process.env.HUBSPOT_DEV_PORTAL_TOKEN = saved;
+    }
   });
 
-  it("constructor throws when HUBSPOT_DEV_PORTAL_TOKEN is empty string", () => {
-    process.env.HUBSPOT_DEV_PORTAL_TOKEN = "";
-    expect(() => new HubSpotClient()).toThrowError(/HUBSPOT_DEV_PORTAL_TOKEN/);
-  });
+  // ---- Token resolution from DB ----
 
-  it("getCompanyProperties calls fetch with Bearer token and parses properties", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          id: "123",
-          properties: { name: "Acme", domain: "acme.test" },
-        }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      ),
-    );
+  it("getCompanyProperties resolves token from DB and sends Bearer header", async () => {
+    const db = makeMockDb();
+    const fakeFetch = makeFakeFetch({
+      id: "123",
+      properties: { name: "Acme", domain: "acme.test" },
+    });
 
-    const client = new HubSpotClient();
+    const client = new HubSpotClient({
+      tenantId: TEST_TENANT_ID,
+      db,
+      fetch: fakeFetch,
+    });
+
     const props = await client.getCompanyProperties("123", ["name", "domain"]);
 
     expect(props).toEqual({ name: "Acme", domain: "acme.test" });
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(fakeFetch).toHaveBeenCalledTimes(1);
+    const [url, init] = (fakeFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
     expect(url).toMatch(/\/crm\/v3\/objects\/companies\/123/);
     expect(url).toContain("properties=name");
     expect(url).toContain("properties=domain");
     const headers = new Headers(init.headers);
-    expect(headers.get("authorization")).toBe("Bearer pat-test-abc-123");
+    expect(headers.get("authorization")).toBe(`Bearer ${TEST_ACCESS_TOKEN}`);
   });
 
-  it("getCompanyProperties throws on non-2xx without leaking the token", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("forbidden", { status: 403 }));
-    const client = new HubSpotClient();
-    await expect(client.getCompanyProperties("123", ["name"])).rejects.toThrow(/hubspot: 403/i);
-    // The thrown message must NOT include the token.
+  it("throws when tenant has no OAuth row in the DB", async () => {
+    const db = makeMockDb({ missing: true });
+    const fakeFetch = makeFakeFetch({});
+
+    const client = new HubSpotClient({
+      tenantId: TEST_TENANT_ID,
+      db,
+      fetch: fakeFetch,
+    });
+
+    await expect(client.getCompanyProperties("123", ["name"])).rejects.toThrow(
+      /no oauth tokens found/i,
+    );
+  });
+
+  // ---- Token caching ----
+
+  it("caches decrypted token across multiple calls (DB queried only once while not expired)", async () => {
+    const db = makeMockDb();
+    const fakeFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "1", properties: { name: "A" } }), {
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "2", properties: { name: "B" } }), {
+          status: 200,
+        }),
+      );
+
+    const client = new HubSpotClient({
+      tenantId: TEST_TENANT_ID,
+      db,
+      fetch: fakeFetch as typeof globalThis.fetch,
+    });
+
+    await client.getCompanyProperties("1", ["name"]);
+    await client.getCompanyProperties("2", ["name"]);
+
+    // DB findFirst called only once — second call used cache
+    // biome-ignore lint/suspicious/noExplicitAny: mock DB query chain needs untyped access
+    const queryMock = db.query as any;
+    expect(queryMock.tenantHubspotOauth.findFirst).toHaveBeenCalledTimes(1);
+    expect(fakeFetch).toHaveBeenCalledTimes(2);
+  });
+
+  // ---- Pre-expiry refresh ----
+
+  it("proactively refreshes when token is within 60s of expiry", async () => {
+    // Token expires in 30 seconds — within the 60s pre-expiry window
+    const almostExpired = new Date(Date.now() + 30_000);
+    const db = makeMockDb({ expiresAt: almostExpired });
+
+    // First call: the HubSpot API call after refresh
+    // The refresh is done via oauth.refreshAccessToken which uses its own fetch
+    // We need to mock the oauth module
+    const newAccessToken = "refreshed-access-token";
+    const newRefreshToken = "refreshed-refresh-token";
+
+    // Mock the oauth.refreshAccessToken
+    vi.spyOn(await import("../oauth"), "refreshAccessToken").mockResolvedValue({
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+      expiresIn: 21600,
+      tokenType: "bearer",
+    });
+
+    const fakeFetch = makeFakeFetch({
+      id: "123",
+      properties: { name: "Acme" },
+    });
+
+    const client = new HubSpotClient({
+      tenantId: TEST_TENANT_ID,
+      db,
+      fetch: fakeFetch,
+    });
+
+    const props = await client.getCompanyProperties("123", ["name"]);
+    expect(props).toEqual({ name: "Acme" });
+
+    // The Bearer header should use the refreshed token
+    const [, init] = (fakeFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
+    const headers = new Headers(init.headers);
+    expect(headers.get("authorization")).toBe(`Bearer ${newAccessToken}`);
+
+    // DB update should have been called to persist rotated tokens
+    expect(db.update).toHaveBeenCalled();
+  });
+
+  // ---- 401 auto-retry ----
+
+  it("retries once on 401 after refreshing the token", async () => {
+    const db = makeMockDb();
+
+    vi.spyOn(await import("../oauth"), "refreshAccessToken").mockResolvedValue({
+      accessToken: "retry-token",
+      refreshToken: "new-refresh",
+      expiresIn: 21600,
+      tokenType: "bearer",
+    });
+
+    // First call → 401, second call (retry) → 200
+    const fakeFetch = makeFakeFetchSequence(
+      { body: { message: "Unauthorized" }, status: 401 },
+      {
+        body: { id: "123", properties: { name: "Acme" } },
+        status: 200,
+      },
+    );
+
+    const client = new HubSpotClient({
+      tenantId: TEST_TENANT_ID,
+      db,
+      fetch: fakeFetch,
+    });
+
+    const props = await client.getCompanyProperties("123", ["name"]);
+    expect(props).toEqual({ name: "Acme" });
+    expect(fakeFetch).toHaveBeenCalledTimes(2);
+
+    // Second call should use the refreshed token
+    const [, init] = (fakeFetch as ReturnType<typeof vi.fn>).mock.calls[1] as [string, RequestInit];
+    const headers = new Headers(init.headers);
+    expect(headers.get("authorization")).toBe("Bearer retry-token");
+  });
+
+  it("does NOT infinite-loop — throws after retry also returns 401", async () => {
+    const db = makeMockDb();
+
+    vi.spyOn(await import("../oauth"), "refreshAccessToken").mockResolvedValue({
+      accessToken: "still-bad-token",
+      refreshToken: "new-refresh",
+      expiresIn: 21600,
+      tokenType: "bearer",
+    });
+
+    // Both calls → 401
+    const fakeFetch = makeFakeFetchSequence(
+      { body: { message: "Unauthorized" }, status: 401 },
+      { body: { message: "Unauthorized" }, status: 401 },
+    );
+
+    const client = new HubSpotClient({
+      tenantId: TEST_TENANT_ID,
+      db,
+      fetch: fakeFetch,
+    });
+
+    await expect(client.getCompanyProperties("123", ["name"])).rejects.toThrow(/hubspot: 401/);
+    // Exactly 2 fetch calls (original + one retry)
+    expect(fakeFetch).toHaveBeenCalledTimes(2);
+  });
+
+  // ---- Error message does not leak token ----
+
+  it("error messages do not leak the access token", async () => {
+    const db = makeMockDb();
+    const fakeFetch = makeFakeFetch({ message: "forbidden" }, 403);
+
+    const client = new HubSpotClient({
+      tenantId: TEST_TENANT_ID,
+      db,
+      fetch: fakeFetch,
+    });
+
     try {
       await client.getCompanyProperties("123", ["name"]);
+      expect.fail("should have thrown");
     } catch (err) {
-      expect((err as Error).message).not.toContain("pat-test-abc-123");
+      expect((err as Error).message).toMatch(/hubspot: 403/i);
+      expect((err as Error).message).not.toContain(TEST_ACCESS_TOKEN);
     }
   });
 
+  // ---- Existing method-level tests (updated constructor shape) ----
+
   it("createCompany POSTs to /crm/v3/objects/companies with properties body", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          id: "co-101",
-          properties: {
-            name: "Slice2-EligibleStrong-AcmeCorp",
-            hs_is_target_account: "true",
-          },
-        }),
-        { status: 201, headers: { "content-type": "application/json" } },
-      ),
+    const db = makeMockDb();
+    const fakeFetch = makeFakeFetch(
+      {
+        id: "co-101",
+        properties: {
+          name: "Slice2-EligibleStrong-AcmeCorp",
+          hs_is_target_account: "true",
+        },
+      },
+      201,
     );
-    const client = new HubSpotClient();
+
+    const client = new HubSpotClient({
+      tenantId: TEST_TENANT_ID,
+      db,
+      fetch: fakeFetch,
+    });
+
     const result = await client.createCompany({
       name: "Slice2-EligibleStrong-AcmeCorp",
       domain: "acme.test",
@@ -94,17 +366,17 @@ describe("HubSpotClient", () => {
     });
 
     expect(result.id).toBe("co-101");
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(fakeFetch).toHaveBeenCalledTimes(1);
+    const [url, init] = (fakeFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
     expect(url).toBe("https://api.hubapi.com/crm/v3/objects/companies");
     expect(init.method).toBe("POST");
     const headers = new Headers(init.headers);
-    expect(headers.get("authorization")).toBe("Bearer pat-test-abc-123");
+    expect(headers.get("authorization")).toBe(`Bearer ${TEST_ACCESS_TOKEN}`);
     expect(headers.get("content-type")).toBe("application/json");
     const body = JSON.parse(init.body as string);
-    // HubSpot CRM v3 requires ALL property values to be strings on the
-    // wire (server parses back per the schema). Client coerces booleans
-    // and numbers at the boundary.
     expect(body).toEqual({
       properties: {
         name: "Slice2-EligibleStrong-AcmeCorp",
@@ -115,24 +387,34 @@ describe("HubSpotClient", () => {
   });
 
   it("createCompany throws on non-2xx without leaking token", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("boom", { status: 500 }));
-    const client = new HubSpotClient();
+    const db = makeMockDb();
+    const fakeFetch = makeFakeFetch({ message: "boom" }, 500);
+
+    const client = new HubSpotClient({
+      tenantId: TEST_TENANT_ID,
+      db,
+      fetch: fakeFetch,
+    });
+
     try {
       await client.createCompany({ name: "x" });
       expect.fail("should have thrown");
     } catch (err) {
       expect((err as Error).message).toMatch(/hubspot: 500/);
-      expect((err as Error).message).not.toContain("pat-test-abc-123");
+      expect((err as Error).message).not.toContain(TEST_ACCESS_TOKEN);
     }
   });
 
   it("createContact POSTs to /crm/v3/objects/contacts", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ id: "ct-7", properties: { email: "a@b.test" } }), {
-        status: 201,
-      }),
-    );
-    const client = new HubSpotClient();
+    const db = makeMockDb();
+    const fakeFetch = makeFakeFetch({ id: "ct-7", properties: { email: "a@b.test" } }, 201);
+
+    const client = new HubSpotClient({
+      tenantId: TEST_TENANT_ID,
+      db,
+      fetch: fakeFetch,
+    });
+
     const result = await client.createContact({
       firstname: "Alex",
       lastname: "Champion",
@@ -141,7 +423,10 @@ describe("HubSpotClient", () => {
     });
 
     expect(result.id).toBe("ct-7");
-    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    const [url, init] = (fakeFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
     expect(url).toBe("https://api.hubapi.com/crm/v3/objects/contacts");
     expect(init.method).toBe("POST");
     const body = JSON.parse(init.body as string);
@@ -150,74 +435,96 @@ describe("HubSpotClient", () => {
   });
 
   it("updateCompany PATCHes to /crm/v3/objects/companies/{id}", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ id: "co-55", properties: { name: "Updated" } }), {
-        status: 200,
-      }),
-    );
-    const client = new HubSpotClient();
+    const db = makeMockDb();
+    const fakeFetch = makeFakeFetch({ id: "co-55", properties: { name: "Updated" } }, 200);
+
+    const client = new HubSpotClient({
+      tenantId: TEST_TENANT_ID,
+      db,
+      fetch: fakeFetch,
+    });
+
     await client.updateCompany("co-55", {
       name: "Updated",
       hs_is_target_account: false,
     });
 
-    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    const [url, init] = (fakeFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
     expect(url).toBe("https://api.hubapi.com/crm/v3/objects/companies/co-55");
     expect(init.method).toBe("PATCH");
     const body = JSON.parse(init.body as string);
-    // Boolean coerced to "false" string at the wire boundary.
     expect(body.properties.hs_is_target_account).toBe("false");
   });
 
   it("associateContactWithCompany PUTs to the default-association endpoint", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(new Response("", { status: 200 }));
-    const client = new HubSpotClient();
+    const db = makeMockDb();
+    const fakeFetch = vi.fn().mockResolvedValue(new Response("", { status: 200 }));
+
+    const client = new HubSpotClient({
+      tenantId: TEST_TENANT_ID,
+      db,
+      fetch: fakeFetch as typeof globalThis.fetch,
+    });
+
     await client.associateContactWithCompany("co-1", "ct-9");
 
-    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    const [url, init] = fakeFetch.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(
       "https://api.hubapi.com/crm/v4/objects/companies/co-1/associations/default/contacts/ct-9",
     );
     expect(init.method).toBe("PUT");
     const headers = new Headers(init.headers);
-    expect(headers.get("authorization")).toBe("Bearer pat-test-abc-123");
+    expect(headers.get("authorization")).toBe(`Bearer ${TEST_ACCESS_TOKEN}`);
   });
 
   it("associateContactWithCompany throws on non-2xx without leaking token", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("nope", { status: 404 }));
-    const client = new HubSpotClient();
+    const db = makeMockDb();
+    const fakeFetch = makeFakeFetch({ message: "nope" }, 404);
+
+    const client = new HubSpotClient({
+      tenantId: TEST_TENANT_ID,
+      db,
+      fetch: fakeFetch,
+    });
+
     try {
       await client.associateContactWithCompany("co-1", "ct-9");
       expect.fail("should have thrown");
     } catch (err) {
       expect((err as Error).message).toMatch(/hubspot: 404/);
-      expect((err as Error).message).not.toContain("pat-test-abc-123");
+      expect((err as Error).message).not.toContain(TEST_ACCESS_TOKEN);
     }
   });
 
   it("searchCompaniesByMarker POSTs filterGroups and returns results array", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          results: [
-            {
-              id: "co-A",
-              properties: { name: "Slice2-EligibleStrong-AcmeCorp" },
-            },
-            { id: "co-B", properties: { name: "Slice2-Empty-GammaCo" } },
-          ],
-        }),
-        { status: 200 },
-      ),
-    );
-    const client = new HubSpotClient();
+    const db = makeMockDb();
+    const fakeFetch = makeFakeFetch({
+      results: [
+        {
+          id: "co-A",
+          properties: { name: "Slice2-EligibleStrong-AcmeCorp" },
+        },
+        { id: "co-B", properties: { name: "Slice2-Empty-GammaCo" } },
+      ],
+    });
+
+    const client = new HubSpotClient({
+      tenantId: TEST_TENANT_ID,
+      db,
+      fetch: fakeFetch,
+    });
+
     const rows = await client.searchCompaniesByMarker("hap_seed_marker", "slice2-walkthrough-v1");
 
     expect(rows).toHaveLength(2);
     expect(rows[0]?.id).toBe("co-A");
-    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    const [url, init] = (fakeFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
     expect(url).toBe("https://api.hubapi.com/crm/v3/objects/companies/search");
     expect(init.method).toBe("POST");
     const body = JSON.parse(init.body as string);
@@ -229,38 +536,50 @@ describe("HubSpotClient", () => {
   });
 
   it("searchCompaniesByMarker returns empty array when no results", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({}), { status: 200 }),
-    );
-    const client = new HubSpotClient();
+    const db = makeMockDb();
+    const fakeFetch = makeFakeFetch({});
+
+    const client = new HubSpotClient({
+      tenantId: TEST_TENANT_ID,
+      db,
+      fetch: fakeFetch,
+    });
+
     const rows = await client.searchCompaniesByMarker("hap_seed_marker", "unknown");
     expect(rows).toEqual([]);
   });
 
   it("findContactByEmail returns the first match", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          results: [
-            {
-              id: "ct-1",
-              properties: { email: "a@b.example.com", firstname: "A" },
-            },
-          ],
-        }),
-        { status: 200 },
-      ),
-    );
-    const client = new HubSpotClient();
+    const db = makeMockDb();
+    const fakeFetch = makeFakeFetch({
+      results: [
+        {
+          id: "ct-1",
+          properties: { email: "a@b.example.com", firstname: "A" },
+        },
+      ],
+    });
+
+    const client = new HubSpotClient({
+      tenantId: TEST_TENANT_ID,
+      db,
+      fetch: fakeFetch,
+    });
+
     const contact = await client.findContactByEmail("a@b.example.com");
     expect(contact?.id).toBe("ct-1");
   });
 
   it("findContactByEmail returns null when no match", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ results: [] }), { status: 200 }),
-    );
-    const client = new HubSpotClient();
+    const db = makeMockDb();
+    const fakeFetch = makeFakeFetch({ results: [] });
+
+    const client = new HubSpotClient({
+      tenantId: TEST_TENANT_ID,
+      db,
+      fetch: fakeFetch,
+    });
+
     const contact = await client.findContactByEmail("ghost@nowhere.example.com");
     expect(contact).toBeNull();
   });

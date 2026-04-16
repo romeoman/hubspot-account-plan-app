@@ -1,21 +1,15 @@
 /**
- * HubSpot enrichment signal adapter — Slice 3 deferral stub.
+ * HubSpot enrichment signal adapter — Phase 3 deferral stub.
  *
  * The factory ({@link ./factory.createSignalAdapter}) wires this class for
  * tenants configured with `provider='hubspot-enrichment'`. Calling
- * {@link fetchSignals} throws a clear deferral error so operators see it
- * immediately instead of hitting silent failures.
+ * {@link fetchSignals} throws a clear deferral error.
  *
- * Blocker: requires `HUBSPOT_DEV_PORTAL_TOKEN` to be provisioned in the
- * environment (Step 14 will need it anyway for the seed script). Once
- * provisioned, Slice 3 will wire this adapter to
- * {@link ../../lib/hubspot-client.HubSpotClient} and ship a real
- * implementation with a recorded cassette.
- *
- * @todo Slice 3: implement HubSpot enrichment via
- *   HubSpotClient.getCompanyProperties + associated content fetch (follow the
- *   {@link ./exa.ExaAdapter} pattern; record cassette with real
- *   HUBSPOT_DEV_PORTAL_TOKEN).
+ * Deferred to Phase 3: the real implementation needs the per-tenant
+ * OAuth-aware {@link ../../lib/hubspot-client.HubSpotClient} running
+ * inside a `withTenantTxHandle` RLS context (Phase 3 Task 12). Once
+ * RLS wiring lands, this adapter calls `HubSpotClient.getCompanyProperties`
+ * + notes/engagement fetch and emits Evidence rows.
  */
 
 import type { Evidence } from "@hap/config";
@@ -38,7 +32,7 @@ export class HubSpotEnrichmentAdapter implements ProviderAdapter {
     void this.client;
     return Promise.reject(
       new Error(
-        "Slice 3: real HubSpot enrichment adapter not yet implemented; needs HUBSPOT_DEV_PORTAL_TOKEN + cassette recording.",
+        "HubSpot enrichment adapter not yet implemented; deferred to Phase 3 (needs per-tenant OAuth + RLS tx context).",
       ),
     );
   }

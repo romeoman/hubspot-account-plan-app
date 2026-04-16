@@ -2,17 +2,8 @@ import { describe, expect, it } from "vitest";
 import { loadEnv } from "../env";
 
 /**
- * Tests for the Slice 2 Zod env validator. Required vars:
- *   - DATABASE_URL (URL)
- *   - HUBSPOT_CLIENT_ID (non-empty string)
- *   - HUBSPOT_CLIENT_SECRET (non-empty string)
- *   - ROOT_KEK (base64; decodes to exactly 32 bytes)
- *
- * Optional (not required at startup, but typed if present):
- *   - HUBSPOT_DEV_PORTAL_TOKEN
- *   - OPENAI_API_KEY
- *   - EXA_API_KEY
- *   - ALLOW_TEST_AUTH (literal "true" enables)
+ * Env validator tests (Slice 3). HUBSPOT_DEV_PORTAL_TOKEN removed;
+ * ANTHROPIC_API_KEY + GEMINI_API_KEY added as optionals.
  */
 
 // 32 random bytes base64-encoded (length === 44 chars, decodes to 32 bytes).
@@ -37,23 +28,31 @@ describe("loadEnv: happy path", () => {
   it("passes through optional vars when present", () => {
     const env = loadEnv({
       ...VALID_ENV,
-      HUBSPOT_DEV_PORTAL_TOKEN: "pat-xyz",
       OPENAI_API_KEY: "sk-test",
       EXA_API_KEY: "exa-test",
+      ANTHROPIC_API_KEY: "sk-ant-test",
+      GEMINI_API_KEY: "AIza-test",
       ALLOW_TEST_AUTH: "true",
     });
-    expect(env.HUBSPOT_DEV_PORTAL_TOKEN).toBe("pat-xyz");
     expect(env.OPENAI_API_KEY).toBe("sk-test");
     expect(env.EXA_API_KEY).toBe("exa-test");
+    expect(env.ANTHROPIC_API_KEY).toBe("sk-ant-test");
+    expect(env.GEMINI_API_KEY).toBe("AIza-test");
     expect(env.ALLOW_TEST_AUTH).toBe("true");
   });
 
   it("optional vars are undefined when absent", () => {
     const env = loadEnv(VALID_ENV);
-    expect(env.HUBSPOT_DEV_PORTAL_TOKEN).toBeUndefined();
     expect(env.OPENAI_API_KEY).toBeUndefined();
     expect(env.EXA_API_KEY).toBeUndefined();
+    expect(env.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(env.GEMINI_API_KEY).toBeUndefined();
     expect(env.ALLOW_TEST_AUTH).toBeUndefined();
+  });
+
+  it("HUBSPOT_DEV_PORTAL_TOKEN is NOT in the schema (removed in Slice 3)", () => {
+    const env = loadEnv({ ...VALID_ENV, HUBSPOT_DEV_PORTAL_TOKEN: "pat-xyz" });
+    expect("HUBSPOT_DEV_PORTAL_TOKEN" in env).toBe(false);
   });
 
   it("defaults to process.env when no argument passed", () => {
