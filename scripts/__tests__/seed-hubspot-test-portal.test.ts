@@ -188,27 +188,29 @@ describe("seed-hubspot-test-portal", () => {
       expect(log.some((l) => l.includes("dry-run"))).toBe(true);
     });
 
-    it("throws a clear error when token is missing and not dry-run", async () => {
+    it("throws a clear error when --portal is missing and not dry-run", async () => {
       await expect(
         runSeed([], {
-          env: {}, // no HUBSPOT_DEV_PORTAL_TOKEN
+          env: {}, // no --portal flag, no HUBSPOT_TEST_PORTAL_ID
           clientFactory: () => stubClient(),
           log: () => {
             /* noop */
           },
         }),
-      ).rejects.toThrow(/HUBSPOT_DEV_PORTAL_TOKEN/);
+      ).rejects.toThrow(/--portal/);
     });
 
-    it("live run calls searchCompaniesByMarker and executes the plan when token is present", async () => {
+    it("live run calls searchCompaniesByMarker and executes the plan when portal is provided", async () => {
       const client = stubClient({
         searchCompaniesByMarker: vi.fn(async () => [
           { id: "co-E", properties: { name: "Slice2-Empty-GammaCo" } },
         ]),
       });
       const log: string[] = [];
-      const { plan, results } = await runSeed([], {
-        env: { HUBSPOT_DEV_PORTAL_TOKEN: "pat-test" },
+      const { plan, results } = await runSeed(["--portal", "147062576"], {
+        env: {
+          DATABASE_URL: "postgresql://hap:hap_local_dev@localhost:5433/hap_dev",
+        },
         clientFactory: () => client,
         log: (s) => log.push(s),
       });

@@ -1,44 +1,29 @@
 #!/usr/bin/env node
+
 /**
- * Slice 2 Step 14 — HubSpot test-portal seed script.
+ * HubSpot test-portal seed script (Slice 3 refactor).
  *
  * Seeds ONE company + 0-3 associated contacts per QA state (eight states
- * total) in the configured HubSpot test portal so the QA walkthrough in
- * `docs/qa/slice-2-walkthrough.md` can exercise every rendered state against
- * real CRM records.
+ * total) in the configured HubSpot test portal so the QA walkthrough can
+ * exercise every rendered state against real CRM records.
  *
- * Idempotent: every seeded company carries a known marker property
- * (`hap_seed_marker = "slice2-walkthrough-v1"`). On rerun the script searches
- * for the marker and UPDATEs existing rows instead of creating duplicates.
+ * Idempotent: every seeded company carries a known marker property. On
+ * rerun the script searches for the marker and UPDATEs existing rows.
  *
  * Usage:
  *   pnpm tsx scripts/seed-hubspot-test-portal.ts --dry-run
- *   pnpm tsx scripts/seed-hubspot-test-portal.ts
  *   pnpm tsx scripts/seed-hubspot-test-portal.ts --portal 147062576
  *
- * Auth: reads `HUBSPOT_DEV_PORTAL_TOKEN` from the environment (the same
- * dotenv-at-main-repo-root resolution used by `vitest.setup.ts`). The script
- * throws a clear error if the token is missing.
+ * Auth (Slice 3): reads the per-tenant OAuth token from `tenant_hubspot_oauth`
+ * in the local Postgres. The portal must have installed the app first (the
+ * OAuth callback creates the tenant + stores encrypted tokens). No env-var
+ * token — `HUBSPOT_DEV_PORTAL_TOKEN` was removed in Slice 3.
  *
- * Reference (retrieved 2026-04-15):
- *   - `POST /crm/v3/objects/companies`: create company
- *     https://developers.hubspot.com/docs/api-reference/latest/crm/objects/companies/object-definition
- *   - `POST /crm/v3/objects/contacts`: create contact
- *     https://developers.hubspot.com/docs/api-reference/latest/crm/objects/contacts/guide
- *   - `PUT /crm/v3/objects/companies/{companyId}/associations/default/contacts/{contactId}`:
- *     primary HUBSPOT_DEFINED association
- *     https://developers.hubspot.com/docs/api-reference/latest/crm/objects/companies/guide
- *   - `POST /crm/v3/objects/companies/search`: marker lookup for idempotency
- *     https://developers.hubspot.com/docs/api-reference/latest/crm/objects/companies/search/search-companies
- *   - `PATCH /crm/v3/objects/companies/{id}`: update on rerun
- *     https://developers.hubspot.com/docs/api-reference/latest/crm/objects/companies/update-company
- *
- * NEVER run without `--dry-run` in CI. The real run happens on a human
- * operator's machine after they paste `HUBSPOT_DEV_PORTAL_TOKEN` into
- * the main repo-root `.env`. See `docs/qa/slice-2-walkthrough.md`.
+ * NEVER run without `--dry-run` in CI.
  */
 
 import { HubSpotClient } from "../apps/api/src/lib/hubspot-client";
+import { createDatabase, eq, tenants } from "../packages/db/src";
 
 /**
  * Marker scheme used to find previously-seeded rows for idempotency.
@@ -428,16 +413,36 @@ export async function runSeed(
     return { plan };
   }
 
-  const token = env.HUBSPOT_DEV_PORTAL_TOKEN;
-  if (!token || token.length === 0) {
+  // Slice 3: resolve per-tenant OAuth token from DB instead of env var.
+  // Requires --portal <id> so we know which tenant's token to use.
+  const portalId = opts.portal ?? env.HUBSPOT_TEST_PORTAL_ID;
+  if (!portalId) {
     throw new Error(
-      "seed-hubspot-test-portal: HUBSPOT_DEV_PORTAL_TOKEN is not set; required for live seeding. Rerun with --dry-run to preview without credentials.",
+      "seed-hubspot-test-portal: --portal <id> is required for live seeding (or set HUBSPOT_TEST_PORTAL_ID in .env.test). Rerun with --dry-run to preview without credentials.",
     );
   }
 
-  const client = deps.clientFactory
-    ? deps.clientFactory()
-    : (new HubSpotClient() as SeedHubSpotClient);
+  let client: SeedHubSpotClient;
+  if (deps.clientFactory) {
+    client = deps.clientFactory();
+  } else {
+    const databaseUrl = env.DATABASE_URL;
+    if (!databaseUrl) {
+      throw new Error("seed-hubspot-test-portal: DATABASE_URL is required for live seeding.");
+    }
+    const db = createDatabase(databaseUrl);
+    const rows = await db.select().from(tenants).where(eq(tenants.hubspotPortalId, portalId));
+    const tenant = rows[0];
+    if (!tenant) {
+      throw new Error(
+        `seed-hubspot-test-portal: no tenant found for portal ${portalId}. Install the app on this portal first (GET /oauth/install).`,
+      );
+    }
+    client = new HubSpotClient({
+      tenantId: tenant.id,
+      db,
+    }) as SeedHubSpotClient;
+  }
   const existing = await client.searchCompaniesByMarker(
     SEED_MARKER_PROPERTY,
     SEED_MARKER_VALUE,
