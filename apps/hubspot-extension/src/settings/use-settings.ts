@@ -1,6 +1,6 @@
 import type { SettingsResponse, SettingsUpdate } from "@hap/config";
 import { settingsResponseSchema } from "@hap/validators";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createSettingsFetcher,
   createSettingsUpdater,
@@ -34,8 +34,11 @@ export function useSettings({
 
   const defaultFetcher = useMemo(() => createSettingsFetcher(), []);
   const defaultUpdater = useMemo(() => createSettingsUpdater(), []);
-  const activeFetcher = fetchSettings ?? defaultFetcher;
-  const activeUpdater = updateSettings ?? defaultUpdater;
+  const activeFetcherRef = useRef<SettingsFetcher>(fetchSettings ?? defaultFetcher);
+  const activeUpdaterRef = useRef<SettingsUpdater>(updateSettings ?? defaultUpdater);
+
+  activeFetcherRef.current = fetchSettings ?? defaultFetcher;
+  activeUpdaterRef.current = updateSettings ?? defaultUpdater;
 
   useEffect(() => {
     let cancelled = false;
@@ -44,7 +47,8 @@ export function useSettings({
     setSaveSucceeded(false);
     setSettings(null);
 
-    activeFetcher()
+    activeFetcherRef
+      .current()
       .then((raw) => {
         if (cancelled) return;
         const parsed = settingsResponseSchema.safeParse(raw);
@@ -65,30 +69,27 @@ export function useSettings({
     return () => {
       cancelled = true;
     };
-  }, [activeFetcher]);
+  }, []);
 
-  const save = useCallback(
-    async (update: SettingsUpdate) => {
-      setSaving(true);
-      setError(undefined);
-      setSaveSucceeded(false);
-      try {
-        const raw = await activeUpdater(update);
-        const parsed = settingsResponseSchema.safeParse(raw);
-        if (!parsed.success) {
-          throw new Error(`settings-validation-failed: ${parsed.error.message}`);
-        }
-        setSettings(parsed.data);
-        setSaveSucceeded(true);
-      } catch (err: unknown) {
-        setError(err instanceof Error ? err : new Error(String(err)));
-        setSaveSucceeded(false);
-      } finally {
-        setSaving(false);
+  const save = useCallback(async (update: SettingsUpdate) => {
+    setSaving(true);
+    setError(undefined);
+    setSaveSucceeded(false);
+    try {
+      const raw = await activeUpdaterRef.current(update);
+      const parsed = settingsResponseSchema.safeParse(raw);
+      if (!parsed.success) {
+        throw new Error(`settings-validation-failed: ${parsed.error.message}`);
       }
-    },
-    [activeUpdater],
-  );
+      setSettings(parsed.data);
+      setSaveSucceeded(true);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err : new Error(String(err)));
+      setSaveSucceeded(false);
+    } finally {
+      setSaving(false);
+    }
+  }, []);
 
   return {
     settings,

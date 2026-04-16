@@ -215,4 +215,40 @@ describe("HubSpotSettingsPage", () => {
       },
     });
   });
+
+  it("renders the initial load error instead of staying on an indefinite loading state", async () => {
+    const renderer = createRenderer("settings");
+    const fetchSettings = vi.fn(async () => {
+      throw new Error("settings-fetch-failed: 401 Unauthorized");
+    });
+
+    renderer.render(<HubSpotSettingsPage fetchSettings={fetchSettings} />);
+
+    await renderer.waitFor(() => {
+      const text = renderer
+        .findAll(Text)
+        .map((node) => node.text ?? "")
+        .join(" ");
+      expect(text).toContain("settings-fetch-failed: 401 Unauthorized");
+    });
+
+    const text = renderer
+      .findAll(Text)
+      .map((node) => node.text ?? "")
+      .join(" ");
+    expect(text).not.toBe("Loading…");
+  });
+
+  it("shows a HubSpot enrichment api key input when configuring that provider", async () => {
+    const renderer = createRenderer("settings");
+    const fetchSettings = vi.fn(async () => VALID_SETTINGS);
+
+    renderer.render(<HubSpotSettingsPage fetchSettings={fetchSettings} />);
+
+    await renderer.waitFor(() => {
+      expect(renderer.find(LoadingButton).props.loading).toBe(false);
+    });
+
+    expect(renderer.find(Input, { name: "hubspotEnrichmentApiKey" })).toBeTruthy();
+  });
 });

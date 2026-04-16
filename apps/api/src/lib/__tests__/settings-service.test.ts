@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { createDatabase, llmConfig, providerConfig, tenants } from "@hap/db";
 import { and, eq, like } from "drizzle-orm";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { decryptProviderKey } from "../encryption";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { __resetEncryptionCacheForTests, decryptProviderKey } from "../encryption";
 import { readSettings, updateSettings } from "../settings-service";
 
 const DATABASE_URL =
@@ -10,6 +10,14 @@ const DATABASE_URL =
 
 const db = createDatabase(DATABASE_URL);
 const PORTAL_PREFIX = `settingssvc-${randomUUID().slice(0, 8)}-`;
+const ROOT_KEK_BASE64 = Buffer.alloc(32, 9).toString("base64");
+let savedRootKek: string | undefined;
+
+beforeAll(() => {
+  savedRootKek = process.env.ROOT_KEK;
+  process.env.ROOT_KEK = ROOT_KEK_BASE64;
+  __resetEncryptionCacheForTests();
+});
 
 function portalId() {
   return `${PORTAL_PREFIX}${randomUUID().slice(0, 8)}`;
@@ -34,6 +42,12 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await db.delete(tenants).where(like(tenants.hubspotPortalId, `${PORTAL_PREFIX}%`));
+  if (savedRootKek !== undefined) {
+    process.env.ROOT_KEK = savedRootKek;
+  } else {
+    delete process.env.ROOT_KEK;
+  }
+  __resetEncryptionCacheForTests();
 });
 
 describe("readSettings", () => {
@@ -218,6 +232,88 @@ describe("updateSettings", () => {
       model: "",
       endpointUrl: undefined,
       hasApiKey: false,
+    });
+  });
+
+  it("clears the current llm api key without requiring a full provider/model rewrite", async () => {
+    const tenant = await seedTenant({ defaultLlmProvider: "openai" });
+
+    await updateSettings(
+      { db, tenantId: tenant.id },
+      {
+        llm: {
+          provider: "openai",
+          model: "gpt-5.4-mini",
+          apiKey: "openai-secret-1",
+        },
+      },
+    );
+
+    await updateSettings(
+      { db, tenantId: tenant.id },
+      {
+        llm: {
+          clearApiKey: true,
+        },
+      },
+    );
+
+    const [llmRow] = await db
+      .select()
+      .from(llmConfig)
+      .where(and(eq(llmConfig.tenantId, tenant.id), eq(llmConfig.providerName, "openai")));
+
+    expect(llmRow?.apiKeyEncrypted).toBeNull();
+
+    const settings = await readSettings({ db, tenantId: tenant.id });
+    expect(settings.llm).toEqual({
+      provider: "openai",
+      model: "gpt-5.4-mini",
+      endpointUrl: undefined,
+      hasApiKey: false,
+    });
+  });
+
+  it("switching llm providers removes stale rows and only exposes the active provider", async () => {
+    const tenant = await seedTenant();
+
+    await updateSettings(
+      { db, tenantId: tenant.id },
+      {
+        llm: {
+          provider: "anthropic",
+          model: "claude-sonnet-4-6",
+          apiKey: "anthropic-secret-1",
+        },
+      },
+    );
+
+    await updateSettings(
+      { db, tenantId: tenant.id },
+      {
+        llm: {
+          provider: "openai",
+          model: "gpt-5.4-mini",
+          apiKey: "openai-secret-1",
+        },
+      },
+    );
+
+    const llmRows = await db
+      .select({
+        providerName: llmConfig.providerName,
+      })
+      .from(llmConfig)
+      .where(eq(llmConfig.tenantId, tenant.id));
+
+    expect(llmRows).toEqual([{ providerName: "openai" }]);
+
+    const settings = await readSettings({ db, tenantId: tenant.id });
+    expect(settings.llm).toEqual({
+      provider: "openai",
+      model: "gpt-5.4-mini",
+      endpointUrl: undefined,
+      hasApiKey: true,
     });
   });
 });

@@ -7,6 +7,7 @@ import {
   getLlmConfig,
   getProviderConfig,
 } from "../../lib/config-resolver";
+import { __resetEncryptionCacheForTests } from "../../lib/encryption";
 
 const DATABASE_URL =
   process.env.DATABASE_URL ?? "postgresql://hap:hap_local_dev@localhost:5433/hap_dev";
@@ -42,6 +43,7 @@ beforeAll(() => {
   process.env.DATABASE_URL = DATABASE_URL;
   savedRootKek = process.env.ROOT_KEK;
   process.env.ROOT_KEK = ROOT_KEK_BASE64;
+  __resetEncryptionCacheForTests();
 });
 
 beforeEach(async () => {
@@ -56,6 +58,7 @@ afterAll(async () => {
   } else {
     delete process.env.ROOT_KEK;
   }
+  __resetEncryptionCacheForTests();
 });
 
 describe("GET /api/settings", () => {

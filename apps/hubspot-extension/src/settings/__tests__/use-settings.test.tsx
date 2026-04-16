@@ -1,6 +1,6 @@
 import { hubspot, Text } from "@hubspot/ui-extensions";
 import { createRenderer } from "@hubspot/ui-extensions/testing";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_API_BASE_URL } from "../api-fetcher";
 import { type UseSettingsArgs, useSettings } from "../use-settings";
@@ -60,6 +60,23 @@ function Probe({
         saveIsFn: typeof state.save === "function",
       })}
     </Text>
+  );
+}
+
+function InlineFetcherProbe({ fetchSpy }: { fetchSpy: () => Promise<typeof VALID_SETTINGS> }) {
+  const [tick, setTick] = useState(0);
+  const state = useSettings({
+    fetchSettings: () => fetchSpy(),
+  });
+
+  useEffect(() => {
+    if (!state.loading && state.settings && tick === 0) {
+      setTick(1);
+    }
+  }, [state.loading, state.settings, tick]);
+
+  return (
+    <Text>{JSON.stringify({ loading: state.loading, tenantId: state.settings?.tenantId })}</Text>
   );
 }
 
@@ -156,5 +173,22 @@ describe("useSettings", () => {
     expect((options as { method: string }).method).toBe("GET");
 
     fetchSpy.mockRestore();
+  });
+
+  it("does not refetch forever when callers pass inline fetcher functions", async () => {
+    const renderer = createRenderer("settings");
+    const fetchSpy = vi.fn(async () => VALID_SETTINGS);
+
+    renderer.render(<InlineFetcherProbe fetchSpy={fetchSpy} />);
+
+    await renderer.waitFor(() => {
+      const parsed = JSON.parse(renderer.find(Text).text ?? "{}");
+      expect(parsed.loading).toBe(false);
+      expect(parsed.tenantId).toBe("tenant-1");
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });

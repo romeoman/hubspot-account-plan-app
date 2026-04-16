@@ -81,7 +81,15 @@ export function HubSpotSettingsPage({ fetchSettings, updateSettings }: HubSpotSe
     }
   }, [state.settings]);
 
-  if (state.loading || !draft || !state.settings) {
+  if (state.loading) {
+    return <Text>Loading…</Text>;
+  }
+
+  if (state.error && (!draft || !state.settings)) {
+    return <Text>{state.error.message}</Text>;
+  }
+
+  if (!draft || !state.settings) {
     return <Text>Loading…</Text>;
   }
 
@@ -214,6 +222,28 @@ export function HubSpotSettingsPage({ fetchSettings, updateSettings }: HubSpotSe
                   signalProviders: {
                     ...current.signalProviders,
                     hubspotEnrichmentEnabled: checked,
+                  },
+                }
+              : current,
+          )
+        }
+      />
+      {state.settings.signalProviders.hubspotEnrichment.hasApiKey ? (
+        <Text>Stored key on file</Text>
+      ) : null}
+      <Input
+        name="hubspotEnrichmentApiKey"
+        label="HubSpot enrichment API key"
+        type="password"
+        value={draft.signalProviders.hubspotEnrichmentApiKey}
+        onChange={(value) =>
+          setDraft((current) =>
+            current
+              ? {
+                  ...current,
+                  signalProviders: {
+                    ...current.signalProviders,
+                    hubspotEnrichmentApiKey: value,
                   },
                 }
               : current,

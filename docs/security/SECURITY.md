@@ -419,7 +419,7 @@ Verified limitations (HubSpot docs + Exa research, 2026-04-15):
 - `scripts/seed-hubspot-test-portal.ts`: user first installs the app into their test portal via the install flow (one-click on HubSpot's side); seed script then reads the stored tenant token and proceeds. No env-variable token path.
 - `packages/config/src/env.ts`: `HUBSPOT_DEV_PORTAL_TOKEN` removed from the schema. `HUBSPOT_CLIENT_ID` + `HUBSPOT_CLIENT_SECRET` stay (they drive OAuth + the existing Step 4 signed-request verification).
 
-## 17. Slice 4 Tenant Settings And Secret Hygiene
+## 19. Slice 4 Tenant Settings And Secret Hygiene
 
 Slice 4 adds a tenant-scoped settings control plane:
 
@@ -427,7 +427,7 @@ Slice 4 adds a tenant-scoped settings control plane:
 - backend settings routes at `GET /api/settings` and `PUT /api/settings`
 - orchestration layer in `apps/api/src/lib/settings-service.ts`
 
-### 17.1 Read model is secret-safe
+### 19.1 Read model is secret-safe
 
 Settings reads return a presence-only model:
 
@@ -440,7 +440,7 @@ This is enforced in two places:
 - `packages/validators/src/settings.ts` rejects response payloads that drift from the presence-only shape
 - route tests in `apps/api/src/routes/__tests__/settings.test.ts` assert that API responses do not contain the submitted secret strings
 
-### 17.2 Secret writes are replace-only
+### 19.2 Secret writes are replace-only
 
 The write contract is explicit:
 
@@ -451,7 +451,7 @@ The write contract is explicit:
 
 `packages/validators/src/settings.ts` normalizes blank inputs to `undefined`, and `apps/api/src/lib/settings-service.ts` preserves the existing ciphertext when no new plaintext secret is supplied.
 
-### 17.3 Storage and encryption
+### 19.3 Storage and encryption
 
 All provider and LLM secrets written through the settings API are encrypted at rest with the existing tenant-bound AES-256-GCM envelope from `apps/api/src/lib/encryption.ts`.
 
@@ -461,7 +461,7 @@ All provider and LLM secrets written through the settings API are encrypted at r
 
 The settings UI never receives decrypted secrets and only shows generic "Stored key on file" indicators.
 
-### 17.4 Tenant isolation and cache invalidation
+### 19.4 Tenant isolation and cache invalidation
 
 Settings writes run through the same request-scoped tenant DB handle used by the rest of the API:
 
@@ -472,7 +472,7 @@ Settings writes run through the same request-scoped tenant DB handle used by the
 
 After every settings write, `updateSettings()` calls `invalidateTenantConfig(tenantId)` so cached provider and LLM config cannot stay stale. The regression in `apps/api/src/routes/__tests__/settings.test.ts` proves that a cached old config is replaced immediately after `PUT /api/settings`.
 
-### 17.5 UI guidance for unconfigured tenants
+### 19.5 UI guidance for unconfigured tenants
 
 Slice 4 does not guess at a deep-link into HubSpot settings from the CRM record tab. Official HubSpot docs confirm the supported path is:
 
@@ -482,7 +482,7 @@ Slice 4 does not guess at a deep-link into HubSpot settings from the CRM record 
 
 The CRM-card `UnconfiguredState` now tells the user exactly to follow that path. This keeps the state actionable without relying on an undocumented internal URL shape.
 
-### 17.6 Packaging and upload
+### 19.6 Packaging and upload
 
 The HubSpot upload wrapper now bundles both shipped UI extension entrypoints before upload:
 

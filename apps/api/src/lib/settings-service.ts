@@ -112,7 +112,7 @@ async function readLlmRow(
 
   if (!rows[0]) return null;
   if (!defaultProvider) return rows[0];
-  return rows.find((row) => row.providerName === defaultProvider) ?? rows[0];
+  return rows.find((row) => row.providerName === defaultProvider) ?? null;
 }
 
 export async function readSettings(deps: SettingsServiceDeps): Promise<SettingsResponse> {
@@ -253,144 +253,169 @@ export async function updateSettings(
 ): Promise<void> {
   const { db, tenantId } = deps;
 
-  const existingProviders = await readSignalProviderRows(db, tenantId);
-  const providerByName = new Map(existingProviders.map((row) => [row.providerName, row]));
-  const tenantSettings = (await getTenantSettings(db, tenantId)) ?? {};
-  const currentDefaultProvider =
-    typeof tenantSettings.defaultLlmProvider === "string"
-      ? (tenantSettings.defaultLlmProvider as LlmProviderType)
-      : undefined;
+  await db.transaction(async (tx) => {
+    const txDb = tx as unknown as Database;
 
-  if (update.thresholds) {
-    const nextThresholds: ThresholdConfig = {
-      ...DEFAULT_THRESHOLDS,
-      ...parseThresholds(providerByName.get("exa")?.thresholds),
-      ...update.thresholds,
-    };
+    const existingProviders = await readSignalProviderRows(txDb, tenantId);
+    const providerByName = new Map(existingProviders.map((row) => [row.providerName, row]));
+    const tenantSettings = (await getTenantSettings(txDb, tenantId)) ?? {};
+    const currentDefaultProvider =
+      typeof tenantSettings.defaultLlmProvider === "string"
+        ? (tenantSettings.defaultLlmProvider as LlmProviderType)
+        : undefined;
 
-    for (const { providerName } of MANAGED_SIGNAL_PROVIDERS) {
-      const existing = providerByName.get(providerName);
-      await upsertSignalProvider(db, tenantId, providerName, {
-        enabled: existing?.enabled ?? false,
-        apiKeyEncrypted: existing?.apiKeyEncrypted ?? null,
-        thresholds: nextThresholds,
-      });
+    if (update.thresholds) {
+      const existingThresholdSource = MANAGED_SIGNAL_PROVIDERS.map(({ providerName }) =>
+        providerByName.get(providerName),
+      ).find((row) => row);
+
+      const nextThresholds: ThresholdConfig = {
+        ...DEFAULT_THRESHOLDS,
+        ...(existingThresholdSource ? parseThresholds(existingThresholdSource.thresholds) : {}),
+        ...update.thresholds,
+      };
+
+      for (const { providerName } of MANAGED_SIGNAL_PROVIDERS) {
+        const existing = providerByName.get(providerName);
+        await upsertSignalProvider(txDb, tenantId, providerName, {
+          enabled: existing?.enabled ?? false,
+          apiKeyEncrypted: existing?.apiKeyEncrypted ?? null,
+          thresholds: nextThresholds,
+        });
+      }
     }
-  }
 
-  if (update.signalProviders) {
-    for (const { key, providerName } of MANAGED_SIGNAL_PROVIDERS) {
-      const patch = update.signalProviders[key];
-      if (!patch) continue;
-      const existing = providerByName.get(providerName);
-      await upsertSignalProvider(db, tenantId, providerName, {
-        enabled: patch.enabled ?? existing?.enabled ?? false,
-        apiKeyEncrypted: patch.clearApiKey
-          ? null
-          : patch.apiKey
-            ? encryptProviderKey(tenantId, patch.apiKey)
-            : (existing?.apiKeyEncrypted ?? null),
+    if (update.signalProviders) {
+      for (const { key, providerName } of MANAGED_SIGNAL_PROVIDERS) {
+        const patch = update.signalProviders[key];
+        if (!patch) continue;
+        const existing = providerByName.get(providerName);
+        await upsertSignalProvider(txDb, tenantId, providerName, {
+          enabled: patch.enabled ?? existing?.enabled ?? false,
+          apiKeyEncrypted: patch.clearApiKey
+            ? null
+            : patch.apiKey
+              ? encryptProviderKey(tenantId, patch.apiKey)
+              : (existing?.apiKeyEncrypted ?? null),
+          thresholds: {
+            ...DEFAULT_THRESHOLDS,
+            ...parseThresholds(existing?.thresholds),
+            ...update.thresholds,
+          },
+        });
+      }
+    }
+
+    if (update.eligibility?.propertyName) {
+      const existing = providerByName.get(HUBSPOT_PROVIDER_NAME);
+      const existingSettings =
+        existing?.settings &&
+        typeof existing.settings === "object" &&
+        !Array.isArray(existing.settings)
+          ? (existing.settings as Record<string, unknown>)
+          : {};
+
+      await upsertSignalProvider(txDb, tenantId, HUBSPOT_PROVIDER_NAME, {
+        // HubSpot base config is OAuth-backed and used only for settings lookup,
+        // not end-user enable/disable gating like hubspot-enrichment.
+        enabled: existing?.enabled ?? true,
+        apiKeyEncrypted: existing?.apiKeyEncrypted ?? null,
         thresholds: {
           ...DEFAULT_THRESHOLDS,
           ...parseThresholds(existing?.thresholds),
-          ...update.thresholds,
         },
-      });
-    }
-  }
-
-  if (update.eligibility?.propertyName) {
-    const existing = providerByName.get(HUBSPOT_PROVIDER_NAME);
-    const existingSettings =
-      existing?.settings &&
-      typeof existing.settings === "object" &&
-      !Array.isArray(existing.settings)
-        ? (existing.settings as Record<string, unknown>)
-        : {};
-
-    await upsertSignalProvider(db, tenantId, HUBSPOT_PROVIDER_NAME, {
-      enabled: existing?.enabled ?? true,
-      apiKeyEncrypted: existing?.apiKeyEncrypted ?? null,
-      thresholds: {
-        ...DEFAULT_THRESHOLDS,
-        ...parseThresholds(existing?.thresholds),
-      },
-      settings: {
-        ...existingSettings,
-        [ELIGIBILITY_PROPERTY_SETTINGS_KEY]: update.eligibility.propertyName,
-      },
-    });
-  }
-
-  if (update.llm?.provider === null) {
-    await db.delete(llmConfig).where(eq(llmConfig.tenantId, tenantId));
-
-    const { defaultLlmProvider: _removed, ...nextTenantSettings } = tenantSettings;
-    await db
-      .update(tenants)
-      .set({
-        settings: nextTenantSettings,
-        updatedAt: sql`now()`,
-      })
-      .where(eq(tenants.id, tenantId));
-  } else if (update.llm?.provider && update.llm.model) {
-    const existingRows = await db
-      .select({
-        providerName: llmConfig.providerName,
-        modelName: llmConfig.modelName,
-        apiKeyEncrypted: llmConfig.apiKeyEncrypted,
-        endpointUrl: llmConfig.endpointUrl,
-      })
-      .from(llmConfig)
-      .where(and(eq(llmConfig.tenantId, tenantId), eq(llmConfig.providerName, update.llm.provider)))
-      .limit(1);
-
-    const existing = existingRows[0];
-    await upsertLlmProvider(db, tenantId, update.llm.provider, {
-      model: update.llm.model,
-      apiKeyEncrypted: update.llm.clearApiKey
-        ? null
-        : update.llm.apiKey
-          ? encryptProviderKey(tenantId, update.llm.apiKey)
-          : (existing?.apiKeyEncrypted ?? null),
-      endpointUrl:
-        update.llm.provider === "custom"
-          ? (update.llm.endpointUrl ?? existing?.endpointUrl ?? null)
-          : null,
-    });
-
-    await db
-      .update(tenants)
-      .set({
         settings: {
-          ...tenantSettings,
-          defaultLlmProvider: update.llm.provider,
+          ...existingSettings,
+          [ELIGIBILITY_PROPERTY_SETTINGS_KEY]: update.eligibility.propertyName,
         },
-        updatedAt: sql`now()`,
-      })
-      .where(eq(tenants.id, tenantId));
-  } else if (currentDefaultProvider && update.llm?.apiKey) {
-    const existingRows = await db
-      .select({
-        providerName: llmConfig.providerName,
-        modelName: llmConfig.modelName,
-        apiKeyEncrypted: llmConfig.apiKeyEncrypted,
-        endpointUrl: llmConfig.endpointUrl,
-      })
-      .from(llmConfig)
-      .where(
-        and(eq(llmConfig.tenantId, tenantId), eq(llmConfig.providerName, currentDefaultProvider)),
-      )
-      .limit(1);
-    const existing = existingRows[0];
-    if (existing) {
-      await upsertLlmProvider(db, tenantId, currentDefaultProvider, {
-        model: existing.modelName,
-        apiKeyEncrypted: encryptProviderKey(tenantId, update.llm.apiKey),
-        endpointUrl: existing.endpointUrl,
       });
     }
-  }
+
+    if (update.llm?.provider === null) {
+      await tx.delete(llmConfig).where(eq(llmConfig.tenantId, tenantId));
+
+      const { defaultLlmProvider: _removed, ...nextTenantSettings } = tenantSettings;
+      await tx
+        .update(tenants)
+        .set({
+          settings: nextTenantSettings,
+          updatedAt: sql`now()`,
+        })
+        .where(eq(tenants.id, tenantId));
+    } else if (update.llm?.provider && update.llm.model) {
+      const existingRows = await tx
+        .select({
+          providerName: llmConfig.providerName,
+          modelName: llmConfig.modelName,
+          apiKeyEncrypted: llmConfig.apiKeyEncrypted,
+          endpointUrl: llmConfig.endpointUrl,
+        })
+        .from(llmConfig)
+        .where(
+          and(eq(llmConfig.tenantId, tenantId), eq(llmConfig.providerName, update.llm.provider)),
+        )
+        .limit(1);
+
+      const existing = existingRows[0];
+      await upsertLlmProvider(txDb, tenantId, update.llm.provider, {
+        model: update.llm.model,
+        apiKeyEncrypted: update.llm.clearApiKey
+          ? null
+          : update.llm.apiKey
+            ? encryptProviderKey(tenantId, update.llm.apiKey)
+            : (existing?.apiKeyEncrypted ?? null),
+        endpointUrl:
+          update.llm.provider === "custom"
+            ? (update.llm.endpointUrl ?? existing?.endpointUrl ?? null)
+            : null,
+      });
+
+      await tx
+        .delete(llmConfig)
+        .where(
+          and(
+            eq(llmConfig.tenantId, tenantId),
+            sql`${llmConfig.providerName} <> ${update.llm.provider}`,
+          ),
+        );
+
+      await tx
+        .update(tenants)
+        .set({
+          settings: {
+            ...tenantSettings,
+            defaultLlmProvider: update.llm.provider,
+          },
+          updatedAt: sql`now()`,
+        })
+        .where(eq(tenants.id, tenantId));
+    } else if (currentDefaultProvider && (update.llm?.apiKey || update.llm?.clearApiKey)) {
+      const existingRows = await tx
+        .select({
+          providerName: llmConfig.providerName,
+          modelName: llmConfig.modelName,
+          apiKeyEncrypted: llmConfig.apiKeyEncrypted,
+          endpointUrl: llmConfig.endpointUrl,
+        })
+        .from(llmConfig)
+        .where(
+          and(eq(llmConfig.tenantId, tenantId), eq(llmConfig.providerName, currentDefaultProvider)),
+        )
+        .limit(1);
+      const existing = existingRows[0];
+      if (existing) {
+        await upsertLlmProvider(txDb, tenantId, currentDefaultProvider, {
+          model: existing.modelName,
+          apiKeyEncrypted: update.llm.clearApiKey
+            ? null
+            : update.llm.apiKey
+              ? encryptProviderKey(tenantId, update.llm.apiKey)
+              : existing.apiKeyEncrypted,
+          endpointUrl: existing.endpointUrl,
+        });
+      }
+    }
+  });
 
   invalidateTenantConfig(tenantId);
 }
