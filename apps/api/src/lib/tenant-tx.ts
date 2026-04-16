@@ -15,7 +15,7 @@ export async function withTenantTx<T>(
 ): Promise<T> {
   return db.transaction(async (tx) => {
     await tx.execute(tenantSettingSql(tenantId));
-    return fn(tx as Database);
+    return fn(tx as unknown as Database);
   });
 }
 
@@ -37,7 +37,7 @@ export async function withTenantTxHandle(
 
   const transactionPromise = db.transaction(async (tx) => {
     await tx.execute(tenantSettingSql(tenantId));
-    tenantTx = tx as Database;
+    tenantTx = tx as unknown as Database;
     markReady();
     await releaseBarrier;
   });

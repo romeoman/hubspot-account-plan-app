@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createDatabase, type Database, sql as drizzleSql, snapshots, tenants } from "@hap/db";
 import { eq, like } from "drizzle-orm";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { withTenantTx, withTenantTxHandle } from "../tenant-tx";
 
 const DATABASE_URL =
