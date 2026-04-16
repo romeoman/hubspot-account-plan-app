@@ -131,8 +131,12 @@ app.use("/api/*", async (c, next) => {
   c.set("db", handle);
   try {
     await next();
-  } finally {
     await handle.release();
+  } catch (error) {
+    await handle.abort(error instanceof Error ? error : new Error(String(error)));
+    throw error;
+  } finally {
+    c.set("db", undefined);
   }
 });
 app.use("/api/*", nonceMiddleware());

@@ -23,7 +23,10 @@ function requireRow<T>(row: T | undefined, label: string): T {
 }
 
 type CurrentSettingRow = { tenant_id: string | null };
-type TenantTxHandle = Database & { release(): Promise<void> };
+type TenantTxHandle = Database & {
+  release(): Promise<void>;
+  abort(error?: Error): Promise<void>;
+};
 
 async function seedTenant(name: string) {
   const [row] = await db.insert(tenants).values({ hubspotPortalId: portalId(), name }).returning();
@@ -152,5 +155,27 @@ describe("withTenantTxHandle", () => {
     } finally {
       await handle.release();
     }
+  });
+
+  it("rolls back writes when the reserved handle is aborted after an error", async () => {
+    const tenant = await seedTenant("Tenant Rollback");
+    const companyId = `rollback-${randomUUID().slice(0, 8)}`;
+
+    const handle = (await withTenantTxHandle(db, tenant.id)) as TenantTxHandle;
+    const expectedError = new Error("request failed");
+
+    await handle.insert(snapshots).values({
+      tenantId: tenant.id,
+      companyId,
+      eligibilityState: "eligible",
+      stateFlags: {},
+    });
+
+    await expect(handle.abort(expectedError)).rejects.toThrow("request failed");
+
+    const rows = await withTenantTx(db, tenant.id, async (tx) =>
+      tx.select().from(snapshots).where(eq(snapshots.companyId, companyId)),
+    );
+    expect(rows).toHaveLength(0);
   });
 });

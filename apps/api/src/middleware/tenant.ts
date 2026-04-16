@@ -16,7 +16,7 @@ export type TenantVariables = {
   portalId?: string;
   tenantId?: string;
   tenant?: Tenant;
-  db?: Database & { release(): Promise<void> };
+  db?: Database & { release(): Promise<void>; abort(error?: Error): Promise<void> };
 };
 
 export interface TenantMiddlewareDeps {

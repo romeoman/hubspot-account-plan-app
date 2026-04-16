@@ -5,11 +5,7 @@ import {
 } from "@hubspot/ui-extensions";
 import { SnapshotStateRenderer } from "../features/snapshot/components/snapshot-state-renderer";
 import { useCompanyContext } from "../features/snapshot/hooks/use-company-context";
-import {
-  type SnapshotFetcher,
-  useSnapshot,
-  v1UnwiredFetcher,
-} from "../features/snapshot/hooks/use-snapshot";
+import { type SnapshotFetcher, useSnapshot } from "../features/snapshot/hooks/use-snapshot";
 
 export type ExtensionRootProps = {
   context: ExtensionPointApiContext<"crm.record.tab">;
@@ -20,7 +16,7 @@ export type ExtensionRootProps = {
 export const ExtensionRoot = ({
   context,
   fetchCrmObjectProperties,
-  snapshotFetcher = v1UnwiredFetcher,
+  snapshotFetcher,
 }: ExtensionRootProps) => {
   const company = useCompanyContext(context, fetchCrmObjectProperties);
   const snapshotState = useSnapshot({

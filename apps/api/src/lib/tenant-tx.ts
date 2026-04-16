@@ -2,6 +2,7 @@ import { type Database, sql as drizzleSql } from "@hap/db";
 
 type TenantScopedDatabase = Database & {
   release(): Promise<void>;
+  abort(error?: Error): Promise<void>;
 };
 
 function tenantSettingSql(tenantId: string) {
@@ -24,8 +25,8 @@ export async function withTenantTxHandle(
   tenantId: string,
 ): Promise<TenantScopedDatabase> {
   let released = false;
-  let resolveRelease!: () => void;
-  const releaseBarrier = new Promise<void>((resolve) => {
+  let resolveRelease!: (commit: boolean) => void;
+  const releaseBarrier = new Promise<boolean>((resolve) => {
     resolveRelease = resolve;
   });
 
@@ -39,7 +40,10 @@ export async function withTenantTxHandle(
     await tx.execute(tenantSettingSql(tenantId));
     tenantTx = tx as unknown as Database;
     markReady();
-    await releaseBarrier;
+    const shouldCommit = await releaseBarrier;
+    if (!shouldCommit) {
+      throw new Error("tenant transaction aborted");
+    }
   });
 
   await Promise.race([ready, transactionPromise]);
@@ -50,8 +54,20 @@ export async function withTenantTxHandle(
       return;
     }
     released = true;
-    resolveRelease();
+    resolveRelease(true);
     await transactionPromise;
+  };
+  scopedTx.abort = async (error?: Error) => {
+    if (released) {
+      return;
+    }
+    released = true;
+    resolveRelease(false);
+    try {
+      await transactionPromise;
+    } catch {
+      throw error ?? new Error("tenant transaction aborted");
+    }
   };
   return scopedTx;
 }

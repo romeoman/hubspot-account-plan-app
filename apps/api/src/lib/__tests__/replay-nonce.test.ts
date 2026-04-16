@@ -1,14 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { createDatabase, signedRequestNonce, tenants } from "@hap/db";
+import { createDatabase, sql as drizzleSql, signedRequestNonce, tenants } from "@hap/db";
 import { eq, like } from "drizzle-orm";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { computeBodyHash, recordNonce } from "../replay-nonce";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { computeBodyHash, recordNonce, sweepExpiredNonces } from "../replay-nonce";
 
 const DATABASE_URL =
   process.env.DATABASE_URL ?? "postgresql://hap:hap_local_dev@localhost:5433/hap_dev";
 
 const db = createDatabase(DATABASE_URL);
 const PORTAL_PREFIX = `nonce-${randomUUID().slice(0, 8)}-`;
+const TEST_RLS_ROLE = "hap_rls_test";
 
 function portalId() {
   return `${PORTAL_PREFIX}${randomUUID().slice(0, 8)}`;
@@ -21,6 +22,27 @@ async function seedTenant(name: string) {
   }
   return row;
 }
+
+beforeAll(async () => {
+  await db.execute(
+    drizzleSql.raw(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${TEST_RLS_ROLE}') THEN
+        CREATE ROLE ${TEST_RLS_ROLE} NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS;
+      END IF;
+    END
+    $$;
+  `),
+  );
+
+  await db.execute(drizzleSql.raw(`GRANT USAGE ON SCHEMA public TO ${TEST_RLS_ROLE};`));
+  await db.execute(
+    drizzleSql.raw(
+      `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ${TEST_RLS_ROLE};`,
+    ),
+  );
+});
 
 beforeEach(async () => {
   await db.delete(tenants).where(like(tenants.hubspotPortalId, `${PORTAL_PREFIX}%`));
@@ -128,4 +150,32 @@ describe("recordNonce", () => {
     expect(first).toEqual({ duplicate: false });
     expect(second).toEqual({ duplicate: false });
   });
+});
+
+describe("sweepExpiredNonces", () => {
+  it("cannot delete tenant rows under RLS when no tenant context is set", async () => {
+    const tenant = await seedTenant("Tenant Sweep");
+    const timestamp = Date.now();
+    const bodyHash = computeBodyHash('{"portalId":"sweep"}');
+
+    await recordNonce(db, {
+      tenantId: tenant.id,
+      timestamp,
+      bodyHash,
+    });
+
+    const deletedCount = await db.transaction(async (tx) => {
+      await tx.execute(drizzleSql.raw(`set local role ${TEST_RLS_ROLE}`));
+      const result = await sweepExpiredNonces(tx as unknown as typeof db, 0);
+      return result.deletedCount;
+    });
+
+    expect(deletedCount).toBeGreaterThan(0);
+
+    const remaining = await db
+      .select()
+      .from(signedRequestNonce)
+      .where(eq(signedRequestNonce.tenantId, tenant.id));
+    expect(remaining).toHaveLength(0);
+  }, 15_000);
 });
