@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import appHsmeta from "../src/app/app-hsmeta.json";
 import cardHsmeta from "../src/app/cards/card-hsmeta.json";
+import settingsHsmeta from "../src/app/settings/settings-hsmeta.json";
 
 // hsproject.json lives at the project root (outside src/). Its shape is
 // enforced by HubSpot's own `hs project validate` and checked in CI via
@@ -61,5 +62,42 @@ describe("HubSpot project scaffold (Slice 3 Task 5)", () => {
     const signalCardSource = readFileSync(signalCardPath, "utf8").trim();
 
     expect(signalCardSource).toBe('export { default } from "./dist/index.js";');
+  });
+
+  it("settings-hsmeta.json registers a settings extension entrypoint", () => {
+    expect(settingsHsmeta.type).toBe("settings");
+    expect(settingsHsmeta.config.entrypoint).toBe("/app/settings/Settings.tsx");
+  });
+
+  it("Settings.tsx re-exports the bundled settings default export directly", () => {
+    const settingsPath = resolve(import.meta.dirname, "../src/app/settings/Settings.tsx");
+    const settingsSource = readFileSync(settingsPath, "utf8").trim();
+
+    expect(settingsSource).toBe('export { default } from "./dist/index.js";');
+  });
+
+  it("settings/package.json mirrors the HubSpot feature scaffold shape", () => {
+    const settingsPackagePath = resolve(import.meta.dirname, "../src/app/settings/package.json");
+    const settingsPackage = JSON.parse(readFileSync(settingsPackagePath, "utf8")) as {
+      name: string;
+      type: string;
+      dependencies?: Record<string, string>;
+    };
+
+    expect(settingsPackage.name).toBe("hap-signal-workspace-settings");
+    expect(settingsPackage.type).toBe("module");
+    expect(settingsPackage.dependencies?.["@hubspot/ui-extensions"]).toBeDefined();
+    expect(settingsPackage.dependencies?.react).toBeDefined();
+  });
+
+  it("settings-entry.tsx registers a HubSpot settings extension", () => {
+    const settingsEntryPath = resolve(
+      import.meta.dirname,
+      "../../hubspot-extension/src/settings/settings-entry.tsx",
+    );
+    const settingsEntrySource = readFileSync(settingsEntryPath, "utf8");
+
+    expect(settingsEntrySource).toContain('hubspot.extend<"settings">');
+    expect(settingsEntrySource).toContain("export default function HubSpotSettingsEntry()");
   });
 });
