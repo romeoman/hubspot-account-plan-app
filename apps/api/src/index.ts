@@ -5,6 +5,7 @@ import { cors } from "hono/cors";
 import { authMiddleware } from "./middleware/auth";
 import { type CorrelationVariables, correlationMiddleware } from "./middleware/correlation";
 import { type TenantVariables, tenantMiddleware } from "./middleware/tenant";
+import { createOAuthRoutes } from "./routes/oauth";
 import { snapshotRoutes } from "./routes/snapshot";
 
 type AppVars = TenantVariables & CorrelationVariables & { portalId?: string };
@@ -94,6 +95,23 @@ function getTenantMw() {
   cachedTenantMwForDb = db;
   return cachedTenantMw;
 }
+
+// OAuth install + callback routes — mounted BEFORE auth middleware because
+// these endpoints are unauthenticated by design (no tenant exists yet at
+// install time; the callback creates the tenant).
+app.route(
+  "/oauth",
+  createOAuthRoutes({
+    config: {
+      clientId: process.env.HUBSPOT_CLIENT_ID ?? "",
+      clientSecret: process.env.HUBSPOT_CLIENT_SECRET ?? "",
+      redirectUri: process.env.HUBSPOT_OAUTH_REDIRECT_URI ?? "http://localhost:3000/oauth/callback",
+      scopes: ["crm.objects.companies.read", "crm.objects.contacts.read"],
+      stateTtlSeconds: 600,
+    },
+    db: getDb(),
+  }),
+);
 
 // Composed middleware chain for /api/* routes: auth -> tenant -> route.
 app.use("/api/*", authMiddleware());
