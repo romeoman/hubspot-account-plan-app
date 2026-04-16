@@ -1036,9 +1036,13 @@ describe("cross-tenant slice-2: guard-wrapper cross-leak check", () => {
         rateLimitConfig: cfg,
       });
 
-      await wSignalA.fetchSignals("tenant-a", "Acme");
-      await expect(wSignalA.fetchSignals("tenant-a", "Acme")).rejects.toThrow(/rate-limited/);
-      await expect(wSignalB.fetchSignals("tenant-b", "Acme")).resolves.toBeDefined();
+      await wSignalA.fetchSignals("tenant-a", { companyId: "co-acme", companyName: "Acme" });
+      await expect(
+        wSignalA.fetchSignals("tenant-a", { companyId: "co-acme", companyName: "Acme" }),
+      ).rejects.toThrow(/rate-limited/);
+      await expect(
+        wSignalB.fetchSignals("tenant-b", { companyId: "co-acme", companyName: "Acme" }),
+      ).resolves.toBeDefined();
     } finally {
       __setLogSinkForTests(null);
     }

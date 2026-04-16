@@ -14,7 +14,7 @@
  */
 
 import { createEvidence, type Evidence } from "@hap/config";
-import type { ProviderAdapter } from "../provider-adapter";
+import type { ProviderAdapter, ProviderCompanyContext } from "../provider-adapter";
 
 export const NEWS_PROVIDER_NAME = "news" as const;
 
@@ -84,9 +84,10 @@ export class NewsAdapter implements ProviderAdapter {
     this.fetchImpl = options.fetch ?? fetch;
   }
 
-  async fetchSignals(tenantId: string, companyName: string, domain?: string): Promise<Evidence[]> {
+  async fetchSignals(tenantId: string, company: ProviderCompanyContext): Promise<Evidence[]> {
+    const companyName = company.companyName ?? company.companyId;
     const queryParts = [companyName, "recent news"];
-    if (domain) queryParts.push(domain);
+    if (company.domain) queryParts.push(company.domain);
     const query = queryParts.join(" ");
 
     const body = {

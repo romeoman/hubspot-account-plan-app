@@ -26,25 +26,58 @@ function repoRoot(): string {
   }).trim();
 }
 
-function main(): number {
-  const root = repoRoot();
-  const src = join(root, PROJECT_DIR);
-  const tmp = mkdtempSync(join(tmpdir(), "hap-hs-upload-"));
-
-  console.log(`[hs-upload] copying ${src} → ${tmp}`);
-  cpSync(src, tmp, {
-    recursive: true,
-    filter: (file) => !file.includes("node_modules") && !file.endsWith(".tsbuildinfo"),
-  });
-
-  console.log(`[hs-upload] running '${HS_CLI} project upload' from ${tmp}`);
-  const result = spawnSync(HS_CLI, ["project", "upload", ...process.argv.slice(2)], {
-    cwd: tmp,
+function runBundle(root: string): void {
+  console.log("[hs-upload] bundling HubSpot card");
+  execFileSync("pnpm", ["tsx", "scripts/bundle-hubspot-card.ts"], {
+    cwd: root,
     stdio: "inherit",
-    env: process.env,
   });
-
-  return result.status ?? 1;
 }
 
-process.exit(main());
+export interface UploadDeps {
+  repoRoot(): string;
+  makeTempDir(): string;
+  copyProject(src: string, tmp: string): void;
+  runBundle(root: string): void;
+  runUpload(tmp: string, args: string[]): number;
+  log(message: string): void;
+}
+
+export function buildUploadRunner(deps: UploadDeps) {
+  return (args: string[]): number => {
+    const root = deps.repoRoot();
+    const src = join(root, PROJECT_DIR);
+    const tmp = deps.makeTempDir();
+
+    deps.runBundle(root);
+    deps.log(`[hs-upload] copying ${src} → ${tmp}`);
+    deps.copyProject(src, tmp);
+    deps.log(`[hs-upload] running '${HS_CLI} project upload' from ${tmp}`);
+    return deps.runUpload(tmp, args);
+  };
+}
+
+export function main(args = process.argv.slice(2)): number {
+  return buildUploadRunner({
+    repoRoot,
+    makeTempDir: () => mkdtempSync(join(tmpdir(), "hap-hs-upload-")),
+    copyProject: (src, tmp) => {
+      cpSync(src, tmp, {
+        recursive: true,
+        filter: (file) => !file.includes("node_modules") && !file.endsWith(".tsbuildinfo"),
+      });
+    },
+    runBundle,
+    runUpload: (tmp, uploadArgs) =>
+      spawnSync(HS_CLI, ["project", "upload", ...uploadArgs], {
+        cwd: tmp,
+        stdio: "inherit",
+        env: process.env,
+      }).status ?? 1,
+    log: (message) => console.log(message),
+  })(args);
+}
+
+if (import.meta.main) {
+  process.exit(main());
+}

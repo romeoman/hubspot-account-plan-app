@@ -1,4 +1,4 @@
-import { type createDatabase, type Tenant, tenants } from "@hap/db";
+import { type createDatabase, type Database, type Tenant, tenants } from "@hap/db";
 import { eq } from "drizzle-orm";
 import type { MiddlewareHandler } from "hono";
 
@@ -16,6 +16,7 @@ export type TenantVariables = {
   portalId?: string;
   tenantId?: string;
   tenant?: Tenant;
+  db?: Database & { release(): Promise<void>; abort(error?: Error): Promise<void> };
 };
 
 export interface TenantMiddlewareDeps {

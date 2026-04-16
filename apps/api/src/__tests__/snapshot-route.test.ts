@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { createDatabase, providerConfig, tenants } from "@hap/db";
 import { like } from "drizzle-orm";
+import { Hono } from "hono";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { clearConfigResolverCache } from "../lib/config-resolver";
+import { snapshotRoutes } from "../routes/snapshot";
 
 const DATABASE_URL =
   process.env.DATABASE_URL ?? "postgresql://hap:hap_local_dev@localhost:5433/hap_dev";
@@ -33,6 +35,27 @@ async function loadApp() {
   // Ensure fresh module bind each test run so env changes are respected.
   const mod = await import("../index");
   return mod.default;
+}
+
+function buildSnapshotRouteOnlyApp(
+  injectedDb: ReturnType<typeof createDatabase>,
+  tenantId: string,
+) {
+  const app = new Hono<{
+    Variables: {
+      tenantId?: string;
+      correlationId?: string;
+      db?: ReturnType<typeof createDatabase>;
+    };
+  }>();
+  app.use("*", async (c, next) => {
+    c.set("tenantId", tenantId);
+    c.set("db", injectedDb);
+    c.set("correlationId", "corr-route-only");
+    await next();
+  });
+  app.route("/api/snapshot", snapshotRoutes);
+  return app;
 }
 
 describe("POST /api/snapshot/:companyId", () => {
@@ -172,6 +195,42 @@ describe("POST /api/snapshot/:companyId", () => {
     expect(Array.isArray(body.evidence)).toBe(true);
     expect(body.stateFlags).toBeDefined();
     expect(typeof body.createdAt).toBe("string");
+  });
+
+  it("uses the request-scoped db handle from context instead of constructing its own db client", async () => {
+    const portal = portalId();
+    const [inserted] = await db
+      .insert(tenants)
+      .values({ hubspotPortalId: portal, name: "Injected DB Co" })
+      .returning();
+    const tenantId = inserted?.id;
+    expect(tenantId).toBeDefined();
+    if (!tenantId) throw new Error("tenant insert failed");
+
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    delete process.env.DATABASE_URL;
+
+    try {
+      const app = buildSnapshotRouteOnlyApp(db, tenantId);
+      const res = await app.request("/api/snapshot/co-injected", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ tenantId: "spoofed-tenant" }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { tenantId: string; eligibilityState: string };
+      expect(body.tenantId).toBe(tenantId);
+      expect(body.eligibilityState).toBe("unconfigured");
+    } finally {
+      if (prevDatabaseUrl === undefined) {
+        delete process.env.DATABASE_URL;
+      } else {
+        process.env.DATABASE_URL = prevDatabaseUrl;
+      }
+    }
   });
 
   it("tenant with only a mock-signal provider_config row (not a real provider) gets unconfigured", async () => {

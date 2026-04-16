@@ -50,6 +50,13 @@
       "when": 1776400001000,
       "tag": "0006_signed_request_nonce",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1776400002000,
+      "tag": "0007_rls_policies",
+      "breakpoints": true
     }
   ]
 }

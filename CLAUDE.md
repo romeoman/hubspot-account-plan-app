@@ -17,16 +17,14 @@ Do not expand this into a broad dashboard, generic research report, or full acco
 
 Before planning or coding, read these exact files:
 
+- `/Users/romeoman/Documents/Dev/HubSpot/Account Plan App/PLANNING_INDEX.md`
 - `/Users/romeoman/Documents/Dev/HubSpot/Account Plan App/.taskmaster/docs/prd.md`
 - `/Users/romeoman/Documents/Dev/HubSpot/Account Plan App/planning/chatprd/AI_CODING_RULES_AND_STANDARDS.md`
-- `/Users/romeoman/Documents/Dev/HubSpot/Account Plan App/planning/chatprd/SECURITY_PERMISSION_GATE.md`
-- `/Users/romeoman/Documents/Dev/HubSpot/Account Plan App/planning/local/QA_AND_VERIFICATION_PLAN.md`
-- `/Users/romeoman/Documents/Dev/HubSpot/Account Plan App/planning/chatprd/IMPLEMENTATION_PLAN.md`
-- `/Users/romeoman/Documents/Dev/HubSpot/Account Plan App/planning/chatprd/PRODUCT_BRIEF_FOR_AI_DEVELOPMENT.md`
-- `/Users/romeoman/Documents/Dev/HubSpot/Account Plan App/planning/chatprd/SPEC_FOR_AI_PROTOTYPING.md`
-- `/Users/romeoman/Documents/Dev/HubSpot/Account Plan App/planning/chatprd/REPO_DRAFT_AND_EXECUTION_CHECKLIST.md`
-- `/Users/romeoman/Documents/Dev/HubSpot/Account Plan App/planning/local/ENGINEERING_REVIEW_TEST_PLAN.md`
-- `/Users/romeoman/Documents/Dev/HubSpot/Account Plan App/planning/local/DOC_STACK_REVIEW_NOTES.md`
+- `/Users/romeoman/Documents/Dev/HubSpot/Account Plan App/planning/local/TASKMASTER_EXECUTION_PRD.md`
+- `/Users/romeoman/Documents/Dev/HubSpot/Account Plan App/docs/security/SECURITY.md`
+- `/Users/romeoman/Documents/Dev/HubSpot/Account Plan App/docs/slice-3-preflight-notes.md`
+
+If a path referenced by older planning docs has moved, resolve it via `PLANNING_INDEX.md` instead of guessing.
 
 If these documents conflict, follow the precedence defined in `/Users/romeoman/Documents/Dev/HubSpot/Account Plan App/planning/chatprd/AI_CODING_RULES_AND_STANDARDS.md`.
 

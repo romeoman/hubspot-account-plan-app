@@ -40,6 +40,26 @@ interface HubSpotObjectResponse {
   properties: Record<string, string>;
 }
 
+export type HubSpotEngagementType = "note" | "task" | "call" | "email" | "meeting";
+
+export interface HubSpotEngagement {
+  id: string;
+  type: HubSpotEngagementType;
+  timestamp: Date;
+  content: string;
+}
+
+type AssociationReadResponse = {
+  results?: Array<{
+    from?: { id?: string };
+    to?: Array<{ toObjectId?: string | number }>;
+  }>;
+};
+
+type BatchReadResponse = {
+  results?: Array<HubSpotObjectResponse>;
+};
+
 /**
  * HubSpot CRM v3 requires ALL property values to be strings on the wire.
  */
@@ -52,6 +72,66 @@ function coercePropertiesToStrings(
   }
   return out;
 }
+
+function combineText(parts: Array<string | undefined>): string {
+  return parts
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part && part.length > 0))
+    .join("\n\n");
+}
+
+function parseTimestamp(raw: string | undefined): Date {
+  if (!raw) return new Date(0);
+  if (/^\d+$/.test(raw)) {
+    const millis = Number(raw);
+    if (Number.isFinite(millis)) {
+      return new Date(millis);
+    }
+  }
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? new Date(0) : parsed;
+}
+
+const ENGAGEMENT_OBJECTS: Array<{
+  objectType: "notes" | "tasks" | "calls" | "emails" | "meetings";
+  type: HubSpotEngagementType;
+  properties: string[];
+  renderContent: (properties: Record<string, string>) => string;
+}> = [
+  {
+    objectType: "notes",
+    type: "note",
+    properties: ["hs_note_body", "hs_timestamp"],
+    renderContent: (properties) => combineText([properties.hs_note_body]),
+  },
+  {
+    objectType: "tasks",
+    type: "task",
+    properties: ["hs_task_subject", "hs_task_body", "hs_timestamp"],
+    renderContent: (properties) =>
+      combineText([properties.hs_task_subject, properties.hs_task_body]),
+  },
+  {
+    objectType: "calls",
+    type: "call",
+    properties: ["hs_call_title", "hs_call_body", "hs_timestamp"],
+    renderContent: (properties) => combineText([properties.hs_call_title, properties.hs_call_body]),
+  },
+  {
+    objectType: "emails",
+    type: "email",
+    properties: ["hs_email_subject", "hs_email_text", "hs_timestamp"],
+    renderContent: (properties) =>
+      combineText([properties.hs_email_subject, properties.hs_email_text]),
+  },
+  {
+    objectType: "meetings",
+    type: "meeting",
+    properties: ["hs_meeting_title", "hs_meeting_body", "hs_timestamp"],
+    renderContent: (properties) =>
+      combineText([properties.hs_meeting_title, properties.hs_meeting_body]),
+  },
+];
 
 /** Cached decrypted token + expiry to avoid decrypting on every call. */
 interface TokenCache {
@@ -237,6 +317,73 @@ export class HubSpotClient {
       properties?: Record<string, string>;
     };
     return json.properties ?? {};
+  }
+
+  async getCompanyEngagements(companyId: string): Promise<HubSpotEngagement[]> {
+    const engagements: HubSpotEngagement[] = [];
+
+    for (const config of ENGAGEMENT_OBJECTS) {
+      const associationUrl = `${HUBSPOT_API_ROOT}/crm/v4/associations/companies/${config.objectType}/batch/read`;
+      const associationRes = await this.authenticatedFetch(associationUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          inputs: [{ id: companyId }],
+        }),
+      });
+
+      if (!associationRes.ok) {
+        throw new Error(`hubspot: ${associationRes.status} ${associationRes.statusText}`);
+      }
+
+      const associationJson = (await associationRes.json()) as AssociationReadResponse;
+      const engagementIds = (associationJson.results ?? [])
+        .flatMap((result) => result.to ?? [])
+        .map((item) => (item.toObjectId === undefined ? "" : String(item.toObjectId)))
+        .filter((id) => id.length > 0);
+
+      if (engagementIds.length === 0) {
+        continue;
+      }
+
+      const batchUrl = `${HUBSPOT_API_ROOT}/crm/v3/objects/${config.objectType}/batch/read`;
+      const batchRes = await this.authenticatedFetch(batchUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          inputs: engagementIds.map((id) => ({ id })),
+          properties: config.properties,
+        }),
+      });
+
+      if (!batchRes.ok) {
+        throw new Error(`hubspot: ${batchRes.status} ${batchRes.statusText}`);
+      }
+
+      const batchJson = (await batchRes.json()) as BatchReadResponse;
+      for (const row of batchJson.results ?? []) {
+        const properties = row.properties ?? {};
+        const content = config.renderContent(properties);
+        if (!content) {
+          continue;
+        }
+
+        engagements.push({
+          id: row.id,
+          type: config.type,
+          timestamp: parseTimestamp(properties.hs_timestamp),
+          content,
+        });
+      }
+    }
+
+    return engagements;
   }
 
   async createCompany(

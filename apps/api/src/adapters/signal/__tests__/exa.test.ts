@@ -59,7 +59,7 @@ describe("ExaAdapter", () => {
       fetch: fakeFetchFromCassette(cassette),
     });
 
-    const evidence = await adapter.fetchSignals("tenant-A", "OpenAI");
+    const evidence = await adapter.fetchSignals("tenant-A", { companyId: "OpenAI" });
     expect(evidence.length).toBe(2);
     for (const ev of evidence) {
       expect(ev.tenantId).toBe("tenant-A");
@@ -88,7 +88,11 @@ describe("ExaAdapter", () => {
       apiKey: "exa-secret-1234",
       fetch: spy as unknown as typeof fetch,
     });
-    await adapter.fetchSignals("t1", "Acme", "acme.com");
+    await adapter.fetchSignals("t1", {
+      companyId: "co-acme",
+      companyName: "Acme",
+      domain: "acme.com",
+    });
 
     expect(spy).toHaveBeenCalledTimes(1);
     const [url, init] = spy.mock.calls[0] as unknown as [string, RequestInit];
@@ -127,7 +131,7 @@ describe("ExaAdapter", () => {
 
     let caught: unknown;
     try {
-      await adapter.fetchSignals("t1", "Acme");
+      await adapter.fetchSignals("t1", { companyId: "Acme" });
     } catch (e) {
       caught = e;
     }
@@ -154,7 +158,7 @@ describe("ExaAdapter", () => {
 
     let caught: unknown;
     try {
-      await adapter.fetchSignals("t1", "Acme");
+      await adapter.fetchSignals("t1", { companyId: "Acme" });
     } catch (e) {
       caught = e;
     }
@@ -175,7 +179,9 @@ describe("ExaAdapter", () => {
       apiKey: "test",
       fetch: fakeFetch as unknown as typeof fetch,
     });
-    await expect(adapter.fetchSignals("t1", "Acme")).rejects.toBeInstanceOf(ExaError);
+    await expect(adapter.fetchSignals("t1", { companyId: "Acme" })).rejects.toBeInstanceOf(
+      ExaError,
+    );
   });
 
   it("throws when response is missing the results array", async () => {
@@ -189,7 +195,9 @@ describe("ExaAdapter", () => {
       apiKey: "test",
       fetch: fakeFetch as unknown as typeof fetch,
     });
-    await expect(adapter.fetchSignals("t1", "Acme")).rejects.toBeInstanceOf(ExaError);
+    await expect(adapter.fetchSignals("t1", { companyId: "Acme" })).rejects.toBeInstanceOf(
+      ExaError,
+    );
   });
 
   it("propagates tenantId to every Evidence row even across tenants", async () => {
@@ -198,8 +206,8 @@ describe("ExaAdapter", () => {
       fetch: fakeFetchFromCassette(loadCassette()),
     });
 
-    const a = await adapter.fetchSignals("tenant-A", "OpenAI");
-    const b = await adapter.fetchSignals("tenant-B", "OpenAI");
+    const a = await adapter.fetchSignals("tenant-A", { companyId: "OpenAI" });
+    const b = await adapter.fetchSignals("tenant-B", { companyId: "OpenAI" });
     for (const ev of a) expect(ev.tenantId).toBe("tenant-A");
     for (const ev of b) expect(ev.tenantId).toBe("tenant-B");
   });
@@ -218,7 +226,7 @@ describe("ExaAdapter", () => {
       fetch: fakeFetch as unknown as typeof fetch,
     });
     const before = Date.now();
-    const ev = await adapter.fetchSignals("t", "Acme");
+    const ev = await adapter.fetchSignals("t", { companyId: "Acme" });
     const after = Date.now();
     expect(ev.length).toBe(1);
     const ts = ev[0]?.timestamp.getTime() ?? 0;

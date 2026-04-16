@@ -39,5 +39,32 @@
       "!.worktrees",
       "!.taskmaster"
     ]
-  }
+  },
+  "overrides": [
+    {
+      "includes": [
+        "apps/api/src/routes/**/*.ts",
+        "apps/api/src/services/**/*.ts",
+        "!apps/api/src/routes/**/__tests__/**",
+        "!apps/api/src/services/**/__tests__/**"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@hap/db": {
+                    "importNames": ["createDatabase"],
+                    "message": "Use the request-scoped tenant DB handle instead of createDatabase in routes/services."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

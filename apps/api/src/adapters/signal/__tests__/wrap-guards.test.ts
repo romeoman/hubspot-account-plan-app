@@ -34,7 +34,10 @@ describe("wrapSignalWithGuards", () => {
       rateLimiter: limiter,
     });
 
-    const res = await wrapped.fetchSignals("tenant-A", "Acme");
+    const res = await wrapped.fetchSignals("tenant-A", {
+      companyId: "co-acme",
+      companyName: "Acme",
+    });
     expect(res).toEqual([]);
     expect(wrapped.name).toBe("exa");
 
@@ -66,6 +69,36 @@ describe("wrapSignalWithGuards", () => {
     ]);
   });
 
+  it("forwards structured company context to the inner adapter", async () => {
+    const calls: Array<{ tenantId: string; company: unknown }> = [];
+    const inner = makeAdapter(async (tenantId, company): Promise<Evidence[]> => {
+      calls.push({ tenantId, company });
+      return [];
+    });
+    const wrapped = wrapSignalWithGuards(inner, {
+      tenantId: "tenant-A",
+      correlationId: "corr-structured",
+      rateLimiter: new RateLimiter(),
+    });
+
+    await wrapped.fetchSignals("tenant-A", {
+      companyId: "co-123",
+      companyName: "Acme Corp",
+      domain: "acme.example.com",
+    });
+
+    expect(calls).toEqual([
+      {
+        tenantId: "tenant-A",
+        company: {
+          companyId: "co-123",
+          companyName: "Acme Corp",
+          domain: "acme.example.com",
+        },
+      },
+    ]);
+  });
+
   it("throws SignalRateLimitedError when limiter denies, and does NOT call inner adapter", async () => {
     let innerCalls = 0;
     const inner = makeAdapter(async (): Promise<Evidence[]> => {
@@ -81,8 +114,10 @@ describe("wrapSignalWithGuards", () => {
       rateLimitConfig: { capacity: 1, refillRatePerSec: 1 },
     });
 
-    await wrapped.fetchSignals("T", "Acme");
-    await expect(wrapped.fetchSignals("T", "Acme")).rejects.toBeInstanceOf(SignalRateLimitedError);
+    await wrapped.fetchSignals("T", { companyId: "co-acme", companyName: "Acme" });
+    await expect(
+      wrapped.fetchSignals("T", { companyId: "co-acme", companyName: "Acme" }),
+    ).rejects.toBeInstanceOf(SignalRateLimitedError);
     expect(innerCalls).toBe(1);
   });
 
@@ -103,7 +138,9 @@ describe("wrapSignalWithGuards", () => {
       rateLimiter: limiter,
     });
 
-    await expect(wrapped.fetchSignals("T", "Acme")).rejects.toBeInstanceOf(FlakyError);
+    await expect(
+      wrapped.fetchSignals("T", { companyId: "co-acme", companyName: "Acme" }),
+    ).rejects.toBeInstanceOf(FlakyError);
 
     const errLine = logs.find((l) => l.outcome === "error");
     expect(errLine).toBeDefined();

@@ -2,13 +2,15 @@ import { createDatabase } from "@hap/db";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { withTenantTxHandle } from "./lib/tenant-tx";
 import { authMiddleware } from "./middleware/auth";
 import { type CorrelationVariables, correlationMiddleware } from "./middleware/correlation";
+import { nonceMiddleware } from "./middleware/nonce";
 import { type TenantVariables, tenantMiddleware } from "./middleware/tenant";
 import { createOAuthRoutes } from "./routes/oauth";
 import { snapshotRoutes } from "./routes/snapshot";
 
-type AppVars = TenantVariables & CorrelationVariables & { portalId?: string };
+type AppVars = TenantVariables & CorrelationVariables & { portalId?: string; rawBody?: string };
 
 /**
  * Resolve the allowed CORS origin for a given request origin.
@@ -119,6 +121,25 @@ app.use("/api/*", async (c, next) => {
   const mw = getTenantMw();
   return mw(c, next);
 });
+app.use("/api/*", async (c, next) => {
+  const tenantId = c.get("tenantId");
+  if (!tenantId) {
+    return next();
+  }
+
+  const handle = await withTenantTxHandle(getDb(), tenantId);
+  c.set("db", handle);
+  try {
+    await next();
+    await handle.release();
+  } catch (error) {
+    await handle.abort(error instanceof Error ? error : new Error(String(error)));
+    throw error;
+  } finally {
+    c.set("db", undefined);
+  }
+});
+app.use("/api/*", nonceMiddleware());
 
 app.route("/api/snapshot", snapshotRoutes);
 

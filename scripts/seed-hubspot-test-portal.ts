@@ -16,8 +16,8 @@
  *
  * Auth (Slice 3): reads the per-tenant OAuth token from `tenant_hubspot_oauth`
  * in the local Postgres. The portal must have installed the app first (the
- * OAuth callback creates the tenant + stores encrypted tokens). No env-var
- * token — `HUBSPOT_DEV_PORTAL_TOKEN` was removed in Slice 3.
+ * OAuth callback creates the tenant + stores encrypted tokens). The old
+ * single-portal env-token path was removed in Slice 3.
  *
  * NEVER run without `--dry-run` in CI.
  */
@@ -381,8 +381,8 @@ export function parseArgs(argv: readonly string[]): SeedCliOptions {
 
 /**
  * Entry point. Exported for the test harness so we can stub the client.
- * Throws when `HUBSPOT_DEV_PORTAL_TOKEN` is missing and `--dry-run` is NOT
- * set; dry-run mode does not require the token.
+ * Throws when the required tenant OAuth install cannot be resolved and
+ * `--dry-run` is NOT set; dry-run mode does not require a live token.
  */
 export async function runSeed(
   argv: readonly string[],

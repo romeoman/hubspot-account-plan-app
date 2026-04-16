@@ -12,9 +12,9 @@
  *   5. fetch + rank + select people (0..3, never fabricate)
  *   6. assemble Snapshot with caller tenantId stamped everywhere
  *
- * Step 9 (trust + suppression) will insert an additional stage between 2 and 4.
- * The `// TODO Step 9` comment marks the exact seam so the dependency shape
- * here does not change when that stage lands.
+ * Trust + suppression now run between signal fetch and reason generation.
+ * The assembler keeps that seam explicit so future hygiene changes can slot in
+ * without changing the route or adapter contracts.
  *
  * Tenant isolation: `tenantId` is ALWAYS sourced from the `args.tenantId`
  * parameter. Adapters / fetchers may not override it — evidence rows are
@@ -118,7 +118,7 @@ export async function assembleSnapshot(
   let signals: Evidence[] = [];
   let transportDegraded = false;
   try {
-    signals = await deps.providerAdapter.fetchSignals(tenantId, companyId);
+    signals = await deps.providerAdapter.fetchSignals(tenantId, { companyId });
   } catch (err) {
     // Transport error → mark degraded; continue with empty signal set.
     // Log a STABLE error code/class only — never the raw message. External
