@@ -41,11 +41,10 @@ describe("createSignalAdapter", () => {
     expect(() => createSignalAdapter(cfg({ name: "hubspot-enrichment" }))).toThrow(/HubSpotClient/);
   });
 
-  it("resolves news to a stub that throws a clear Slice 3 error", async () => {
+  it("resolves news to a real NewsAdapter", () => {
     const adapter = createSignalAdapter(cfg({ name: "news" }));
     expect(adapter).toBeInstanceOf(NewsAdapter);
     expect(adapter.name).toBe("news");
-    await expect(adapter.fetchSignals("t1", "Acme")).rejects.toThrow(/Slice 3: real news adapter/);
   });
 
   it("throws on unknown provider", () => {
