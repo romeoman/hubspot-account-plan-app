@@ -1,25 +1,22 @@
 /**
- * Slice 2 runtime environment validator.
- *
- * Consumers import `loadEnv()` to obtain a typed, validated snapshot of the
- * required process env. Missing/invalid vars throw a clear error listing all
- * issues — we never return a partial object.
+ * Runtime environment validator (Slice 3).
  *
  * Required vars (must be present at startup):
  *   - DATABASE_URL           Postgres connection string (URL).
- *   - HUBSPOT_CLIENT_ID      HubSpot public-app client id.
- *   - HUBSPOT_CLIENT_SECRET  HubSpot public-app client secret.
- *   - ROOT_KEK               base64-encoded 32-byte key (AES-256 key-encryption key).
+ *   - HUBSPOT_CLIENT_ID      HubSpot OAuth app client id.
+ *   - HUBSPOT_CLIENT_SECRET  HubSpot OAuth app client secret.
+ *   - ROOT_KEK               base64-encoded 32-byte key (AES-256 KEK).
  *
- * Optional vars (typed-through when present, do not fail startup if missing):
- *   - HUBSPOT_DEV_PORTAL_TOKEN  Step 9+ — private-app token for dev loops.
- *   - OPENAI_API_KEY             cassette recording only.
- *   - EXA_API_KEY                cassette recording only.
- *   - ALLOW_TEST_AUTH            test bypass; must be literal "true" to enable.
+ * Optional vars:
+ *   - OPENAI_API_KEY       cassette recording + tenant fallback.
+ *   - EXA_API_KEY           cassette recording + tenant fallback.
+ *   - ANTHROPIC_API_KEY     cassette recording + tenant fallback.
+ *   - GEMINI_API_KEY        cassette recording + tenant fallback.
+ *   - ALLOW_TEST_AUTH       test bypass; must be literal "true".
  *
- * `loadEnv()` defaults to `process.env` but accepts an override record for
- * tests. Do NOT inline `process.env` shape checks at call sites — always
- * route through this validator so Slice 2 callers share one typed view.
+ * Removed in Slice 3:
+ *   - HUBSPOT_DEV_PORTAL_TOKEN — replaced by per-tenant OAuth tokens
+ *     stored encrypted in tenant_hubspot_oauth. See SECURITY.md §16.
  */
 
 import { z } from "zod";
@@ -71,9 +68,10 @@ const envSchema = z.object({
 
   // Empty strings (common from unset vars in .env files) are coerced to
   // undefined so optional presence checks work intuitively.
-  HUBSPOT_DEV_PORTAL_TOKEN: z.preprocess(emptyToUndef, z.string().min(1).optional()),
   OPENAI_API_KEY: z.preprocess(emptyToUndef, z.string().min(1).optional()),
   EXA_API_KEY: z.preprocess(emptyToUndef, z.string().min(1).optional()),
+  ANTHROPIC_API_KEY: z.preprocess(emptyToUndef, z.string().min(1).optional()),
+  GEMINI_API_KEY: z.preprocess(emptyToUndef, z.string().min(1).optional()),
   ALLOW_TEST_AUTH: z.preprocess(emptyToUndef, z.literal("true").optional()),
 });
 
