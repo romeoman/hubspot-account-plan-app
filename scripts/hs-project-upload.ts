@@ -27,7 +27,7 @@ function repoRoot(): string {
 }
 
 function runBundle(root: string): void {
-  console.log("[hs-upload] bundling HubSpot card");
+  console.log("[hs-upload] bundling HubSpot card and settings page");
   execFileSync("pnpm", ["tsx", "scripts/bundle-hubspot-card.ts"], {
     cwd: root,
     stdio: "inherit",

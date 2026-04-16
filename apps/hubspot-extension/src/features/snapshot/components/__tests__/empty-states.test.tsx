@@ -28,6 +28,8 @@ describe("empty-state components", () => {
     renderer.render(<UnconfiguredState />);
     const text = renderer.find(Text).text;
     expect(text?.toLowerCase()).toContain("not configured");
+    expect(text?.toLowerCase()).toContain("connected apps");
+    expect(text?.toLowerCase()).toContain("settings");
   });
 
   it("RestrictedState renders a generic 'no data available' message with no evidence details", () => {

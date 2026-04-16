@@ -419,6 +419,78 @@ Verified limitations (HubSpot docs + Exa research, 2026-04-15):
 - `scripts/seed-hubspot-test-portal.ts`: user first installs the app into their test portal via the install flow (one-click on HubSpot's side); seed script then reads the stored tenant token and proceeds. No env-variable token path.
 - `packages/config/src/env.ts`: `HUBSPOT_DEV_PORTAL_TOKEN` removed from the schema. `HUBSPOT_CLIENT_ID` + `HUBSPOT_CLIENT_SECRET` stay (they drive OAuth + the existing Step 4 signed-request verification).
 
+## 19. Slice 4 Tenant Settings And Secret Hygiene
+
+Slice 4 adds a tenant-scoped settings control plane:
+
+- HubSpot settings UI extension at `apps/hubspot-project/src/app/settings/`
+- backend settings routes at `GET /api/settings` and `PUT /api/settings`
+- orchestration layer in `apps/api/src/lib/settings-service.ts`
+
+### 19.1 Read model is secret-safe
+
+Settings reads return a presence-only model:
+
+- signal-provider sections expose `enabled` + `hasApiKey`
+- LLM config exposes `provider`, `model`, optional `endpointUrl`, and `hasApiKey`
+- no plaintext `apiKey` is ever returned by the API
+
+This is enforced in two places:
+
+- `packages/validators/src/settings.ts` rejects response payloads that drift from the presence-only shape
+- route tests in `apps/api/src/routes/__tests__/settings.test.ts` assert that API responses do not contain the submitted secret strings
+
+### 19.2 Secret writes are replace-only
+
+The write contract is explicit:
+
+- a non-empty `apiKey` replaces the stored encrypted value
+- blank/whitespace `apiKey` inputs preserve the existing encrypted value
+- secret deletion, if needed, is a separate explicit action via `clearApiKey`
+- the UI never offers a "reveal current key" flow
+
+`packages/validators/src/settings.ts` normalizes blank inputs to `undefined`, and `apps/api/src/lib/settings-service.ts` preserves the existing ciphertext when no new plaintext secret is supplied.
+
+### 19.3 Storage and encryption
+
+All provider and LLM secrets written through the settings API are encrypted at rest with the existing tenant-bound AES-256-GCM envelope from `apps/api/src/lib/encryption.ts`.
+
+- provider secrets persist in `provider_config.api_key_encrypted`
+- LLM secrets persist in `llm_config.api_key_encrypted`
+- decryption happens only in trusted backend code paths (`config-resolver`, HubSpot client, etc.)
+
+The settings UI never receives decrypted secrets and only shows generic "Stored key on file" indicators.
+
+### 19.4 Tenant isolation and cache invalidation
+
+Settings writes run through the same request-scoped tenant DB handle used by the rest of the API:
+
+- auth middleware verifies the signed HubSpot request
+- tenant middleware resolves the tenant from the signed portal
+- RLS transaction middleware injects `c.get('db')`
+- settings routes call `readSettings()` / `updateSettings()` with that scoped handle
+
+After every settings write, `updateSettings()` calls `invalidateTenantConfig(tenantId)` so cached provider and LLM config cannot stay stale. The regression in `apps/api/src/routes/__tests__/settings.test.ts` proves that a cached old config is replaced immediately after `PUT /api/settings`.
+
+### 19.5 UI guidance for unconfigured tenants
+
+Slice 4 does not guess at a deep-link into HubSpot settings from the CRM record tab. Official HubSpot docs confirm the supported path is:
+
+1. Open `Connected apps`
+2. Open the installed app
+3. Open the app's `Settings` tab
+
+The CRM-card `UnconfiguredState` now tells the user exactly to follow that path. This keeps the state actionable without relying on an undocumented internal URL shape.
+
+### 19.6 Packaging and upload
+
+The HubSpot upload wrapper now bundles both shipped UI extension entrypoints before upload:
+
+- company record card bundle → `apps/hubspot-project/src/app/cards/dist/index.js`
+- settings page bundle → `apps/hubspot-project/src/app/settings/dist/index.js`
+
+This prevents the settings page scaffold from being structurally present but operationally missing at upload time.
+
 **OAuth state tradeoff (accepted for Slice 3):**
 
 - OAuth `state` is a **stateless HMAC** over a short-lived payload (for example `nonce + expiresAt`) using `HUBSPOT_CLIENT_SECRET`.

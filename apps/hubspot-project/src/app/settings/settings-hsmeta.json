@@ -1,0 +1,7 @@
+{
+  "uid": "hap_signal_workspace_settings",
+  "type": "settings",
+  "config": {
+    "entrypoint": "/app/settings/Settings.tsx"
+  }
+}

@@ -23,6 +23,7 @@ Before planning or coding, read these exact files:
 - `/Users/romeoman/Documents/Dev/HubSpot/Account Plan App/planning/local/TASKMASTER_EXECUTION_PRD.md`
 - `/Users/romeoman/Documents/Dev/HubSpot/Account Plan App/docs/security/SECURITY.md`
 - `/Users/romeoman/Documents/Dev/HubSpot/Account Plan App/docs/slice-3-preflight-notes.md`
+- `/Users/romeoman/Documents/Dev/HubSpot/Account Plan App/docs/slice-4-preflight-notes.md`
 
 If a path referenced by older planning docs has moved, resolve it via `PLANNING_INDEX.md` instead of guessing.
 

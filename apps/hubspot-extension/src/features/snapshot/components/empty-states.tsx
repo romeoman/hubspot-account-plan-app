@@ -20,7 +20,12 @@ export function IneligibleState() {
 
 /** Tenant has not finished provider/threshold setup. */
 export function UnconfiguredState() {
-  return <Text>This workspace is not configured yet.</Text>;
+  return (
+    <Text>
+      This workspace is not configured yet. In HubSpot, open Connected apps, choose this app, then
+      use the Settings tab to finish setup.
+    </Text>
+  );
 }
 
 /**
