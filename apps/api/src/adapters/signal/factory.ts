@@ -13,8 +13,8 @@
  * Provider status (Slice 3):
  *  - `exa` → real {@link ./exa.ExaAdapter}.
  *  - `news` → real {@link ./news.NewsAdapter} (Exa news vertical).
- *  - `hubspot-enrichment` → stub; real implementation deferred to Phase 3
- *    (needs per-tenant OAuth client via `withTenantTxHandle`).
+ *  - `hubspot-enrichment` → real per-tenant HubSpot CRM enrichment
+ *    backed by the OAuth-aware `HubSpotClient`.
  *
  * Guardrails: {@link wrapSignalWithGuards} returns a new {@link ProviderAdapter}
  * whose `fetchSignals()` is rate-limited (token bucket, per-tenant × provider)

@@ -179,9 +179,9 @@ async function resolveSignalAdapter(
     return null;
   }
 
-  // Construction can throw — e.g., hubspot-enrichment requires an injected
-  // client, or a provider config row has a non-null field that's nullable in
-  // the schema. Treat as unconfigured, not a 500.
+  // Construction can throw — e.g., required tenant-scoped deps are missing,
+  // or a provider config row has a non-null field that's nullable in the
+  // schema. Treat as unconfigured, not a 500.
   let real: ProviderAdapter;
   try {
     real = createSignalAdapter(chosen, {
