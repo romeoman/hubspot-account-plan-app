@@ -8,6 +8,7 @@ import { type CorrelationVariables, correlationMiddleware } from "./middleware/c
 import { nonceMiddleware } from "./middleware/nonce";
 import { type TenantVariables, tenantMiddleware } from "./middleware/tenant";
 import { createOAuthRoutes } from "./routes/oauth";
+import { settingsRoutes } from "./routes/settings";
 import { snapshotRoutes } from "./routes/snapshot";
 
 type AppVars = TenantVariables & CorrelationVariables & { portalId?: string; rawBody?: string };
@@ -49,7 +50,7 @@ app.use(
   "*",
   cors({
     origin: (origin) => resolveCorsOrigin(origin ?? ""),
-    allowMethods: ["GET", "POST", "OPTIONS"],
+    allowMethods: ["GET", "POST", "PUT", "OPTIONS"],
     allowHeaders: ["Authorization", "Content-Type", "x-test-portal-id"],
     credentials: false,
     maxAge: 600,
@@ -141,6 +142,7 @@ app.use("/api/*", async (c, next) => {
 });
 app.use("/api/*", nonceMiddleware());
 
+app.route("/api/settings", settingsRoutes);
 app.route("/api/snapshot", snapshotRoutes);
 
 // Only start server when run directly (not when imported by tests).

@@ -174,3 +174,85 @@ export type TenantConfig = {
   hubspotPortalId: string;
   settings?: TenantSettings;
 };
+
+/**
+ * Signal providers exposed in the Slice 4 settings surface.
+ */
+export type SettingsSignalProviderName = "exa" | "news" | "hubspot-enrichment";
+
+/**
+ * Presence-only provider settings state returned by the settings API.
+ *
+ * Secrets are never returned in plaintext. `hasApiKey` reports whether a
+ * provider currently has a stored encrypted key.
+ */
+export type SettingsProviderState = {
+  enabled: boolean;
+  hasApiKey: boolean;
+};
+
+/**
+ * Wire shape returned by the settings API for signal provider sections.
+ *
+ * Keys are camelCase for ergonomic JSON/UI access; provider identifiers can
+ * still use hyphenated names elsewhere when treated as scalar values.
+ */
+export type SettingsSignalProviders = {
+  exa: SettingsProviderState;
+  news: SettingsProviderState;
+  hubspotEnrichment: SettingsProviderState;
+};
+
+/**
+ * Settings API read model for the current tenant.
+ */
+export type SettingsResponse = {
+  tenantId: string;
+  signalProviders: SettingsSignalProviders;
+  llm: {
+    provider: LlmProviderType | null;
+    model: string;
+    endpointUrl?: string;
+    hasApiKey: boolean;
+  };
+  eligibility: {
+    propertyName: string;
+  };
+  thresholds: ThresholdConfig;
+};
+
+/**
+ * Partial update for a single signal provider from the Slice 4 settings UI.
+ *
+ * `apiKey` is replace-only. Blank input is treated as "preserve existing";
+ * explicit deletion, if supported, uses `clearApiKey`.
+ */
+export type SettingsProviderUpdate = {
+  enabled?: boolean;
+  apiKey?: string;
+  clearApiKey?: boolean;
+};
+
+export type SettingsSignalProviderUpdates = {
+  exa?: SettingsProviderUpdate;
+  news?: SettingsProviderUpdate;
+  hubspotEnrichment?: SettingsProviderUpdate;
+};
+
+/**
+ * Partial update payload for tenant settings writes.
+ */
+export type SettingsUpdate = {
+  signalProviders?: SettingsSignalProviderUpdates;
+  llm?: {
+    provider?: LlmProviderType | null;
+    model?: string;
+    endpointUrl?: string;
+    apiKey?: string;
+    clearApiKey?: boolean;
+  };
+  eligibility?: {
+    propertyName?: string;
+  };
+  thresholds?: Partial<ThresholdConfig>;
+};
