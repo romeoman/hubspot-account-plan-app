@@ -1,0 +1,7 @@
+{
+  "accountId": 12345678,
+  "variables": {
+    "OAUTH_REDIRECT_URI": "http://localhost:3000/oauth/callback",
+    "API_ORIGIN": "https://hap-signal-workspace-staging.vercel.app"
+  }
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { loadEnv } from "../env";
+import { loadEnv, resolveHubSpotOAuthRedirectUri } from "../env";
 
 /**
  * Env validator tests (Slice 3). Legacy static HubSpot token env removed;
@@ -104,5 +104,46 @@ describe("loadEnv: required var errors", () => {
   it("throws when ROOT_KEK decodes to wrong length (64 bytes, not 32)", () => {
     const kek64 = Buffer.alloc(64, 1).toString("base64");
     expect(() => loadEnv({ ...VALID_ENV, ROOT_KEK: kek64 })).toThrow(/ROOT_KEK/);
+  });
+});
+
+describe("resolveHubSpotOAuthRedirectUri", () => {
+  it("defaults to localhost in non-production when unset", () => {
+    expect(resolveHubSpotOAuthRedirectUri({ NODE_ENV: "development" })).toBe(
+      "http://localhost:3000/oauth/callback",
+    );
+  });
+
+  it("throws in production when HUBSPOT_OAUTH_REDIRECT_URI is missing", () => {
+    expect(() => resolveHubSpotOAuthRedirectUri({ NODE_ENV: "production" })).toThrow(
+      /HUBSPOT_OAUTH_REDIRECT_URI/,
+    );
+  });
+
+  it("throws for non-localhost http redirect URIs", () => {
+    expect(() =>
+      resolveHubSpotOAuthRedirectUri({
+        NODE_ENV: "production",
+        HUBSPOT_OAUTH_REDIRECT_URI: "http://app.example.com/oauth/callback",
+      }),
+    ).toThrow(/https|localhost/i);
+  });
+
+  it("accepts localhost http for testing", () => {
+    expect(
+      resolveHubSpotOAuthRedirectUri({
+        NODE_ENV: "development",
+        HUBSPOT_OAUTH_REDIRECT_URI: "http://localhost:3000/oauth/callback",
+      }),
+    ).toBe("http://localhost:3000/oauth/callback");
+  });
+
+  it("accepts https redirect URIs for staging and production", () => {
+    expect(
+      resolveHubSpotOAuthRedirectUri({
+        NODE_ENV: "production",
+        HUBSPOT_OAUTH_REDIRECT_URI: "https://hap-signal-workspace.vercel.app/oauth/callback",
+      }),
+    ).toBe("https://hap-signal-workspace.vercel.app/oauth/callback");
   });
 });

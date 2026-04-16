@@ -34,6 +34,27 @@ pnpm dev:api
 pnpm dev:extension
 ```
 
+### HubSpot profiles
+
+HubSpot app uploads now require an explicit config profile. Start from the
+committed templates in `apps/hubspot-project/`:
+
+- `hsprofile.local.example.json`
+- `hsprofile.staging.example.json`
+- `hsprofile.production.example.json`
+
+Then copy one to a real `hsprofile.<env>.json` file and upload with:
+
+```bash
+pnpm tsx scripts/hs-project-upload.ts --profile local
+```
+
+For local extension development, also copy
+`apps/hubspot-project/local.json.example` to `apps/hubspot-project/local.json`.
+HubSpot requires `hubspot.fetch()` URLs to stay HTTPS, so the local proxy
+remaps the local profile's `API_ORIGIN` back to `http://localhost:3001` while
+running `hs project dev`.
+
 ### Commands
 
 | Command              | Description                 |

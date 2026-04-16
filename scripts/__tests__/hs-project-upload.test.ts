@@ -32,7 +32,14 @@ describe("hs-project-upload", () => {
       }),
     });
 
-    expect(() => buildUploadRunner(deps)([])).toThrow(/bundle failed/);
+    expect(() => buildUploadRunner(deps)(["--profile", "dev"])).toThrow(/bundle failed/);
+    expect(deps.runUpload).not.toHaveBeenCalled();
+  });
+
+  it("requires an explicit HubSpot profile for upload", () => {
+    const deps = makeDeps();
+
+    expect(() => buildUploadRunner(deps)([])).toThrow(/--profile/);
     expect(deps.runUpload).not.toHaveBeenCalled();
   });
 });

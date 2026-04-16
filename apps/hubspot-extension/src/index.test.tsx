@@ -1,7 +1,9 @@
 import { Alert, Text } from "@hubspot/ui-extensions";
 import { createRenderer } from "@hubspot/ui-extensions/testing";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { collectAllText } from "./features/snapshot/components/__tests__/test-utils";
+import * as companyHooks from "./features/snapshot/hooks/use-company-context";
+import * as snapshotHooks from "./features/snapshot/hooks/use-snapshot";
 import { Extension } from "./index";
 
 /**
@@ -11,6 +13,10 @@ import { Extension } from "./index";
  * placeholder Text nodes depending on lifecycle state.
  */
 describe("HubSpot crm.record.tab extension smoke test", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("creates a crm.record.tab renderer", () => {
     const renderer = createRenderer("crm.record.tab");
     expect(renderer.render).toBeTypeOf("function");
@@ -18,8 +24,21 @@ describe("HubSpot crm.record.tab extension smoke test", () => {
 
   it("renders the Loading placeholder while properties/snapshot are pending", () => {
     const renderer = createRenderer("crm.record.tab");
-    // Never-resolving fetcher keeps `useCompanyContext` in loading state.
-    const fetchCrmObjectProperties = vi.fn(() => new Promise<Record<string, string>>(() => {}));
+    const fetchCrmObjectProperties = vi.fn();
+    vi.spyOn(companyHooks, "useCompanyContext").mockReturnValue({
+      companyId: String(renderer.mocks.context.crm.objectId),
+      objectType: String(renderer.mocks.context.crm.objectTypeId),
+      portalId: String(renderer.mocks.context.portal.id),
+      properties: {},
+      loading: true,
+      error: undefined,
+    });
+    vi.spyOn(snapshotHooks, "useSnapshot").mockReturnValue({
+      snapshot: null,
+      loading: true,
+      error: undefined,
+      refetch: vi.fn(),
+    });
     renderer.render(
       <Extension
         context={renderer.mocks.context}

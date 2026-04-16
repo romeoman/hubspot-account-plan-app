@@ -12,6 +12,9 @@ const DATABASE_URL =
 const db = createDatabase(DATABASE_URL);
 
 const PORTAL_PREFIX = `snaptest-${randomUUID().slice(0, 8)}-`;
+const TEST_LOCAL_REDIRECT_URI = "http://localhost:3000/oauth/callback";
+const TEST_PRODUCTION_REDIRECT_URI =
+  "https://hap-signal-workspace-staging.vercel.app/oauth/callback";
 
 function portalId() {
   return `${PORTAL_PREFIX}${randomUUID().slice(0, 8)}`;
@@ -20,6 +23,7 @@ function portalId() {
 beforeAll(() => {
   process.env.NODE_ENV = "test";
   process.env.DATABASE_URL = DATABASE_URL;
+  process.env.HUBSPOT_OAUTH_REDIRECT_URI = TEST_LOCAL_REDIRECT_URI;
 });
 
 afterAll(() => {
@@ -62,7 +66,9 @@ describe("POST /api/snapshot/:companyId", () => {
   it("returns 401 when no Authorization header is provided in production mode", async () => {
     // Temporarily flip out of bypass mode to confirm auth is wired.
     const prev = process.env.NODE_ENV;
+    const prevRedirectUri = process.env.HUBSPOT_OAUTH_REDIRECT_URI;
     process.env.NODE_ENV = "production";
+    process.env.HUBSPOT_OAUTH_REDIRECT_URI = TEST_PRODUCTION_REDIRECT_URI;
     process.env.API_TOKENS = "tok-real:portal-real";
     try {
       const app = await loadApp();
@@ -70,6 +76,11 @@ describe("POST /api/snapshot/:companyId", () => {
       expect(res.status).toBe(401);
     } finally {
       process.env.NODE_ENV = prev;
+      if (prevRedirectUri === undefined) {
+        delete process.env.HUBSPOT_OAUTH_REDIRECT_URI;
+      } else {
+        process.env.HUBSPOT_OAUTH_REDIRECT_URI = prevRedirectUri;
+      }
     }
   });
 

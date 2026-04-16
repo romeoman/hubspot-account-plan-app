@@ -263,7 +263,7 @@ export function createOAuthRoutes(deps: OAuthDeps) {
     return c.html(
       htmlError(
         "Install successful",
-        `Signal-First Account Workspace is now installed on portal ${identity.hubDomain}. You can close this tab.`,
+        `Signal-First Account Workspace is now installed on portal ${identity.hubDomain}. Next, open the app settings in HubSpot to finish setup. You can close this tab when you are done.`,
       ),
       200,
     );

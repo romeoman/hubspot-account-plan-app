@@ -45,6 +45,15 @@ export interface UploadDeps {
 
 export function buildUploadRunner(deps: UploadDeps) {
   return (args: string[]): number => {
+    const hasProfile =
+      args.includes("--profile") ||
+      args.includes("-p") ||
+      args.some((arg) => arg.startsWith("--profile=")) ||
+      args.some((arg) => arg.startsWith("-p="));
+    if (!hasProfile) {
+      throw new Error("hs project upload requires --profile <name>");
+    }
+
     const root = deps.repoRoot();
     const src = join(root, PROJECT_DIR);
     const tmp = deps.makeTempDir();

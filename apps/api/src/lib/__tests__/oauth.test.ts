@@ -146,4 +146,15 @@ describe("buildAuthorizeUrl", () => {
       }),
     ).toThrow(/scope/i);
   });
+
+  it("rejects non-localhost http redirect URIs", () => {
+    expect(() =>
+      buildAuthorizeUrl({
+        clientId: "id",
+        redirectUri: "http://app.example.com/oauth/callback",
+        scopes: ["crm.objects.companies.read"],
+        state: "s",
+      }),
+    ).toThrow(/https|localhost/i);
+  });
 });

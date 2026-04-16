@@ -1,0 +1,5 @@
+{
+  "proxy": {
+    "https://hap-signal-workspace-staging.vercel.app": "http://localhost:3001"
+  }
+}

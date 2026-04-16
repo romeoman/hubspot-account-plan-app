@@ -185,6 +185,39 @@ describe("GET /oauth/callback — happy paths", () => {
     await db.delete(schema.tenants).where(eq(schema.tenants.id, tenantId));
   });
 
+  it("renders setup guidance on the success page when HubSpot does not provide a returnUrl", async () => {
+    const ident = identityResponseForPortal(`${PORTAL_PREFIX}${randomUUID().slice(0, 4)}`);
+    const exchange = loadCassette("oauth-token-exchange.json");
+
+    const state = signState({
+      secret: CONFIG.clientSecret,
+      ttlSeconds: CONFIG.stateTtlSeconds,
+    });
+    const routes = createOAuthRoutes({
+      config: CONFIG,
+      db,
+      fetch: fakeFetchSequence([
+        { status: exchange.response.status, body: exchange.response.body },
+        { status: ident.status, body: ident.body },
+      ]),
+    });
+
+    const res = await routes.request(`/callback?code=auth-code&state=${encodeURIComponent(state)}`);
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain("Install successful");
+    expect(body).toContain("open the app settings in HubSpot");
+
+    const tenantRows = await db
+      .select()
+      .from(schema.tenants)
+      .where(eq(schema.tenants.hubspotPortalId, ident.portalIdAsText));
+    const tenantId = tenantRows[0]?.id;
+    if (tenantId) {
+      await db.delete(schema.tenants).where(eq(schema.tenants.id, tenantId));
+    }
+  });
+
   it("updates the existing tenants row on a second install (no duplicate)", async () => {
     const ident = identityResponseForPortal(`${PORTAL_PREFIX}${randomUUID().slice(0, 4)}`);
     const exchange = loadCassette("oauth-token-exchange.json");

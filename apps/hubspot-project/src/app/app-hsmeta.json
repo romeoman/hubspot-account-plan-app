@@ -7,17 +7,13 @@
     "distribution": "marketplace",
     "auth": {
       "type": "oauth",
-      "redirectUrls": ["http://localhost:3000/oauth/callback"],
+      "redirectUrls": ["${OAUTH_REDIRECT_URI}"],
       "requiredScopes": ["crm.objects.companies.read", "crm.objects.contacts.read"],
       "optionalScopes": [],
       "conditionallyRequiredScopes": []
     },
     "permittedUrls": {
-      "fetch": [
-        "https://api.hubapi.com",
-        "https://hap-signal-workspace.vercel.app",
-        "https://hap-signal-workspace-staging.vercel.app"
-      ],
+      "fetch": ["https://api.hubapi.com", "${API_ORIGIN}"],
       "iframe": [],
       "img": []
     },
