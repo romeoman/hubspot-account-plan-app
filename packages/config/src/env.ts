@@ -80,6 +80,48 @@ const envSchema = z.object({
 /** Validated, typed Slice 3 runtime environment. */
 export type Env = z.infer<typeof envSchema>;
 
+const DEFAULT_LOCAL_OAUTH_REDIRECT_URI = "http://localhost:3000/oauth/callback";
+
+function isAllowedOAuthRedirectUri(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol === "https:") return true;
+    return parsed.protocol === "http:" && parsed.hostname === "localhost";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve the OAuth redirect URI for the current environment.
+ *
+ * Rules:
+ * - Production must set HUBSPOT_OAUTH_REDIRECT_URI explicitly.
+ * - Non-production may fall back to localhost for developer convenience.
+ * - Non-localhost HTTP redirect URIs are rejected in every environment.
+ */
+export function resolveHubSpotOAuthRedirectUri(
+  source: Record<string, string | undefined> = process.env,
+): string {
+  const configured = source.HUBSPOT_OAUTH_REDIRECT_URI;
+  if (!configured) {
+    if (source.NODE_ENV === "production") {
+      throw new Error(
+        "HUBSPOT_OAUTH_REDIRECT_URI must be set in production; refusing to fall back to localhost.",
+      );
+    }
+    return DEFAULT_LOCAL_OAUTH_REDIRECT_URI;
+  }
+
+  if (!isAllowedOAuthRedirectUri(configured)) {
+    throw new Error(
+      "HUBSPOT_OAUTH_REDIRECT_URI must use https, or http only when the hostname is localhost.",
+    );
+  }
+
+  return configured;
+}
+
 /**
  * Parse and validate the runtime environment.
  *

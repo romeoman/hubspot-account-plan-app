@@ -1,3 +1,4 @@
+import { resolveHubSpotOAuthRedirectUri } from "@hap/config";
 import { createDatabase } from "@hap/db";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
@@ -108,7 +109,7 @@ app.route(
     config: {
       clientId: process.env.HUBSPOT_CLIENT_ID ?? "",
       clientSecret: process.env.HUBSPOT_CLIENT_SECRET ?? "",
-      redirectUri: process.env.HUBSPOT_OAUTH_REDIRECT_URI ?? "http://localhost:3000/oauth/callback",
+      redirectUri: resolveHubSpotOAuthRedirectUri(),
       scopes: ["crm.objects.companies.read", "crm.objects.contacts.read"],
       stateTtlSeconds: 600,
     },
@@ -145,8 +146,10 @@ app.use("/api/*", nonceMiddleware());
 app.route("/api/settings", settingsRoutes);
 app.route("/api/snapshot", snapshotRoutes);
 
-// Only start server when run directly (not when imported by tests).
-if (process.env.NODE_ENV !== "test") {
+// Only start the real HTTP server outside test runners. Some tests
+// temporarily simulate production mode while importing this module, so the
+// guard must not rely on NODE_ENV alone.
+if (process.env.NODE_ENV !== "test" && process.env.VITEST !== "true") {
   const port = Number(process.env.PORT) || 3001;
   console.log(`API server starting on port ${port}`);
   serve({ fetch: app.fetch, port });

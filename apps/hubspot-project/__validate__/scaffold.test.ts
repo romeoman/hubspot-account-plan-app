@@ -14,6 +14,9 @@ import settingsHsmeta from "../src/app/settings/settings-hsmeta.json";
 // still picked up by vitest (root config: include "**/*.test.ts").
 
 describe("HubSpot project scaffold (Slice 3 Task 5)", () => {
+  const OAUTH_REDIRECT_URI_VARIABLE = `\${OAUTH_REDIRECT_URI}`;
+  const API_ORIGIN_VARIABLE = `\${API_ORIGIN}`;
+
   it("app-hsmeta.json uses OAuth marketplace auth (Slice 3 migration from static/private)", () => {
     expect(appHsmeta.type).toBe("app");
     expect(appHsmeta.config.distribution).toBe("marketplace");
@@ -22,8 +25,7 @@ describe("HubSpot project scaffold (Slice 3 Task 5)", () => {
 
   it("app-hsmeta.json has redirectUrls with localhost for dev", () => {
     const urls = (appHsmeta.config.auth as { redirectUrls?: string[] }).redirectUrls ?? [];
-    expect(urls.length).toBeGreaterThan(0);
-    expect(urls.some((u: string) => u.includes("localhost"))).toBe(true);
+    expect(urls).toEqual([OAUTH_REDIRECT_URI_VARIABLE]);
   });
 
   it("app-hsmeta.json permittedUrls.fetch includes https://api.hubapi.com for OAuth token exchange", () => {
@@ -31,17 +33,44 @@ describe("HubSpot project scaffold (Slice 3 Task 5)", () => {
   });
 
   it("app-hsmeta.json permittedUrls.fetch includes the default API origin that api-fetcher.ts uses (Step 11 anti-regression)", () => {
-    // This string is intentionally duplicated here and in
-    // `apps/hubspot-extension/src/features/snapshot/hooks/api-fetcher.ts`
-    // (`DEFAULT_API_BASE_URL`). If they drift, the extension will call an
-    // origin HubSpot blocks at the outbound proxy and every snapshot load
-    // will fail silently. This test keeps them aligned.
-    //
-    // We cannot import `DEFAULT_API_BASE_URL` directly because this
-    // __validate__ package is isolated from the extension workspace; a
-    // hard-coded literal is the correct way to catch drift.
-    const EXPECTED_DEFAULT_API_BASE_URL = "https://hap-signal-workspace.vercel.app";
-    expect(appHsmeta.config.permittedUrls.fetch).toContain(EXPECTED_DEFAULT_API_BASE_URL);
+    expect(appHsmeta.config.permittedUrls.fetch).toContain(API_ORIGIN_VARIABLE);
+  });
+
+  it("ships committed HubSpot profile templates for local, staging, and production", () => {
+    const expectedProfiles = [
+      "../hsprofile.local.example.json",
+      "../hsprofile.staging.example.json",
+      "../hsprofile.production.example.json",
+    ];
+
+    for (const relPath of expectedProfiles) {
+      const profilePath = resolve(import.meta.dirname, relPath);
+      const profile = JSON.parse(readFileSync(profilePath, "utf8")) as {
+        accountId: number;
+        variables?: Record<string, string>;
+      };
+
+      expect(typeof profile.accountId).toBe("number");
+      expect(profile.variables?.OAUTH_REDIRECT_URI).toBeDefined();
+      expect(profile.variables?.API_ORIGIN).toBeDefined();
+    }
+  });
+
+  it("ships a local proxy example that remaps the local profile API origin to localhost:3001", () => {
+    const localProfilePath = resolve(import.meta.dirname, "../hsprofile.local.example.json");
+    const localProxyPath = resolve(import.meta.dirname, "../local.json.example");
+
+    const localProfile = JSON.parse(readFileSync(localProfilePath, "utf8")) as {
+      variables?: Record<string, string>;
+    };
+    const localProxy = JSON.parse(readFileSync(localProxyPath, "utf8")) as {
+      proxy?: Record<string, string>;
+    };
+
+    const localApiOrigin = localProfile.variables?.API_ORIGIN;
+    expect(localApiOrigin).toBeDefined();
+    expect(localApiOrigin?.startsWith("https://")).toBe(true);
+    expect(localProxy.proxy?.[localApiOrigin ?? ""]).toBe("http://localhost:3001");
   });
 
   it("app-hsmeta.json scopes match the wedge (companies + contacts read)", () => {
@@ -98,6 +127,8 @@ describe("HubSpot project scaffold (Slice 3 Task 5)", () => {
     const settingsEntrySource = readFileSync(settingsEntryPath, "utf8");
 
     expect(settingsEntrySource).toContain('hubspot.extend<"settings">');
-    expect(settingsEntrySource).toContain("export default function HubSpotSettingsEntry()");
+    expect(settingsEntrySource).toContain("export default function HubSpotSettingsEntry");
+    expect(settingsEntrySource).toContain("createSettingsFetcher");
+    expect(settingsEntrySource).toContain("createSettingsUpdater");
   });
 });

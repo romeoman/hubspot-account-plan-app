@@ -75,6 +75,9 @@ supabase/.temp
 
 # HubSpot
 .hubspot/
+apps/hubspot-project/hsprofile.*.json
+!apps/hubspot-project/hsprofile.*.example.json
+apps/hubspot-project/local.json
 
 # Claude Code
 .claude/*

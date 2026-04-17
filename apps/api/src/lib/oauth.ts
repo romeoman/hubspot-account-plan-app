@@ -156,6 +156,14 @@ export function buildAuthorizeUrl(args: {
   if (args.scopes.length === 0) {
     throw new Error("buildAuthorizeUrl: at least one scope is required");
   }
+  const redirect = new URL(args.redirectUri);
+  const redirectIsLocalhostHttp =
+    redirect.protocol === "http:" && redirect.hostname === "localhost";
+  if (redirect.protocol !== "https:" && !redirectIsLocalhostHttp) {
+    throw new Error(
+      "buildAuthorizeUrl: redirectUri must use https, or http only when the hostname is localhost",
+    );
+  }
   const params = new URLSearchParams();
   params.set("client_id", args.clientId);
   params.set("redirect_uri", args.redirectUri);
