@@ -93,6 +93,25 @@ describe("tenant middleware", () => {
     expect(body.detail).toBe("tenant not found");
   });
 
+  it("returns 401 when the tenant exists but is deactivated", async () => {
+    const portal = portalId();
+    await db.insert(tenants).values({
+      hubspotPortalId: portal,
+      name: "Inactive Acme",
+      isActive: false,
+      deactivatedAt: new Date("2026-04-17T12:30:00.000Z"),
+      deactivationReason: "hubspot_app_uninstalled",
+    });
+
+    const app = buildTestApp(portal);
+    const res = await app.request("/whoami");
+
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error: string; detail: string };
+    expect(body.error).toBe("tenant_inactive");
+    expect(body.detail).toBe("tenant is deactivated");
+  });
+
   it("tenant A's portal_id never resolves to tenant B's id (cross-tenant isolation)", async () => {
     const portalA = portalId();
     const portalB = portalId();

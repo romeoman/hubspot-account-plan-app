@@ -5,7 +5,7 @@ import {
 } from "@hubspot/ui-extensions";
 import { useMemo } from "react";
 import { SnapshotStateRenderer } from "../features/snapshot/components/snapshot-state-renderer";
-import { createHubSpotApiFetcher } from "../features/snapshot/hooks/api-fetcher";
+import { ApiFetcherError, createHubSpotApiFetcher } from "../features/snapshot/hooks/api-fetcher";
 import { useCompanyContext } from "../features/snapshot/hooks/use-company-context";
 import { type SnapshotFetcher, useSnapshot } from "../features/snapshot/hooks/use-snapshot";
 
@@ -45,6 +45,9 @@ export const ExtensionRoot = ({
   }
 
   if (snapshotState.error) {
+    if (snapshotState.error instanceof ApiFetcherError && snapshotState.error.status === 401) {
+      return <Text>Reconnect HubSpot in app settings to restore access.</Text>;
+    }
     return <Text>Error</Text>;
   }
 

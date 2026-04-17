@@ -12,6 +12,7 @@ import type { LlmAdapter } from "../adapters/llm-adapter";
 import type { ProviderAdapter } from "../adapters/provider-adapter";
 import { createSignalAdapter, wrapSignalWithGuards } from "../adapters/signal/factory";
 import { DEFAULT_THRESHOLDS, getLlmConfig, getProviderConfig } from "../lib/config-resolver";
+import { TenantAccessRevokedError } from "../lib/hubspot-client";
 import { getProcessRateLimiter } from "../lib/rate-limiter";
 import type { CorrelationVariables } from "../middleware/correlation";
 import type { TenantVariables } from "../middleware/tenant";
@@ -237,6 +238,13 @@ function pickPropertyFetcher(mode: EligibilityMode): CompanyPropertyFetcher {
   }
 }
 
+function isTenantAccessRevokedError(error: unknown): boolean {
+  return (
+    error instanceof TenantAccessRevokedError ||
+    (error instanceof Error && error.name === "TenantAccessRevokedError")
+  );
+}
+
 /**
  * V1 fixture contact fetcher — returns three ICP-shaped contacts for any
  * company. Step 9+ replace with a real HubSpot contact association fetch.
@@ -315,6 +323,21 @@ snapshotRoutes.post("/:companyId", async (c) => {
     );
     return c.json(snapshot, 200);
   } catch (err) {
+    if (isTenantAccessRevokedError(err)) {
+      console.warn("snapshot_route.tenant_access_revoked", {
+        tenantId,
+        companyId,
+        eligibilityMode: mode,
+        errorClass: err instanceof Error ? err.constructor.name : typeof err,
+      });
+      return c.json(
+        {
+          error: "tenant_access_revoked",
+          detail: "hubspot access revoked or app uninstalled for tenant",
+        },
+        401,
+      );
+    }
     // Log a stable error CLASS + safe request context. Never the raw
     // err.message — external clients can smuggle URLs / tenant data / auth
     // material into Error.message and we don't want that in shared logs.

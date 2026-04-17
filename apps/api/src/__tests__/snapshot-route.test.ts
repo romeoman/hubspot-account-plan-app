@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { createDatabase, providerConfig, tenants } from "@hap/db";
+import { createDatabase, llmConfig, providerConfig, tenants } from "@hap/db";
 import { like } from "drizzle-orm";
 import { Hono } from "hono";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearConfigResolverCache } from "../lib/config-resolver";
+import { __resetEncryptionCacheForTests, encryptProviderKey } from "../lib/encryption";
+import { TenantAccessRevokedError } from "../lib/hubspot-client";
 import { snapshotRoutes } from "../routes/snapshot";
 
 const DATABASE_URL =
@@ -15,6 +17,8 @@ const PORTAL_PREFIX = `snaptest-${randomUUID().slice(0, 8)}-`;
 const TEST_LOCAL_REDIRECT_URI = "http://localhost:3000/oauth/callback";
 const TEST_PRODUCTION_REDIRECT_URI =
   "https://hap-signal-workspace-staging.vercel.app/oauth/callback";
+const ROOT_KEK_BASE64 = Buffer.alloc(32, 9).toString("base64");
+let savedRootKek: string | undefined;
 
 function portalId() {
   return `${PORTAL_PREFIX}${randomUUID().slice(0, 8)}`;
@@ -24,10 +28,25 @@ beforeAll(() => {
   process.env.NODE_ENV = "test";
   process.env.DATABASE_URL = DATABASE_URL;
   process.env.HUBSPOT_OAUTH_REDIRECT_URI = TEST_LOCAL_REDIRECT_URI;
+  savedRootKek = process.env.ROOT_KEK;
+  process.env.ROOT_KEK = ROOT_KEK_BASE64;
+  __resetEncryptionCacheForTests();
 });
 
 afterAll(() => {
   // postgres.js cleans up on process exit
+  if (savedRootKek === undefined) {
+    delete process.env.ROOT_KEK;
+  } else {
+    process.env.ROOT_KEK = savedRootKek;
+  }
+  __resetEncryptionCacheForTests();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.doUnmock("../services/snapshot-assembler");
+  vi.resetModules();
 });
 
 beforeEach(async () => {
@@ -94,6 +113,31 @@ describe("POST /api/snapshot/:companyId", () => {
       },
     });
     expect(res.status).toBe(401);
+  });
+
+  it("returns 401 when the resolved tenant is deactivated", async () => {
+    const portal = portalId();
+    await db.insert(tenants).values({
+      hubspotPortalId: portal,
+      name: "Inactive Snapshot Co",
+      isActive: false,
+      deactivatedAt: new Date("2026-04-17T12:30:00.000Z"),
+      deactivationReason: "hubspot_app_uninstalled",
+    });
+
+    const app = await loadApp();
+    const res = await app.request("/api/snapshot/c123", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer anything",
+        "x-test-portal-id": portal,
+      },
+    });
+
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error: string; detail: string };
+    expect(body.error).toBe("tenant_inactive");
+    expect(body.detail).toBe("tenant is deactivated");
   });
 
   it("returns 400 when companyId path segment is empty", async () => {
@@ -242,6 +286,74 @@ describe("POST /api/snapshot/:companyId", () => {
         process.env.DATABASE_URL = prevDatabaseUrl;
       }
     }
+  });
+
+  it("returns a lifecycle-specific 401 when tenant access is revoked mid-request", async () => {
+    const portal = portalId();
+    const [tenant] = await db
+      .insert(tenants)
+      .values({ hubspotPortalId: portal, name: "Revoked Mid Request Co" })
+      .returning();
+    if (!tenant) {
+      throw new Error("tenant insert failed");
+    }
+
+    await db.insert(providerConfig).values({
+      tenantId: tenant.id,
+      providerName: "exa",
+      enabled: true,
+      apiKeyEncrypted: encryptProviderKey(tenant.id, "sk-real-exa-key"),
+      thresholds: { freshnessMaxDays: 30, minConfidence: 0.5 },
+      settings: {},
+    });
+    await db.insert(llmConfig).values({
+      tenantId: tenant.id,
+      providerName: "openai",
+      modelName: "gpt-4o-mini",
+      apiKeyEncrypted: encryptProviderKey(tenant.id, "sk-real-openai-key"),
+      settings: {},
+    });
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.resetModules();
+    vi.doMock("../services/snapshot-assembler", () => ({
+      assembleSnapshot: vi.fn().mockRejectedValue(new TenantAccessRevokedError()),
+    }));
+
+    const { snapshotRoutes: freshSnapshotRoutes } = await import("../routes/snapshot");
+    const app = new Hono<{
+      Variables: {
+        tenantId?: string;
+        correlationId?: string;
+        db?: ReturnType<typeof createDatabase>;
+      };
+    }>();
+    app.use("*", async (c, next) => {
+      c.set("tenantId", tenant.id);
+      c.set("db", db);
+      c.set("correlationId", "corr-route-only");
+      await next();
+    });
+    app.route("/api/snapshot", freshSnapshotRoutes);
+
+    const res = await app.request("/api/snapshot/co-revoked", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error: string; detail: string };
+    expect(body.error).toBe("tenant_access_revoked");
+    expect(body.detail).toBe("hubspot access revoked or app uninstalled for tenant");
+    expect(warnSpy).toHaveBeenCalledWith(
+      "snapshot_route.tenant_access_revoked",
+      expect.objectContaining({
+        tenantId: tenant.id,
+        companyId: "co-revoked",
+      }),
+    );
   });
 
   it("tenant with only a mock-signal provider_config row (not a real provider) gets unconfigured", async () => {

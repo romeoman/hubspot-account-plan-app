@@ -30,6 +30,7 @@ import { eq, like } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { decryptProviderKey } from "../../lib/encryption";
 import { signState } from "../../lib/oauth";
+import { deactivateTenant } from "../../lib/tenant-lifecycle";
 import { createOAuthRoutes } from "../oauth";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -273,6 +274,70 @@ describe("GET /oauth/callback — happy paths", () => {
     expect(access2).toBe(refreshBody.access_token);
 
     await db.delete(schema.tenants).where(eq(schema.tenants.id, tenantId));
+  });
+
+  it("reactivates an existing deactivated tenant on reinstall", async () => {
+    const ident = identityResponseForPortal(`${PORTAL_PREFIX}${randomUUID().slice(0, 4)}`);
+    const exchange = loadCassette("oauth-token-exchange.json");
+    const refresh = loadCassette("oauth-token-refresh.json");
+
+    const routes = createOAuthRoutes({
+      config: CONFIG,
+      db,
+      fetch: fakeFetchSequence([
+        { status: exchange.response.status, body: exchange.response.body },
+        { status: ident.status, body: ident.body },
+        { status: refresh.response.status, body: refresh.response.body },
+        { status: ident.status, body: ident.body },
+      ]),
+    });
+
+    const state1 = signState({
+      secret: CONFIG.clientSecret,
+      ttlSeconds: CONFIG.stateTtlSeconds,
+    });
+    await routes.request(`/callback?code=code-1&state=${encodeURIComponent(state1)}`);
+
+    const [seededTenant] = await db
+      .select()
+      .from(schema.tenants)
+      .where(eq(schema.tenants.hubspotPortalId, ident.portalIdAsText));
+    if (!seededTenant) {
+      throw new Error("seeded tenant missing after first install");
+    }
+
+    await deactivateTenant({
+      db,
+      tenantId: seededTenant.id,
+      reason: "hubspot_app_uninstalled",
+      deactivatedAt: new Date("2026-04-17T14:00:00.000Z"),
+    });
+
+    const [afterDeactivate] = await db
+      .select()
+      .from(schema.tenants)
+      .where(eq(schema.tenants.id, seededTenant.id));
+    expect(afterDeactivate?.isActive).toBe(false);
+    expect(afterDeactivate?.deactivatedAt).toBeTruthy();
+    expect(afterDeactivate?.deactivationReason).toBe("hubspot_app_uninstalled");
+
+    const state2 = signState({
+      secret: CONFIG.clientSecret,
+      ttlSeconds: CONFIG.stateTtlSeconds,
+    });
+    await routes.request(`/callback?code=code-2&state=${encodeURIComponent(state2)}`);
+
+    const [tenantRow] = await db
+      .select()
+      .from(schema.tenants)
+      .where(eq(schema.tenants.hubspotPortalId, ident.portalIdAsText));
+
+    expect(tenantRow?.id).toBe(seededTenant.id);
+    expect(tenantRow?.isActive).toBe(true);
+    expect(tenantRow?.deactivatedAt).toBeNull();
+    expect(tenantRow?.deactivationReason).toBeNull();
+
+    await db.delete(schema.tenants).where(eq(schema.tenants.id, seededTenant.id));
   });
 });
 

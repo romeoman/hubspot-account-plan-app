@@ -5,6 +5,8 @@ export const tenants = pgTable("tenants", {
   hubspotPortalId: text("hubspot_portal_id").notNull().unique(),
   name: text("name").notNull(),
   isActive: boolean("is_active").notNull().default(true),
+  deactivatedAt: timestamp("deactivated_at", { withTimezone: true }),
+  deactivationReason: text("deactivation_reason"),
   settings: jsonb("settings").default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

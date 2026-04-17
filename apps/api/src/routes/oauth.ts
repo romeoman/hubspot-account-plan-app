@@ -216,7 +216,12 @@ export function createOAuthRoutes(deps: OAuthDeps) {
       })
       .onConflictDoUpdate({
         target: tenants.hubspotPortalId,
-        set: { updatedAt: sql`now()` },
+        set: {
+          isActive: true,
+          deactivatedAt: null,
+          deactivationReason: null,
+          updatedAt: sql`now()`,
+        },
       })
       .returning();
 

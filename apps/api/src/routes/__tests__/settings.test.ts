@@ -62,6 +62,34 @@ afterAll(async () => {
 });
 
 describe("GET /api/settings", () => {
+  it("returns 401 when the resolved tenant is deactivated", async () => {
+    const [tenant] = await db
+      .insert(tenants)
+      .values({
+        hubspotPortalId: portalId(),
+        name: "Inactive Settings Tenant",
+        isActive: false,
+        deactivatedAt: new Date("2026-04-17T15:00:00.000Z"),
+        deactivationReason: "hubspot_app_uninstalled",
+      })
+      .returning();
+    if (!tenant) throw new Error("failed to seed inactive tenant");
+
+    const app = await loadApp();
+    const res = await app.request("/api/settings", {
+      method: "GET",
+      headers: {
+        Authorization: "Bearer anything",
+        "x-test-portal-id": tenant.hubspotPortalId,
+      },
+    });
+
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error: string; detail: string };
+    expect(body.error).toBe("tenant_inactive");
+    expect(body.detail).toBe("tenant is deactivated");
+  });
+
   it("returns the default settings shape for a tenant with no config rows", async () => {
     const tenant = await seedTenant();
     const app = await loadApp();
