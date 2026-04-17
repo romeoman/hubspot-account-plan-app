@@ -13,9 +13,13 @@
  *     tenant-resolution middleware (Slice 2 Step 4) reads these from the
  *     signed payload — NOT from any client-supplied header.
  *   - The destination URL MUST appear in `permittedUrls.fetch[]` inside
- *     `apps/hubspot-project/src/app/app-hsmeta.json`. `DEFAULT_API_BASE_URL`
- *     below is kept in sync with that file via
- *     `apps/hubspot-project/__validate__/scaffold.test.ts`.
+ *     `apps/hubspot-project/src/app/app-hsmeta.json`. That file lists the
+ *     template variable `${API_ORIGIN}`, which HubSpot expands at upload
+ *     time from the active profile (hsprofile.*.json). The Vite build
+ *     passes the matching `process.env.API_ORIGIN` through to the bundled
+ *     JS via `define`, and `resolveApiBaseUrl()` (below) reads it at
+ *     runtime. The scaffold anti-regression test keeps the placeholder +
+ *     profile variable contract intact.
  *   - Per-account outbound limits: 20 concurrent requests, 15s timeout cap,
  *     1MB payload cap. The snapshot route is well inside these bounds.
  *
@@ -27,14 +31,55 @@ import { hubspot } from "@hubspot/ui-extensions";
 import type { SnapshotFetcher } from "./use-snapshot";
 
 /**
- * Default production API origin for the snapshot backend.
- *
- * MUST be kept in sync with `permittedUrls.fetch[0]` in
- * `apps/hubspot-project/src/app/app-hsmeta.json`. The scaffold anti-regression
- * test binds the two together; if you change this string, change that file
- * and the test's expected value at the same time.
+ * Hard-coded prod fallback. Only reached when both the build-time
+ * `__HAP_API_ORIGIN__` injection and the runtime `process.env.API_ORIGIN`
+ * escape hatch are absent — see {@link resolveApiBaseUrl}. Kept as a string
+ * literal (not derived from env) so a misconfigured build is still safe.
  */
 export const DEFAULT_API_BASE_URL = "https://hap-signal-workspace.vercel.app";
+
+/**
+ * Build-time constant injected by Vite `define` from
+ * `process.env.API_ORIGIN` at `vite build` time. The HubSpot project build
+ * wrapper sets the env per-profile before invoking vite, so each uploaded
+ * bundle literalizes its own target origin. At runtime inside the HubSpot
+ * extension host, this symbol is replaced with a string literal (e.g.,
+ * `"https://hap-signal-workspace-staging.vercel.app"`) by the time the
+ * code executes, and the `typeof` guard is evaluated against that literal.
+ */
+declare const __HAP_API_ORIGIN__: string | undefined;
+
+/**
+ * Resolve the API origin the extension fetcher should target.
+ *
+ * Precedence (highest wins):
+ *   1. `__HAP_API_ORIGIN__` — build-time substitution (the production path).
+ *   2. `process.env.API_ORIGIN` — runtime override for Node environments
+ *      (vitest, SSR). `process` is undefined inside the HubSpot extension
+ *      host, so this branch is Node-only.
+ *   3. {@link DEFAULT_API_BASE_URL} — safe prod default.
+ *
+ * A value of `""`, whitespace-only, or a non-string is treated as absent.
+ * This matters because Vite `define` must emit *some* replacement for
+ * `__HAP_API_ORIGIN__` even when the env is unset; we emit `""` and rely on
+ * this function to fall through.
+ */
+export function resolveApiBaseUrl(): string {
+  const injected =
+    typeof __HAP_API_ORIGIN__ !== "undefined" ? (__HAP_API_ORIGIN__ as unknown) : undefined;
+  if (typeof injected === "string" && injected.trim().length > 0) {
+    return injected;
+  }
+
+  if (typeof process !== "undefined") {
+    const envOrigin = process.env?.API_ORIGIN;
+    if (typeof envOrigin === "string" && envOrigin.trim().length > 0) {
+      return envOrigin;
+    }
+  }
+
+  return DEFAULT_API_BASE_URL;
+}
 
 /**
  * Transport-layer error thrown when the snapshot API returns a non-2xx
@@ -55,9 +100,10 @@ export class ApiFetcherError extends Error {
 
 export type HubSpotApiFetcherDeps = {
   /**
-   * API origin to target. Defaults to `DEFAULT_API_BASE_URL`. Tests override
-   * this; in V1 production we pin the single prod origin and rely on the
-   * HubSpot project's `permittedUrls.fetch` to gate it.
+   * API origin to target. Defaults to the result of {@link resolveApiBaseUrl},
+   * which honors the build-time injected origin first, then
+   * `process.env.API_ORIGIN`, then {@link DEFAULT_API_BASE_URL}. Tests that
+   * want a deterministic origin pass it explicitly.
    */
   baseUrl?: string;
 };
@@ -74,7 +120,7 @@ export type HubSpotApiFetcherDeps = {
  * failure. Schema validation + Date coercion happens in `useSnapshot`.
  */
 export function createHubSpotApiFetcher(deps: HubSpotApiFetcherDeps = {}): SnapshotFetcher {
-  const baseUrl = deps.baseUrl ?? DEFAULT_API_BASE_URL;
+  const baseUrl = deps.baseUrl ?? resolveApiBaseUrl();
 
   return async function fetchSnapshot(companyId: string): Promise<unknown> {
     const url = `${baseUrl}/api/snapshot/${companyId}`;
