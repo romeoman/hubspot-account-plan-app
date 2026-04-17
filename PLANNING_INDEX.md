@@ -45,9 +45,11 @@ Important:
 - `docs/slice-3-preflight-notes.md`
 - `docs/slice-4-preflight-notes.md`
 - `docs/phase-5-doc-alignment.md`
+- `docs/phase-6-doc-alignment.md`
 - `.claude/tasks/2026-04-16-slice-3-phase-3-rls-card-bundling.md`
 - `.claude/tasks/2026-04-16-slice-4-settings-configuration.md`
 - `.claude/tasks/2026-04-17-slice-5-production-marketplace-readiness.md`
+- `.claude/tasks/2026-04-17-slice-6-install-lifecycle-offboarding.md`
 - `docs/superpowers/plans/2026-04-14-slice-1-core-domain.md`
 - `docs/superpowers/plans/2026-04-15-slice-2-live-integrations.md`
 - `docs/superpowers/plans/2026-04-15-slice-3-oauth-public-app.md`
