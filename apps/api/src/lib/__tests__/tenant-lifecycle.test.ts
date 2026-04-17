@@ -9,8 +9,10 @@ import {
   reactivateTenant,
 } from "../tenant-lifecycle";
 
-const DATABASE_URL =
-  process.env.DATABASE_URL ?? "postgresql://hap:hap_local_dev@localhost:5433/hap_dev";
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) {
+  throw new Error("tenant-lifecycle.test.ts requires DATABASE_URL");
+}
 
 const db = createDatabase(DATABASE_URL);
 const PORTAL_PREFIX = `tenantlife-${randomUUID().slice(0, 8)}-`;
@@ -158,5 +160,24 @@ describe("tenant lifecycle service", () => {
     expect(tenantRow?.isActive).toBe(true);
     expect(tenantRow?.deactivatedAt).toBeNull();
     expect(tenantRow?.deactivationReason).toBeNull();
+  });
+
+  it("fails fast when deactivating a missing tenant", async () => {
+    await expect(
+      deactivateTenant({
+        db,
+        tenantId: randomUUID(),
+        reason: "hubspot_app_uninstalled",
+      }),
+    ).rejects.toThrow(/tenant not found/i);
+  });
+
+  it("fails fast when reactivating a missing tenant", async () => {
+    await expect(
+      reactivateTenant({
+        db,
+        tenantId: randomUUID(),
+      }),
+    ).rejects.toThrow(/tenant not found/i);
   });
 });

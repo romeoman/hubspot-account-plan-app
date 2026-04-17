@@ -313,6 +313,14 @@ describe("GET /oauth/callback — happy paths", () => {
       deactivatedAt: new Date("2026-04-17T14:00:00.000Z"),
     });
 
+    const [afterDeactivate] = await db
+      .select()
+      .from(schema.tenants)
+      .where(eq(schema.tenants.id, seededTenant.id));
+    expect(afterDeactivate?.isActive).toBe(false);
+    expect(afterDeactivate?.deactivatedAt).toBeTruthy();
+    expect(afterDeactivate?.deactivationReason).toBe("hubspot_app_uninstalled");
+
     const state2 = signState({
       secret: CONFIG.clientSecret,
       ttlSeconds: CONFIG.stateTtlSeconds,

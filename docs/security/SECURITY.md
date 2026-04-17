@@ -563,6 +563,33 @@ Slice 3 enables Postgres row-level security on every tenant-scoped data table th
 
 ## 18. Replay Nonce (Slice 3 shipped)
 
+HubSpot's signed-request freshness window protects against stale requests, but by itself it does not reject duplicate requests inside that window. Slice 3 closes that gap with a tenant-scoped nonce store.
+
+### 18.1 Design
+
+- Table: `signed_request_nonce`
+- Primary key: `(tenant_id, timestamp, body_hash)`
+- `body_hash` is raw SHA-256 over the exact raw request body captured by `hubspot-signature.ts`
+- `nonceMiddleware()` runs after auth, tenant resolution, and request-scoped DB injection
+- On duplicate insert, the request is rejected with `401 { error: "replay_detected" }`
+
+### 18.2 Why it is tenant-scoped
+
+- Two tenants can receive identical HubSpot payloads at the same timestamp without colliding.
+- The nonce is bound to the resolved internal tenant ID, not just to the body hash.
+- RLS additionally protects nonce rows from cross-tenant reads/writes.
+
+### 18.3 Lifecycle
+
+- `recordNonce()` uses `INSERT ... ON CONFLICT DO NOTHING`, so duplicate detection is atomic.
+- `sweepExpiredNonces()` removes rows older than the replay window buffer.
+- `scripts/sweep-nonces.ts` provides the operational sweep hook.
+
+### 18.4 Verification notes
+
+- Unit tests cover duplicate detection, cross-tenant independence, and TTL sweeping.
+- Middleware tests prove the same signed request succeeds once and then fails with `replay_detected` on the second call within the freshness window.
+
 ## 20. Slice 6 Install Lifecycle And Tenant Offboarding
 
 Slice 6 makes uninstall, revocation, deactivation, and reinstall explicit
@@ -634,30 +661,3 @@ problem rather than an opaque failure.
 - `docs/slice-6-preflight-notes.md`
 - `docs/runbooks/tenant-offboarding.md`
 - `docs/security/slice-6-audit.md`
-
-HubSpot's signed-request freshness window protects against stale requests, but by itself it does not reject duplicate requests inside that window. Slice 3 closes that gap with a tenant-scoped nonce store.
-
-### 18.1 Design
-
-- Table: `signed_request_nonce`
-- Primary key: `(tenant_id, timestamp, body_hash)`
-- `body_hash` is raw SHA-256 over the exact raw request body captured by `hubspot-signature.ts`
-- `nonceMiddleware()` runs after auth, tenant resolution, and request-scoped DB injection
-- On duplicate insert, the request is rejected with `401 { error: "replay_detected" }`
-
-### 18.2 Why it is tenant-scoped
-
-- Two tenants can receive identical HubSpot payloads at the same timestamp without colliding.
-- The nonce is bound to the resolved internal tenant ID, not just to the body hash.
-- RLS additionally protects nonce rows from cross-tenant reads/writes.
-
-### 18.3 Lifecycle
-
-- `recordNonce()` uses `INSERT ... ON CONFLICT DO NOTHING`, so duplicate detection is atomic.
-- `sweepExpiredNonces()` removes rows older than the replay window buffer.
-- `scripts/sweep-nonces.ts` provides the operational sweep hook.
-
-### 18.4 Verification notes
-
-- Unit tests cover duplicate detection, cross-tenant independence, and TTL sweeping.
-- Middleware tests prove the same signed request succeeds once and then fails with `replay_detected` on the second call within the freshness window.

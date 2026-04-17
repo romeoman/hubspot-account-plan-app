@@ -324,6 +324,12 @@ snapshotRoutes.post("/:companyId", async (c) => {
     return c.json(snapshot, 200);
   } catch (err) {
     if (isTenantAccessRevokedError(err)) {
+      console.warn("snapshot_route.tenant_access_revoked", {
+        tenantId,
+        companyId,
+        eligibilityMode: mode,
+        errorClass: err instanceof Error ? err.constructor.name : typeof err,
+      });
       return c.json(
         {
           error: "tenant_access_revoked",

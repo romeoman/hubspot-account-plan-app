@@ -45,6 +45,8 @@ afterAll(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.doUnmock("../services/snapshot-assembler");
+  vi.resetModules();
 });
 
 beforeEach(async () => {
@@ -312,6 +314,7 @@ describe("POST /api/snapshot/:companyId", () => {
       settings: {},
     });
 
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.resetModules();
     vi.doMock("../services/snapshot-assembler", () => ({
       assembleSnapshot: vi.fn().mockRejectedValue(new TenantAccessRevokedError()),
@@ -344,6 +347,13 @@ describe("POST /api/snapshot/:companyId", () => {
     const body = (await res.json()) as { error: string; detail: string };
     expect(body.error).toBe("tenant_access_revoked");
     expect(body.detail).toBe("hubspot access revoked or app uninstalled for tenant");
+    expect(warnSpy).toHaveBeenCalledWith(
+      "snapshot_route.tenant_access_revoked",
+      expect.objectContaining({
+        tenantId: tenant.id,
+        companyId: "co-revoked",
+      }),
+    );
   });
 
   it("tenant with only a mock-signal provider_config row (not a real provider) gets unconfigured", async () => {

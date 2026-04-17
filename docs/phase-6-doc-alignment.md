@@ -24,14 +24,19 @@ Use these as the primary execution stack for Slice 6:
 5. `.taskmaster/docs/prd.md`
 6. `planning/chatprd/AI_CODING_RULES_AND_STANDARDS.md`
 7. `planning/local/TASKMASTER_EXECUTION_PRD.md`
-8. `docs/slice-3-preflight-notes.md`
-9. `docs/slice-5-preflight-notes.md`
+8. `docs/slice-6-preflight-notes.md`
+9. `docs/runbooks/tenant-offboarding.md`
+10. `docs/security/slice-6-audit.md`
+11. `docs/slice-3-preflight-notes.md`
+12. `docs/slice-5-preflight-notes.md`
 
 Why these matter:
 
 - the Slice 6 plan is the active implementation contract
 - `SECURITY.md` already captures the shipped OAuth, RLS, replay-nonce, and
   settings guarantees that Slice 6 must preserve
+- the Slice 6 preflight, offboarding runbook, and audit note lock the actual
+  lifecycle contract and operational handling for this slice
 - `.taskmaster/docs/prd.md` and the local execution PRD still define the wedge
   boundaries and what remains out of scope
 - Slice 3 and Slice 5 preflight notes are still relevant because Slice 6 builds

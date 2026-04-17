@@ -255,6 +255,22 @@ export class HubSpotClient {
       });
     } catch (error) {
       if (isUnrecoverableRefreshFailure(error)) {
+        const currentRow = await this.db.query.tenantHubspotOauth.findFirst({
+          where: eq(tenantHubspotOauth.tenantId, this.tenantId),
+        });
+
+        if (!currentRow) {
+          throw new TenantAccessRevokedError();
+        }
+
+        const currentRefreshToken = decryptProviderKey(
+          this.tenantId,
+          currentRow.refreshTokenEncrypted,
+        );
+        if (currentRefreshToken !== refreshToken) {
+          throw error;
+        }
+
         try {
           await deactivateTenant({
             db: this.db,

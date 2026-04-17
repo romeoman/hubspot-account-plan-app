@@ -7,8 +7,10 @@ type LifecycleDeps = {
   tenantId: string;
 };
 
+export type TenantDeactivationReason = "hubspot_app_uninstalled" | "oauth_refresh_failed";
+
 export type DeactivateTenantArgs = LifecycleDeps & {
-  reason: string;
+  reason: TenantDeactivationReason;
   deactivatedAt?: Date;
 };
 
@@ -29,7 +31,7 @@ export async function deactivateTenant(args: DeactivateTenantArgs): Promise<void
   await db.transaction(async (tx) => {
     const txDb = tx as unknown as Database;
 
-    await txDb
+    const updatedRows = await txDb
       .update(tenants)
       .set({
         isActive: false,
@@ -37,7 +39,12 @@ export async function deactivateTenant(args: DeactivateTenantArgs): Promise<void
         deactivationReason: reason,
         updatedAt: new Date(),
       })
-      .where(eq(tenants.id, tenantId));
+      .where(eq(tenants.id, tenantId))
+      .returning({ id: tenants.id });
+
+    if (updatedRows.length === 0) {
+      throw new Error(`tenant not found for deactivation: ${tenantId}`);
+    }
 
     await txDb.delete(tenantHubspotOauth).where(eq(tenantHubspotOauth.tenantId, tenantId));
   });
@@ -48,7 +55,7 @@ export async function deactivateTenant(args: DeactivateTenantArgs): Promise<void
 export async function reactivateTenant(args: ReactivateTenantArgs): Promise<void> {
   const { db, tenantId } = args;
 
-  await db
+  const updatedRows = await db
     .update(tenants)
     .set({
       isActive: true,
@@ -56,7 +63,12 @@ export async function reactivateTenant(args: ReactivateTenantArgs): Promise<void
       deactivationReason: null,
       updatedAt: new Date(),
     })
-    .where(eq(tenants.id, tenantId));
+    .where(eq(tenants.id, tenantId))
+    .returning({ id: tenants.id });
+
+  if (updatedRows.length === 0) {
+    throw new Error(`tenant not found for reactivation: ${tenantId}`);
+  }
 
   invalidateTenantConfig(tenantId);
 }

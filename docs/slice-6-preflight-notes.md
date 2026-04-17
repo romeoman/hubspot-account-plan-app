@@ -87,9 +87,9 @@ The current `tenants` schema already has:
 This means Slice 6 does **not** need to invent lifecycle from nothing.
 However:
 
-- `isActive` is not yet enforced in tenant middleware
-- there is no explicit offboarding reason/timestamp model
-- there is no explicit reinstall/reactivation contract
+- `isActive` is now enforced in tenant middleware
+- the tenant schema now includes explicit offboarding reason/timestamp metadata
+- reinstall/reactivation is now explicit and keyed to the same tenant identity
 
 ### 2.2 Current OAuth storage model is still correct
 
@@ -107,9 +107,9 @@ This should remain the core credential store in Slice 6.
 Current runtime shape:
 
 - `tenantMiddleware()` resolves tenants by `hubspot_portal_id`
-- it does not yet reject inactive/deactivated tenants
+- it now rejects inactive/deactivated tenants with a lifecycle-specific `401`
 - `HubSpotClient` resolves tokens from `tenant_hubspot_oauth`
-- missing or broken token state currently fails as generic runtime errors
+- missing tenant OAuth becomes `TenantAccessRevokedError`
 
 So Slice 6 should add explicit lifecycle handling rather than treating token
 loss as an incidental backend failure.
