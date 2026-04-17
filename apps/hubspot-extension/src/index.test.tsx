@@ -2,6 +2,7 @@ import { Alert, Text } from "@hubspot/ui-extensions";
 import { createRenderer } from "@hubspot/ui-extensions/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { collectAllText } from "./features/snapshot/components/__tests__/test-utils";
+import { ApiFetcherError } from "./features/snapshot/hooks/api-fetcher";
 import * as companyHooks from "./features/snapshot/hooks/use-company-context";
 import * as snapshotHooks from "./features/snapshot/hooks/use-snapshot";
 import { Extension } from "./index";
@@ -180,6 +181,30 @@ describe("HubSpot crm.record.tab extension smoke test", () => {
 
     await renderer.waitFor(() => {
       expect(renderer.find(Text).text).toBe("Error");
+    });
+  });
+
+  it("renders reconnect guidance when the snapshot fetch returns a lifecycle 401", async () => {
+    const renderer = createRenderer("crm.record.tab");
+    const fetchCrmObjectProperties = vi.fn(async () => ({
+      name: "Acme",
+      domain: "acme.test",
+      hs_is_target_account: "true",
+    }));
+    const snapshotFetcher = vi.fn(async () => {
+      throw new ApiFetcherError(401, "Unauthorized");
+    });
+
+    renderer.render(
+      <Extension
+        context={renderer.mocks.context}
+        fetchCrmObjectProperties={fetchCrmObjectProperties}
+        snapshotFetcher={snapshotFetcher}
+      />,
+    );
+
+    await renderer.waitFor(() => {
+      expect(collectAllText(renderer.getRootNode())).toContain("Reconnect HubSpot");
     });
   });
 });

@@ -24,7 +24,8 @@ import type { Database } from "@hap/db";
 import { tenantHubspotOauth } from "@hap/db";
 import { eq } from "drizzle-orm";
 import { decryptProviderKey, encryptProviderKey } from "./encryption";
-import { refreshAccessToken } from "./oauth";
+import { OAuthHttpError, refreshAccessToken } from "./oauth";
+import { deactivateTenant } from "./tenant-lifecycle";
 
 const HUBSPOT_API_ROOT = "https://api.hubapi.com";
 
@@ -139,6 +140,26 @@ interface TokenCache {
   expiresAt: Date;
 }
 
+export class TenantAccessRevokedError extends Error {
+  constructor(message = "hubspot access revoked or app uninstalled for tenant") {
+    super(message);
+    this.name = "TenantAccessRevokedError";
+  }
+}
+
+function isUnrecoverableRefreshFailure(error: unknown): error is OAuthHttpError {
+  if (!(error instanceof OAuthHttpError) || error.status !== 400) {
+    return false;
+  }
+
+  const body = error.body as { error?: unknown; error_description?: unknown } | null;
+  const code = typeof body?.error === "string" ? body.error.toLowerCase() : "";
+  const description =
+    typeof body?.error_description === "string" ? body.error_description.toLowerCase() : "";
+
+  return code === "invalid_grant" || description.includes("revoked");
+}
+
 /** Constructor options for per-tenant OAuth client. */
 export interface HubSpotClientOptions {
   tenantId: string;
@@ -182,7 +203,7 @@ export class HubSpotClient {
     });
 
     if (!row) {
-      throw new Error(`HubSpotClient: no OAuth tokens found for tenant ${this.tenantId}`);
+      throw new TenantAccessRevokedError();
     }
 
     // Check if token is within the pre-expiry window (or already expired)
@@ -223,13 +244,36 @@ export class HubSpotClient {
     const env = loadEnv();
     const refreshToken = decryptProviderKey(this.tenantId, refreshTokenEncrypted);
 
-    const result = await refreshAccessToken({
-      clientId: env.HUBSPOT_CLIENT_ID,
-      clientSecret: env.HUBSPOT_CLIENT_SECRET,
-      refreshToken,
-      // Use the injected fetch for refresh calls too
-      fetch: this.fetchImpl,
-    });
+    let result: Awaited<ReturnType<typeof refreshAccessToken>>;
+    try {
+      result = await refreshAccessToken({
+        clientId: env.HUBSPOT_CLIENT_ID,
+        clientSecret: env.HUBSPOT_CLIENT_SECRET,
+        refreshToken,
+        // Use the injected fetch for refresh calls too
+        fetch: this.fetchImpl,
+      });
+    } catch (error) {
+      if (isUnrecoverableRefreshFailure(error)) {
+        try {
+          await deactivateTenant({
+            db: this.db,
+            tenantId: this.tenantId,
+            reason: "oauth_refresh_failed",
+          });
+        } catch (deactivateError) {
+          console.error("hubspot_client.oauth_refresh_deactivate_failed", {
+            tenantId: this.tenantId,
+            errorClass:
+              deactivateError instanceof Error
+                ? deactivateError.constructor.name
+                : typeof deactivateError,
+          });
+        }
+        throw new TenantAccessRevokedError();
+      }
+      throw error;
+    }
 
     const newExpiresAt = new Date(Date.now() + result.expiresIn * 1000);
 
@@ -281,7 +325,7 @@ export class HubSpotClient {
       });
 
       if (!row) {
-        throw new Error(`HubSpotClient: no OAuth tokens found for tenant ${this.tenantId}`);
+        throw new TenantAccessRevokedError();
       }
 
       await this.serializedRefresh(row.refreshTokenEncrypted);

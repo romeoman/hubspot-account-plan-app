@@ -55,6 +55,9 @@ export function tenantMiddleware(
     if (!tenant) {
       return c.json({ error: "unauthorized", detail: "tenant not found" }, 401);
     }
+    if (!tenant.isActive) {
+      return c.json({ error: "tenant_inactive", detail: "tenant is deactivated" }, 401);
+    }
 
     c.set("tenantId", tenant.id);
     c.set("tenant", tenant);

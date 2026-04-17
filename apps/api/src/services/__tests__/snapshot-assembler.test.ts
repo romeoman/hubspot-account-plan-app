@@ -6,6 +6,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { createMockLlmAdapter } from "../../adapters/mock-llm-adapter";
 import { createMockSignalAdapter } from "../../adapters/mock-signal-adapter";
 import type { ProviderAdapter } from "../../adapters/provider-adapter";
+import { TenantAccessRevokedError } from "../../lib/hubspot-client";
 import type { CompanyPropertyFetcher } from "../eligibility";
 import { clearEligibilityCache } from "../eligibility";
 import type { ContactFetcher } from "../people-selector";
@@ -138,6 +139,29 @@ describe("assembleSnapshot", () => {
     for (const ev of snap.evidence) {
       expect(ev.tenantId).toBe(tenantId);
     }
+  });
+
+  it("rethrows tenant access revocation instead of downgrading it to a degraded snapshot", async () => {
+    const tenantId = await seedTenant();
+    const revokedProvider: ProviderAdapter = {
+      name: "hubspot-enrichment",
+      fetchSignals: async () => {
+        throw new TenantAccessRevokedError();
+      },
+    };
+
+    await expect(
+      assembleSnapshot(
+        {
+          db,
+          providerAdapter: revokedProvider,
+          propertyFetcher: ELIGIBLE,
+          contactFetcher: threeContacts,
+          thresholds: THRESHOLDS,
+        },
+        { tenantId, companyId: "co-revoked" },
+      ),
+    ).rejects.toBeInstanceOf(TenantAccessRevokedError);
   });
 
   it("returns reason with empty people when signal exists but 0 contacts", async () => {

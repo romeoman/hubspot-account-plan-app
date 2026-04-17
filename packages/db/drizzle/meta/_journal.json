@@ -57,6 +57,13 @@
       "when": 1776400002000,
       "tag": "0007_rls_policies",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1776453600000,
+      "tag": "0008_tenant_lifecycle_columns",
+      "breakpoints": true
     }
   ]
 }

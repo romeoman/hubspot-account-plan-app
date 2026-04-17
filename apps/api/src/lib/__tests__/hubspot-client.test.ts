@@ -12,7 +12,8 @@
 import type { Database } from "@hap/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { encryptProviderKey } from "../encryption";
-import { HubSpotClient } from "../hubspot-client";
+import { HubSpotClient, TenantAccessRevokedError } from "../hubspot-client";
+import { OAuthHttpError } from "../oauth";
 
 // ---------------------------------------------------------------------------
 // Helpers — fake DB + fetch
@@ -52,6 +53,17 @@ function makeMockDb(overrides?: {
       };
 
   const findFirstMock = vi.fn().mockResolvedValue(row);
+  const updateWhereMock = vi.fn().mockResolvedValue(undefined);
+  const updateSetMock = vi.fn().mockReturnValue({
+    where: updateWhereMock,
+  });
+  const updateMock = vi.fn().mockReturnValue({
+    set: updateSetMock,
+  });
+  const deleteWhereMock = vi.fn().mockResolvedValue(undefined);
+  const deleteMock = vi.fn().mockReturnValue({
+    where: deleteWhereMock,
+  });
 
   // Drizzle query pattern: db.query.tenantHubspotOauth.findFirst({ where: ... })
   // We mock the minimal chain needed.
@@ -62,11 +74,9 @@ function makeMockDb(overrides?: {
       },
     },
     // For UPDATE (token refresh persist)
-    update: vi.fn().mockReturnValue({
-      set: vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue(undefined),
-      }),
-    }),
+    update: updateMock,
+    delete: deleteMock,
+    transaction: vi.fn(async (callback: (tx: unknown) => unknown) => callback(mockDb)),
   } as unknown as Database;
 
   return mockDb;
@@ -172,8 +182,8 @@ describe("HubSpotClient (Slice 3 — per-tenant OAuth)", () => {
       fetch: fakeFetch,
     });
 
-    await expect(client.getCompanyProperties("123", ["name"])).rejects.toThrow(
-      /no oauth tokens found/i,
+    await expect(client.getCompanyProperties("123", ["name"])).rejects.toBeInstanceOf(
+      TenantAccessRevokedError,
     );
   });
 
@@ -251,6 +261,32 @@ describe("HubSpotClient (Slice 3 — per-tenant OAuth)", () => {
     expect(headers.get("authorization")).toBe(`Bearer ${newAccessToken}`);
 
     // DB update should have been called to persist rotated tokens
+    expect(db.update).toHaveBeenCalled();
+  });
+
+  it("soft-deactivates the tenant when refresh fails with an unrecoverable OAuth error", async () => {
+    const almostExpired = new Date(Date.now() + 30_000);
+    const db = makeMockDb({ expiresAt: almostExpired });
+
+    vi.spyOn(await import("../oauth"), "refreshAccessToken").mockRejectedValue(
+      new OAuthHttpError("hubspot token endpoint returned 400", 400, {
+        error: "invalid_grant",
+        error_description: "refresh token is invalid, expired or revoked",
+      }),
+    );
+
+    const client = new HubSpotClient({
+      tenantId: TEST_TENANT_ID,
+      db,
+      fetch: makeFakeFetch({}),
+    });
+
+    await expect(client.getCompanyProperties("123", ["name"])).rejects.toBeInstanceOf(
+      TenantAccessRevokedError,
+    );
+
+    expect(db.transaction).toHaveBeenCalledTimes(1);
+    expect(db.delete).toHaveBeenCalled();
     expect(db.update).toHaveBeenCalled();
   });
 

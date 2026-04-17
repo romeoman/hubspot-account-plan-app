@@ -46,6 +46,11 @@ Important:
 - `docs/slice-4-preflight-notes.md`
 - `docs/phase-5-doc-alignment.md`
 - `docs/phase-6-doc-alignment.md`
+- `docs/slice-5-preflight-notes.md`
+- `docs/slice-6-preflight-notes.md`
+- `docs/runbooks/tenant-offboarding.md`
+- `docs/security/slice-5-audit.md`
+- `docs/security/slice-6-audit.md`
 - `.claude/tasks/2026-04-16-slice-3-phase-3-rls-card-bundling.md`
 - `.claude/tasks/2026-04-16-slice-4-settings-configuration.md`
 - `.claude/tasks/2026-04-17-slice-5-production-marketplace-readiness.md`

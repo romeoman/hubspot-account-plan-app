@@ -56,6 +56,26 @@ describe("schema: tenants", () => {
     expect(inserted?.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(inserted?.settings).toEqual({ region: "us" });
     expect(inserted?.isActive).toBe(true);
+    expect(inserted?.deactivatedAt).toBeNull();
+    expect(inserted?.deactivationReason).toBeNull();
+  });
+
+  it("persists explicit offboarding metadata without deleting the tenant row", async () => {
+    const deactivatedAt = new Date("2026-04-17T10:30:00.000Z");
+    const [inserted] = await db
+      .insert(tenants)
+      .values({
+        hubspotPortalId: portalId(),
+        name: "Offboarded Acme",
+        isActive: false,
+        deactivatedAt,
+        deactivationReason: "hubspot_app_uninstalled",
+      })
+      .returning();
+
+    expect(inserted?.isActive).toBe(false);
+    expect(inserted?.deactivatedAt).toEqual(deactivatedAt);
+    expect(inserted?.deactivationReason).toBe("hubspot_app_uninstalled");
   });
 });
 

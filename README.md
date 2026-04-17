@@ -94,4 +94,27 @@ packages/
 - Explicit empty/stale/degraded/low-confidence/ineligible states
 - Tenant-isolated, config-driven, no silent CRM writes
 
+## Install Lifecycle
+
+The app now treats install lifecycle as an explicit contract:
+
+- uninstall / revocation soft-deactivates the tenant
+- HubSpot OAuth credentials are removed
+- tenant config and historical app data are preserved
+- reinstall for the same portal reactivates the same tenant identity
+
+Runtime behavior is explicit too:
+
+- inactive tenants are rejected with `401 tenant_inactive`
+- revoked access discovered during a live snapshot request becomes
+  `401 tenant_access_revoked`
+- the HubSpot card shows reconnect guidance instead of a generic error for
+  lifecycle-related `401` responses
+
+Operational details live in:
+
+- `docs/slice-6-preflight-notes.md`
+- `docs/runbooks/tenant-offboarding.md`
+- `docs/security/slice-6-audit.md`
+
 See `planning/` for full product requirements and implementation plans.

@@ -32,6 +32,7 @@ import {
 import type { Database } from "@hap/db";
 import type { LlmAdapter } from "../adapters/llm-adapter";
 import type { ProviderAdapter } from "../adapters/provider-adapter";
+import { TenantAccessRevokedError } from "../lib/hubspot-client";
 import { type CompanyPropertyFetcher, checkEligibility } from "./eligibility";
 import { dedupEvidence } from "./hygiene/dedup";
 import { sweepStaleness } from "./hygiene/staleness-sweeper";
@@ -120,6 +121,9 @@ export async function assembleSnapshot(
   try {
     signals = await deps.providerAdapter.fetchSignals(tenantId, { companyId });
   } catch (err) {
+    if (err instanceof TenantAccessRevokedError) {
+      throw err;
+    }
     // Transport error → mark degraded; continue with empty signal set.
     // Log a STABLE error code/class only — never the raw message. External
     // adapter errors can smuggle request URLs, tenant data, or auth material

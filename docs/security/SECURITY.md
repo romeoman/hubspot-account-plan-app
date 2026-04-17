@@ -563,6 +563,78 @@ Slice 3 enables Postgres row-level security on every tenant-scoped data table th
 
 ## 18. Replay Nonce (Slice 3 shipped)
 
+## 20. Slice 6 Install Lifecycle And Tenant Offboarding
+
+Slice 6 makes uninstall, revocation, deactivation, and reinstall explicit
+security contracts instead of leaving them as incidental runtime behavior.
+
+### 20.1 Offboarding policy
+
+Default offboarding policy is soft-deactivate:
+
+- `tenants.is_active = false`
+- `tenants.deactivated_at` is set
+- `tenants.deactivation_reason` is set
+- the `tenant_hubspot_oauth` row is removed
+- provider config, LLM config, snapshots, evidence, and people are preserved
+
+Hard-delete is intentionally out of scope for normal uninstall handling.
+
+### 20.2 Lifecycle event model
+
+Slice 6 uses a hybrid lifecycle model:
+
+- primary signal: HubSpot app lifecycle events (`app_install`, `app_uninstall`)
+- fallback signal: unrecoverable OAuth refresh failure
+
+The fallback is security-relevant because marketplace guidance explicitly
+treats repeated unrecoverable `401` / refresh failure as a signal to stop
+using the tenant's install until re-auth occurs.
+
+### 20.3 Runtime enforcement
+
+After deactivation:
+
+- `tenantMiddleware` returns `401 { error: "tenant_inactive" }`
+- settings and snapshot routes are blocked before normal route work proceeds
+- missing tenant OAuth credentials become `TenantAccessRevokedError`
+
+If revocation is discovered during a live HubSpot-backed request:
+
+- the HubSpot client deactivates the tenant with reason
+  `oauth_refresh_failed`
+- the snapshot assembler rethrows that lifecycle loss instead of downgrading
+  it to a degraded empty snapshot
+- the snapshot route returns
+  `401 { error: "tenant_access_revoked" }`
+
+### 20.4 Reinstall safety
+
+Reinstall is keyed by `tenants.hubspot_portal_id`.
+
+Successful reinstall:
+
+- reuses the same tenant row
+- clears deactivation metadata
+- restores `is_active = true`
+- recreates OAuth credentials through the normal callback flow
+
+This prevents identity drift and duplicate-tenant creation for the same
+HubSpot portal.
+
+### 20.5 UI behavior
+
+The HubSpot card does not render lifecycle failures as a generic empty state.
+When the snapshot fetch fails with a lifecycle-related `401`, the extension
+shows reconnect guidance so the operator sees a recoverable install-state
+problem rather than an opaque failure.
+
+### 20.6 Supporting docs
+
+- `docs/slice-6-preflight-notes.md`
+- `docs/runbooks/tenant-offboarding.md`
+- `docs/security/slice-6-audit.md`
+
 HubSpot's signed-request freshness window protects against stale requests, but by itself it does not reject duplicate requests inside that window. Slice 3 closes that gap with a tenant-scoped nonce store.
 
 ### 18.1 Design
