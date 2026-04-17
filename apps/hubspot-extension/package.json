@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "echo 'Use hs project dev for local HubSpot extension development'",
-    "build": "vite build"
+    "build": "vite build",
+    "build:with-profile": "tsx scripts/build-with-profile-cli.ts"
   },
   "dependencies": {
     "@hap/config": "workspace:*",
