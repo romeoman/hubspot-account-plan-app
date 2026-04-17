@@ -8,6 +8,7 @@ import { authMiddleware } from "./middleware/auth";
 import { type CorrelationVariables, correlationMiddleware } from "./middleware/correlation";
 import { nonceMiddleware } from "./middleware/nonce";
 import { type TenantVariables, tenantMiddleware } from "./middleware/tenant";
+import { lifecycleWebhookRoutes } from "./routes/lifecycle";
 import { createOAuthRoutes } from "./routes/oauth";
 import { settingsRoutes } from "./routes/settings";
 import { snapshotRoutes } from "./routes/snapshot";
@@ -116,6 +117,12 @@ app.route(
     db: getDb(),
   }),
 );
+
+// HubSpot app-lifecycle webhook receiver — mounted OUTSIDE `/api/*` because
+// deliveries come from HubSpot, not from an authenticated user session, and
+// so they skip auth/tenant/nonce middleware. Authenticity is proven by the
+// route's internal v3 signature check (see routes/lifecycle.ts).
+app.route("/webhooks/hubspot/lifecycle", lifecycleWebhookRoutes({ db: getDb() }));
 
 // Composed middleware chain for /api/* routes: auth -> tenant -> route.
 app.use("/api/*", authMiddleware());

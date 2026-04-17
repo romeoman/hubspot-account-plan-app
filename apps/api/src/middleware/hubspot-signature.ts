@@ -80,6 +80,62 @@ export function __resetHubspotSignatureCacheForTests(): void {
 }
 
 /**
+ * Pure HubSpot v3 signed-request HMAC check. Shared by
+ * {@link hubspotSignatureMiddleware} and webhook routes whose payload shape
+ * (e.g., top-level JSON arrays) means the middleware's principal extraction
+ * cannot apply.
+ *
+ * Contract:
+ *   - `url` MUST be exactly what Hono's `c.req.url` reports (includes
+ *     protocol + host + path + query). The verifier applies
+ *     `decodeURIComponent` to match HubSpot's reference implementation.
+ *   - `timestamp` is ms since epoch, taken from
+ *     `X-HubSpot-Request-Timestamp`.
+ *   - The signature is the base64 HMAC-SHA256 of
+ *     `${method}${decodeURIComponent(url)}${body}${timestamp}`, keyed by
+ *     `HUBSPOT_CLIENT_SECRET`.
+ *
+ * Freshness is enforced here as well so callers never have to reimplement
+ * the 5-minute skew check.
+ */
+export function verifyHubSpotSignatureV3(params: {
+  method: string;
+  url: string;
+  body: string;
+  timestamp: number;
+  signature: string;
+  /** Override for tests; defaults to `Date.now()`. */
+  now?: number;
+}): { ok: true } | { ok: false; reason: string } {
+  if (!params.signature || params.signature.length === 0) {
+    return { ok: false, reason: "missing signature" };
+  }
+  if (!Number.isFinite(params.timestamp) || params.timestamp <= 0) {
+    return { ok: false, reason: "malformed timestamp" };
+  }
+  const now = params.now ?? Date.now();
+  if (Math.abs(now - params.timestamp) > MAX_TIMESTAMP_SKEW_MS) {
+    return { ok: false, reason: "stale timestamp" };
+  }
+
+  let decodedUrl: string;
+  try {
+    decodedUrl = decodeURIComponent(params.url);
+  } catch {
+    return { ok: false, reason: "malformed url" };
+  }
+
+  const method = params.method.toUpperCase();
+  const raw = `${method}${decodedUrl}${params.body}${params.timestamp}`;
+  const expected = createHmac("sha256", getClientSecret()).update(raw, "utf8").digest("base64");
+
+  if (!safeEquals(params.signature, expected)) {
+    return { ok: false, reason: "signature mismatch" };
+  }
+  return { ok: true };
+}
+
+/**
  * Hono variables populated by this middleware on success:
  *   - `portalId` — HubSpot portal identifier (string form of the numeric id).
  *   - `userId`   — HubSpot user identifier when present in the signed payload.
