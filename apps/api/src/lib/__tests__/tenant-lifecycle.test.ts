@@ -4,6 +4,7 @@ import { eq, like } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { __resetEncryptionCacheForTests, encryptProviderKey } from "../encryption";
 import {
+  type ApplyHubSpotLifecycleEventArgs,
   applyHubSpotLifecycleEvent,
   deactivateTenant,
   reactivateTenant,
@@ -160,6 +161,56 @@ describe("tenant lifecycle service", () => {
     expect(tenantRow?.isActive).toBe(true);
     expect(tenantRow?.deactivatedAt).toBeNull();
     expect(tenantRow?.deactivationReason).toBeNull();
+  });
+
+  it("is a no-op when no tenant matches the lifecycle portal id", async () => {
+    const tenant = await seedTenant();
+
+    await expect(
+      applyHubSpotLifecycleEvent({
+        db,
+        portalId: portalId(),
+        eventType: "app_uninstall",
+        occurredAt: new Date("2026-04-17T13:15:00.000Z"),
+      }),
+    ).resolves.toBeUndefined();
+
+    const [tenantRow] = await db.select().from(tenants).where(eq(tenants.id, tenant.id));
+    const oauthRows = await db
+      .select()
+      .from(tenantHubspotOauth)
+      .where(eq(tenantHubspotOauth.tenantId, tenant.id));
+
+    expect(tenantRow?.isActive).toBe(true);
+    expect(tenantRow?.deactivatedAt).toBeNull();
+    expect(tenantRow?.deactivationReason).toBeNull();
+    expect(oauthRows).toHaveLength(1);
+  });
+
+  it("does not reactivate on unexpected lifecycle event types", async () => {
+    const tenant = await seedTenant();
+
+    await deactivateTenant({
+      db,
+      tenantId: tenant.id,
+      reason: "hubspot_app_uninstalled",
+      deactivatedAt: new Date("2026-04-17T12:45:00.000Z"),
+    });
+
+    await expect(
+      applyHubSpotLifecycleEvent({
+        db,
+        portalId: tenant.hubspotPortalId,
+        eventType: "unexpected" as ApplyHubSpotLifecycleEventArgs["eventType"],
+        occurredAt: new Date("2026-04-17T13:30:00.000Z"),
+      }),
+    ).resolves.toBeUndefined();
+
+    const [tenantRow] = await db.select().from(tenants).where(eq(tenants.id, tenant.id));
+
+    expect(tenantRow?.isActive).toBe(false);
+    expect(tenantRow?.deactivatedAt).toBeTruthy();
+    expect(tenantRow?.deactivationReason).toBe("hubspot_app_uninstalled");
   });
 
   it("fails fast when deactivating a missing tenant", async () => {

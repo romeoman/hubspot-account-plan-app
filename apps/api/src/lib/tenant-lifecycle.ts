@@ -95,6 +95,10 @@ export async function applyHubSpotLifecycleEvent(
     return;
   }
 
+  if (eventType !== "app_install") {
+    return;
+  }
+
   await reactivateTenant({
     db,
     tenantId: tenant.id,
