@@ -55,6 +55,8 @@ Important:
 - `.claude/tasks/2026-04-16-slice-4-settings-configuration.md`
 - `.claude/tasks/2026-04-17-slice-5-production-marketplace-readiness.md`
 - `.claude/tasks/2026-04-17-slice-6-install-lifecycle-offboarding.md`
+- `.claude/tasks/2026-04-17-slice-7-lifecycle-journal-ingestion.md`
+- `.claude/tasks/2026-04-17-slice-10-upload-profile-wiring.md`
 - `docs/superpowers/plans/2026-04-14-slice-1-core-domain.md`
 - `docs/superpowers/plans/2026-04-15-slice-2-live-integrations.md`
 - `docs/superpowers/plans/2026-04-15-slice-3-oauth-public-app.md`
