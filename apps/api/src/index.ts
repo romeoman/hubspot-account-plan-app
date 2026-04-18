@@ -8,6 +8,7 @@ import { authMiddleware } from "./middleware/auth";
 import { type CorrelationVariables, correlationMiddleware } from "./middleware/correlation";
 import { nonceMiddleware } from "./middleware/nonce";
 import { type TenantVariables, tenantMiddleware } from "./middleware/tenant";
+import { createLifecycleBootstrapRoute } from "./routes/admin/lifecycle-bootstrap";
 import { lifecycleWebhookRoutes } from "./routes/lifecycle";
 import { createOAuthRoutes } from "./routes/oauth";
 import { settingsRoutes } from "./routes/settings";
@@ -123,6 +124,11 @@ app.route(
 // so they skip auth/tenant/nonce middleware. Authenticity is proven by the
 // route's internal v3 signature check (see routes/lifecycle.ts).
 app.route("/webhooks/hubspot/lifecycle", lifecycleWebhookRoutes({ db: getDb() }));
+
+// Operator-only lifecycle subscription bootstrap — mounted OUTSIDE `/api/*`
+// and the tenant middleware because it is gated on a static internal token
+// rather than a HubSpot-signed request. Mirrors the webhook mount posture.
+app.route("/admin/lifecycle", createLifecycleBootstrapRoute());
 
 // Composed middleware chain for /api/* routes: auth -> tenant -> route.
 app.use("/api/*", authMiddleware());

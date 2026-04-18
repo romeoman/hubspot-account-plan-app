@@ -661,3 +661,57 @@ problem rather than an opaque failure.
 - `docs/slice-6-preflight-notes.md`
 - `docs/runbooks/tenant-offboarding.md`
 - `docs/security/slice-6-audit.md`
+
+## 21. Slice 11 Lifecycle Subscription Bootstrap
+
+Slice 11 adds a narrow, app-scoped bootstrap that registers the HubSpot
+`APP_LIFECYCLE_EVENT` subscriptions required by the Slice 7 receiver
+(`POST /webhooks/hubspot/lifecycle`). Without it, the receiver is live but
+never called, and the system relies solely on the Slice 6 oauth-failure
+fallback.
+
+### 21.1 Scope boundary
+
+The bootstrap is **app-level**, not tenant-level. HubSpot's subscription API
+is app-scoped; one subscription covers every installed portal. No code path
+reads or writes `tenant_id`; no RLS policy is affected.
+
+### 21.2 New surface
+
+- Route: `POST /admin/lifecycle/bootstrap`, mounted OUTSIDE `/api/*` and
+  OUTSIDE tenant middleware.
+- Guard: `X-Internal-Bootstrap-Token` compared constant-time against
+  `INTERNAL_BOOTSTRAP_TOKEN` env using the repo's existing length-safe
+  `timingSafeEqual` pattern.
+- Script: `pnpm --filter @hap/api lifecycle:bootstrap` for CI / local use.
+- In-memory app-token cache in `apps/api/src/lib/hubspot-app-auth.ts`
+  (process-local, TTL = `expires_in - 60s`, never persisted).
+
+### 21.3 New env vars
+
+- `HUBSPOT_APP_ID` — log correlation only.
+- `HUBSPOT_APP_CLIENT_ID` — client-credentials flow.
+- `HUBSPOT_APP_CLIENT_SECRET` — client-credentials flow. Never log.
+- `LIFECYCLE_TARGET_URL` — public HTTPS URL of the Slice 7 receiver. NOT
+  sent in the subscription body (the API is app-scoped); kept as a
+  passthrough in the JSON report for operator visual verification against
+  `app-hsmeta.json`.
+- `INTERNAL_BOOTSTRAP_TOKEN` — admin-route shared secret. Per-env, 32+ byte
+  CSPRNG, never reused across envs.
+
+### 21.4 Preserved invariants
+
+- `apps/api/src/routes/lifecycle.ts` (Slice 7 receiver) is unchanged. HMAC
+  v3 verification and event-id mapping are unchanged.
+- `apps/api/src/lib/tenant-lifecycle.ts` (Slice 6 service) is unchanged. The
+  oauth-refresh-failure soft-deactivate fallback still fires at runtime, so
+  a missed bootstrap cannot leave a revoked install active.
+- No change to `/api/*` auth, tenant resolution, RLS, encryption envelope,
+  or replay nonce.
+
+### 21.5 Supporting docs
+
+- `.claude/tasks/2026-04-18-slice-11-lifecycle-subscription-bootstrap.md`
+- `docs/slice-11-preflight-notes.md`
+- `docs/runbooks/lifecycle-subscription-bootstrap.md`
+- `docs/security/slice-11-audit.md`
