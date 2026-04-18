@@ -1,0 +1,27 @@
+scripts/hs-project-upload.ts
+  f5e7dda7755350a1 62-66,72-76
+scripts/__tests__/hs-project-upload-e2e.test.ts
+  f5e7dda7755350a1 28,44-45,47,70-72,79
+scripts/__tests__/hs-project-upload.test.ts
+  f5e7dda7755350a1 45-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "6197b340bf536429efdbd97954fec1df3d8b4864",
+  "prompts": {
+    "f5e7dda7755350a1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b9db770f-deb1-438a-bcc2-f53e6cffd296",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "romeoman",
+      "messages": [],
+      "total_additions": 28,
+      "total_deletions": 4,
+      "accepted_lines": 28,
+      "overriden_lines": 1
+    }
+  }
+}
