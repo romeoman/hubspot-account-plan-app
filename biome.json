@@ -36,6 +36,7 @@
       "!**/coverage",
       "!**/.next",
       "!**/drizzle",
+      "!**/.bundle-artifacts",
       "!.worktrees",
       "!.taskmaster"
     ]

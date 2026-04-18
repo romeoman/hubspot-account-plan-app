@@ -48,15 +48,19 @@ Important:
 - `docs/phase-6-doc-alignment.md`
 - `docs/slice-5-preflight-notes.md`
 - `docs/slice-6-preflight-notes.md`
+- `docs/slice-11-preflight-notes.md`
 - `docs/runbooks/tenant-offboarding.md`
+- `docs/runbooks/lifecycle-subscription-bootstrap.md`
 - `docs/security/slice-5-audit.md`
 - `docs/security/slice-6-audit.md`
+- `docs/security/slice-11-audit.md`
 - `.claude/tasks/2026-04-16-slice-3-phase-3-rls-card-bundling.md`
 - `.claude/tasks/2026-04-16-slice-4-settings-configuration.md`
 - `.claude/tasks/2026-04-17-slice-5-production-marketplace-readiness.md`
 - `.claude/tasks/2026-04-17-slice-6-install-lifecycle-offboarding.md`
 - `.claude/tasks/2026-04-17-slice-7-lifecycle-journal-ingestion.md`
 - `.claude/tasks/2026-04-17-slice-10-upload-profile-wiring.md`
+- `.claude/tasks/2026-04-18-slice-11-lifecycle-subscription-bootstrap.md`
 - `docs/superpowers/plans/2026-04-14-slice-1-core-domain.md`
 - `docs/superpowers/plans/2026-04-15-slice-2-live-integrations.md`
 - `docs/superpowers/plans/2026-04-15-slice-3-oauth-public-app.md`
@@ -92,24 +96,31 @@ If someone is joining active implementation now, read in this order:
 ## 5. Best current source documents in ChatPRD
 
 ### Implementation Plan
+
 https://app.chatprd.ai/chat/9a823a82-230a-4d69-99f2-8f8ab0ad85bf?doc=7321e14b-ada3-4265-a4e9-d1cda84dfe55&vers=e4f12945-0e88-4975-bd8f-faa2edc0ce54
 
 ### AI Coding Rules & Standards
+
 https://app.chatprd.ai/chat/8f94764f-40d2-4ec7-af32-6acddc224c80?doc=7d454b45-7ac2-4c28-83d6-76570c9b245e
 
 ### Product Brief for AI Development
+
 https://app.chatprd.ai/chat/a6cc6c7f-f81a-44cd-a58f-d0a103a62ae8?doc=b39ce5e7-480e-44f1-9fe8-88bc591308f4
 
 ### Repo Draft & Execution Checklist
+
 https://app.chatprd.ai/chat/b3484579-353d-439d-9126-da35d7955fde?doc=d1591ae5-b3cd-4595-8238-a6005502d785&vers=464aa340-0564-4bf8-a397-7ac60b838948
 
 ### Security / Permission Gate
+
 https://app.chatprd.ai/chat/fec5394b-cfd7-48ba-96e9-2356656ef0d0?doc=ed0efb92-7e4e-4716-8674-f9013e8f01e8&vers=327f5454-212c-46c7-8c05-d27dc2100ab7
 
 ### Spec for AI Prototyping
+
 https://app.chatprd.ai/chat/2cdfb7f1-cd53-4fc1-8b99-383cbd2a06c4?doc=deacf6b3-ef2f-4930-a4fa-0d48019cb2d4&vers=0fef3cf0-b259-4d87-a733-5bbacfc1e1cb
 
 ### QA & Verification Plan
+
 https://app.chatprd.ai/chat/1ebac952-f6d6-461b-8c4b-982e49146e8b?doc=7aed1d8b-2b0d-4b37-bb52-9bfdedec013a&vers=ef0be73a-faa2-44bb-a8f9-235af86a894b
 
 ---
