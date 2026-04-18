@@ -84,6 +84,8 @@ apps/hubspot-project/local.json
 !.claude/settings.json
 !.claude/scripts/
 !.claude/skills/
+!.claude/tasks/
+!.claude/tasks/**
 
 # Taskmaster local state (keep config and docs)
 .taskmaster/tasks/
