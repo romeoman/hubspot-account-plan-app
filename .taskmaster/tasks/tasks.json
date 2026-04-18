@@ -780,7 +780,7 @@
             ],
             "details": "Method: getAdapter(tenantId: string): Promise<LlmAdapter>. Query DB by tenant_id, decrypt apiKeyEncrypted, instantiate correct adapter class. Graceful fallback for missing config.",
             "status": "done",
-            "testStrategy": "Test tenant A→Anthropic, tenant B→OpenAI, missing config→fallback. Verify decryption/isolation.",
+            "testStrategy": "Test tenant A\u2192Anthropic, tenant B\u2192OpenAI, missing config\u2192fallback. Verify decryption/isolation.",
             "parentId": "undefined",
             "updatedAt": "2026-04-15T19:55:40.771Z"
           },
@@ -923,7 +923,7 @@
               4,
               5
             ],
-            "details": "Wire components into /api/snapshot/:companyId. Use fixture data throughout. Test full data flow. Ensure no fabrication: empty states for no-signal/no-contacts. Update Hono endpoint contract.\n<info added on 2026-04-10T23:33:51.449Z>\nTENANT + LLM PROVIDER UPDATE: Snapshot service integration must pass tenantId through the entire flow: tenant resolution → eligibility check → signal fetching (tenant's Exa key) → LLM reason generation (tenant's LLM provider) → contact ranking → snapshot assembly. All fixture data must include tenantId. Test multi-tenant scenario: tenant A gets Anthropic-generated reason, tenant B gets OpenAI-generated reason, both isolated.\n</info added on 2026-04-10T23:33:51.449Z>",
+            "details": "Wire components into /api/snapshot/:companyId. Use fixture data throughout. Test full data flow. Ensure no fabrication: empty states for no-signal/no-contacts. Update Hono endpoint contract.\n<info added on 2026-04-10T23:33:51.449Z>\nTENANT + LLM PROVIDER UPDATE: Snapshot service integration must pass tenantId through the entire flow: tenant resolution \u2192 eligibility check \u2192 signal fetching (tenant's Exa key) \u2192 LLM reason generation (tenant's LLM provider) \u2192 contact ranking \u2192 snapshot assembly. All fixture data must include tenantId. Test multi-tenant scenario: tenant A gets Anthropic-generated reason, tenant B gets OpenAI-generated reason, both isolated.\n</info added on 2026-04-10T23:33:51.449Z>",
             "status": "done",
             "testStrategy": "End-to-end tests: no-signal empty, 0/1/2/3 people, low-confidence suppression, integration with Tasks 5-7, Postman/curl verification.",
             "parentId": "undefined",
@@ -980,7 +980,7 @@
             ],
             "details": "Create evaluateConfidence() function checking evidence.confidence against provider_config.min_confidence (default 0.7). Return {isAdequate: boolean, confidenceScore: number}. Low-confidence flags trigger caution UI.",
             "status": "done",
-            "testStrategy": "TDD: Test thresholds (0.699→low, 0.701→adequate), configurable values (0.5, 0.9), null/undefined handling.",
+            "testStrategy": "TDD: Test thresholds (0.699\u2192low, 0.701\u2192adequate), configurable values (0.5, 0.9), null/undefined handling.",
             "parentId": "undefined",
             "updatedAt": "2026-04-15T19:55:40.796Z"
           },
@@ -1000,14 +1000,14 @@
           {
             "id": 5,
             "title": "Implement Suppression Logic",
-            "description": "Apply suppression rules: restricted→empty response, stale/lowConf→double warning flags, degraded→system issue flag.",
+            "description": "Apply suppression rules: restricted\u2192empty response, stale/lowConf\u2192double warning flags, degraded\u2192system issue flag.",
             "dependencies": [
               1,
               2,
               3,
               4
             ],
-            "details": "Create applySuppression() function in TrustEvaluator: if restricted→return empty Snapshot (no evidence, no summary); else compute combined StateFlags and warnings array. Backend pre-computes all flags for UI.",
+            "details": "Create applySuppression() function in TrustEvaluator: if restricted\u2192return empty Snapshot (no evidence, no summary); else compute combined StateFlags and warnings array. Backend pre-computes all flags for UI.",
             "status": "done",
             "testStrategy": "TDD: Verify restricted returns truly empty objects; test stale+lowConf double warning combinations; ensure partial data never leaks from restricted.",
             "parentId": "undefined",
@@ -1024,7 +1024,7 @@
               4,
               5
             ],
-            "details": "Use factory functions from Task 5 to generate test evidence for all combinations: fresh/adequate/valid, stale+lowConf+degraded+restricted×2. Test UI flag consumption. Verify configurable thresholds override defaults.",
+            "details": "Use factory functions from Task 5 to generate test evidence for all combinations: fresh/adequate/valid, stale+lowConf+degraded+restricted\u00d72. Test UI flag consumption. Verify configurable thresholds override defaults.",
             "status": "done",
             "testStrategy": "100% coverage of 8 QA states matrix; integration tests verify empty responses for restricted; snapshot tests for flag combinations; threshold mutation testing.",
             "parentId": "undefined",
@@ -1492,15 +1492,136 @@
         "status": "done",
         "subtasks": [],
         "updatedAt": "2026-04-16T17:23:57.270Z"
+      },
+      {
+        "id": "14",
+        "title": "Slice 4 - Tenant Settings and Configuration UX",
+        "description": "Ship the tenant-facing settings surface so installed accounts can configure provider credentials, thresholds, and eligibility settings safely from HubSpot.",
+        "details": "Completed slice. The repo now includes the settings extension surface, tenant-scoped settings APIs, encrypted secret handling, actionable unconfigured guidance, and the supporting security/docs updates described in .claude/tasks/2026-04-16-slice-4-settings-configuration.md.",
+        "testStrategy": "Preserve coverage for settings reads/writes, write-only secret behavior, tenant isolation, and the install-to-configure flow.",
+        "priority": "high",
+        "dependencies": [
+          "13"
+        ],
+        "status": "done",
+        "subtasks": [],
+        "updatedAt": "2026-04-17T18:20:00.000Z"
+      },
+      {
+        "id": "15",
+        "title": "Slice 5 - Production and Marketplace Readiness",
+        "description": "Lock the app-config, profile, deploy, and pilot-validation contract needed for staging/production installs and marketplace preparation.",
+        "details": "Completed slice. The repo now carries the Slice 5 production-contract docs, profile-driven HubSpot app config, deployment/runbook material, and pilot-readiness guidance referenced by docs/slice-5-preflight-notes.md and docs/security/slice-5-audit.md.",
+        "testStrategy": "Keep profile/config tests, OAuth origin hardening coverage, and deploy/runbook docs aligned with the shipped environment contract.",
+        "priority": "high",
+        "dependencies": [
+          "14"
+        ],
+        "status": "done",
+        "subtasks": [],
+        "updatedAt": "2026-04-17T18:20:00.000Z"
+      },
+      {
+        "id": "16",
+        "title": "Slice 6 - Install Lifecycle and Tenant Offboarding",
+        "description": "Make uninstall, revocation, reactivation, and tenant-offboarding behavior explicit and safe after install.",
+        "details": "Completed slice. The tenant lifecycle model, runtime guards, reinstall semantics, offboarding runbook, and Slice 6 security notes are present in the repo per .claude/tasks/2026-04-17-slice-6-install-lifecycle-offboarding.md and docs/runbooks/tenant-offboarding.md.",
+        "testStrategy": "Retain tenant lifecycle tests, runtime-offboarding guards, and reinstall verification as future lifecycle work lands.",
+        "priority": "high",
+        "dependencies": [
+          "15"
+        ],
+        "status": "done",
+        "subtasks": [],
+        "updatedAt": "2026-04-17T18:20:00.000Z"
+      },
+      {
+        "id": "17",
+        "title": "Slice 7 - HubSpot App-Lifecycle Webhook Receiver",
+        "description": "Add the signed HTTP transport that lets HubSpot deliver install/uninstall lifecycle events directly to the existing tenant lifecycle service.",
+        "details": "Active PR: #10 (feature/slice-7-lifecycle-webhook-receiver -> main). Adds POST /webhooks/hubspot/lifecycle, exports verifyHubSpotSignatureV3, mounts the route in apps/api/src/index.ts, and proves the behavior with 5 route tests plus 1 index-wiring test. This is transport-only; subscription bootstrap and journal/pull automation remain follow-ups.",
+        "testStrategy": "With Postgres up, keep pnpm typecheck and pnpm test green (71 files / 630 tests on the branch) and preserve the lifecycle route, signature, and tenant mutation assertions.",
+        "priority": "high",
+        "dependencies": [
+          "16"
+        ],
+        "status": "in-progress",
+        "subtasks": [],
+        "updatedAt": "2026-04-17T18:20:00.000Z"
+      },
+      {
+        "id": "18",
+        "title": "Slice 8 - Resolve Extension API Origin from Build Profile",
+        "description": "Replace the hardcoded production API origin in the extension bundle with a profile-aware resolver backed by a Vite define contract.",
+        "details": "Active PR: #9 (feature/slice-8-extension-api-origin-profile -> main). Adds resolveApiBaseUrl(), the __HAP_API_ORIGIN__ Vite define, and 12 tests that pin resolver precedence, config-contract behavior, and built-bundle determinism. This ships the build-time mechanism but still needs the wrapper/upload path to feed API_ORIGIN into the build.",
+        "testStrategy": "Keep pnpm typecheck and pnpm test green (73 files / 636 tests on the branch) and preserve resolver, Vite config, and real build assertions.",
+        "priority": "high",
+        "dependencies": [
+          "15"
+        ],
+        "status": "in-progress",
+        "subtasks": [],
+        "updatedAt": "2026-04-17T18:20:00.000Z"
+      },
+      {
+        "id": "19",
+        "title": "Slice 9 - Profile-Aware Extension Build Wrapper",
+        "description": "Bridge HubSpot profiles to the extension build by reading hsprofile variables, exporting API_ORIGIN, and invoking the existing Vite build through a thin wrapper.",
+        "details": "Active PR: #8 (feature/slice-9-hubspot-build-wrapper -> feature/slice-8-extension-api-origin-profile). Adds build-with-profile.ts, build-with-profile-cli.ts, 19 tests, and the build:with-profile package script. This slice depends on Slice 8 and should merge after PR #9 lands.",
+        "testStrategy": "Keep pnpm typecheck and pnpm test green (75 files / 655 tests on the branch) and preserve both the unit contract and the end-to-end wrapper-driven Vite build assertion.",
+        "priority": "high",
+        "dependencies": [
+          "18"
+        ],
+        "status": "in-progress",
+        "subtasks": [],
+        "updatedAt": "2026-04-17T18:20:00.000Z"
+      },
+      {
+        "id": "20",
+        "title": "Slice 10 - Wire HubSpot Upload Flow to Profile-Aware Extension Build",
+        "description": "Activate the Slice 8/9 mechanism in the real HubSpot upload path so local, staging, and production uploads build the extension bundle with the selected profile's API_ORIGIN.",
+        "details": "Active PR: #11 (feature/slice-10-upload-profile-wiring -> feature/slice-9-hubspot-build-wrapper). Wires the real HubSpot upload path to the profile-aware origin contract by threading API_ORIGIN through scripts/hs-project-upload.ts and the programmatic bundler, with import-safe bundler library/CLI split, targeted tests, and e2e upload verification. This slice depends on Slice 9 and should merge after PRs #9 and #8 land.",
+        "testStrategy": "Keep pnpm typecheck and pnpm test green (77 files / 679 tests on the branch), preserve upload-runner argv/profile handoff, define-contract tests, and the stubbed-upload e2e verification of bundle output.",
+        "priority": "high",
+        "dependencies": [
+          "18",
+          "19"
+        ],
+        "status": "in-progress",
+        "subtasks": [],
+        "updatedAt": "2026-04-18T10:35:00.000Z"
+      },
+      {
+        "id": "21",
+        "title": "Slice 11 - Lifecycle Subscription Bootstrap and Journal Automation",
+        "description": "Complete the documented primary lifecycle automation path by creating HubSpot lifecycle subscriptions and reconciling event ingestion beyond the runtime fallback path.",
+        "details": "Queued follow-up. docs/slice-6-preflight-notes.md and .claude/tasks/2026-04-17-slice-7-lifecycle-journal-ingestion.md still point at client-credentials lifecycle subscription management and journal/cursor handling as the primary automation path. PR #10 adds the receiver transport only; this follow-up should decide whether to ship a narrow subscription bootstrap helper first or continue into the fuller journal-ingestion/control-plane plan.",
+        "testStrategy": "Re-verify current HubSpot docs, write failing tests around subscription/journal auth and idempotent lifecycle application, and preserve Slice 6 fallback behavior as the safety net.",
+        "priority": "medium",
+        "dependencies": [
+          "17"
+        ],
+        "status": "pending",
+        "subtasks": [],
+        "updatedAt": "2026-04-17T18:20:00.000Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2026-04-16T17:23:57.275Z",
-      "taskCount": 13,
-      "completedCount": 13,
+      "lastModified": "2026-04-18T10:35:00.000Z",
+      "taskCount": 21,
+      "completedCount": 16,
       "tags": [
-        "slice-3-phase-3"
+        "slice-3-phase-3",
+        "slice-4",
+        "slice-5",
+        "slice-6",
+        "slice-7",
+        "slice-8",
+        "slice-9",
+        "slice-10",
+        "slice-11"
       ]
     }
   }
