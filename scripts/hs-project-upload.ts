@@ -18,6 +18,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   extractApiOrigin,
   loadProfile,
@@ -38,7 +39,7 @@ function repoRoot(): string {
 
 function runBundle(root: string): void {
   console.log("[hs-upload] bundling HubSpot card and settings page");
-  execFileSync("pnpm", ["tsx", "scripts/bundle-hubspot-card.ts"], {
+  execFileSync("pnpm", ["tsx", "scripts/bundle-hubspot-card-cli.ts"], {
     cwd: root,
     stdio: "inherit",
     env: process.env,
@@ -131,6 +132,20 @@ export function main(args = process.argv.slice(2)): number {
   })(args);
 }
 
-if (import.meta.main) {
+/**
+ * Portable "is this file the entry point?" check. `import.meta.main` works
+ * on native Node 21.2+ but is `undefined` under `tsx`. Fall back to
+ * comparing `import.meta.url` against the file:// URL of `process.argv[1]`.
+ */
+function isMain(): boolean {
+  if (typeof import.meta.main === "boolean") {
+    return import.meta.main;
+  }
+  const entry = process.argv[1];
+  if (!entry) return false;
+  return import.meta.url === pathToFileURL(entry).href;
+}
+
+if (isMain()) {
   process.exit(main());
 }

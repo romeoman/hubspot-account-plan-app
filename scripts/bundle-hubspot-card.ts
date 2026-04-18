@@ -1,4 +1,19 @@
-import { cp, mkdir, rm, stat } from "node:fs/promises";
+/**
+ * Library module for the programmatic two-bundle HubSpot upload pipeline.
+ *
+ * Pure helpers + the `bundleTargets` declaration only. No top-level `vite`
+ * import, no plugin import, no CLI entry — those live in
+ * `bundle-hubspot-card-cli.ts` so this file can be imported from tests
+ * without pulling in `@vitejs/plugin-react` (not resolvable from the repo
+ * root under plain Node resolution) or kicking off a build as a side
+ * effect of import.
+ *
+ * The `define` block mirrors the Slice 8 contract pinned by
+ * `apps/hubspot-extension/vite.config.ts`:
+ *   - `__HAP_API_ORIGIN__` is always `JSON.stringify(apiOrigin)`
+ *   - an empty-string sentinel is emitted when the caller has no origin
+ *   - trailing slashes are preserved verbatim — no normalization
+ */
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { InlineConfig } from "vite";
@@ -29,18 +44,6 @@ export const bundleTargets: BundleTarget[] = [
   },
 ];
 
-/**
- * Pure helper: build the Vite inline config for a single target.
- *
- * Mirrors the `define` contract pinned by `apps/hubspot-extension/vite.config.ts`
- * (Slice 8): `__HAP_API_ORIGIN__` is always `JSON.stringify(apiOrigin)`, with
- * an empty-string sentinel when the caller has not supplied an origin.
- * Trailing slashes are preserved verbatim — no normalization happens here.
- *
- * Plugins are intentionally omitted so tests can import this helper without
- * requiring `@vitejs/plugin-react` to be resolvable from the repo root.
- * `buildTarget` composes plugins in before invoking `vite.build`.
- */
 export function buildViteOptions(target: BundleTarget, apiOrigin: string): InlineConfig {
   return {
     configFile: false,
@@ -62,50 +65,4 @@ export function buildViteOptions(target: BundleTarget, apiOrigin: string): Inlin
       },
     },
   };
-}
-
-async function ensureFile(path: string) {
-  await stat(path);
-}
-
-async function buildTarget(target: BundleTarget) {
-  await rm(target.outDir, { recursive: true, force: true });
-
-  const [{ default: react }, { build }] = await Promise.all([
-    import("@vitejs/plugin-react"),
-    import("vite"),
-  ]);
-
-  const baseOptions = buildViteOptions(target, process.env.API_ORIGIN ?? "");
-  await build({
-    ...baseOptions,
-    plugins: [react()],
-  });
-
-  const bundlePath = resolve(target.outDir, "index.js");
-  await ensureFile(bundlePath);
-
-  await mkdir(target.projectDistDir, { recursive: true });
-  await cp(bundlePath, resolve(target.projectDistDir, "index.js"));
-
-  const cssPath = resolve(target.outDir, "style.css");
-  try {
-    await ensureFile(cssPath);
-    await cp(cssPath, resolve(target.projectDistDir, "index.css"));
-  } catch {
-    // No stylesheet emitted for this bundle.
-  }
-}
-
-export async function main() {
-  for (const target of bundleTargets) {
-    await buildTarget(target);
-  }
-}
-
-if (import.meta.main) {
-  main().catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-  });
 }

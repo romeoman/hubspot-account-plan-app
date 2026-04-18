@@ -31,7 +31,9 @@ describe("bundle-hubspot-card — programmatic define contract", () => {
   });
 
   it("uses an empty-string sentinel when API_ORIGIN is unset", () => {
-    const options = buildViteOptions(bundleTargets[0]!, "");
+    const firstTarget = bundleTargets[0];
+    if (!firstTarget) throw new Error("expected at least one bundle target");
+    const options = buildViteOptions(firstTarget, "");
     expect(options.define).toEqual({
       __HAP_API_ORIGIN__: JSON.stringify(""),
     });
@@ -39,7 +41,9 @@ describe("bundle-hubspot-card — programmatic define contract", () => {
 
   it("preserves trailing slashes verbatim inside the JSON-encoded value", () => {
     const origin = "https://staging.example.test/";
-    const options = buildViteOptions(bundleTargets[0]!, origin);
+    const firstTarget = bundleTargets[0];
+    if (!firstTarget) throw new Error("expected at least one bundle target");
+    const options = buildViteOptions(firstTarget, origin);
     expect(options.define).toEqual({
       __HAP_API_ORIGIN__: JSON.stringify(origin),
     });
