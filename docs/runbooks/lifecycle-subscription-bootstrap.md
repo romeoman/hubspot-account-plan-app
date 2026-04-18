@@ -206,3 +206,13 @@ Operational consequence:
   It is intentionally app-scoped, not tenant-scoped — subscriptions are a
   property of the HubSpot app, not of any one installed portal.
 - Full security review in `docs/security/slice-11-audit.md`.
+
+## 11. Dev first run
+
+For the zero-to-first-install developer path — env setup, URL contract
+cross-check, install + uninstall verification against a dev HubSpot test
+portal — see `docs/runbooks/slice-11-dev-quickstart.md`.
+
+That quickstart is a thin operator wrapper around this runbook; the
+contract, env handling, exit codes, and diagnostics here remain
+authoritative.

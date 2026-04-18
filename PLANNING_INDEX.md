@@ -61,6 +61,8 @@ Important:
 - `.claude/tasks/2026-04-17-slice-7-lifecycle-journal-ingestion.md`
 - `.claude/tasks/2026-04-17-slice-10-upload-profile-wiring.md`
 - `.claude/tasks/2026-04-18-slice-11-lifecycle-subscription-bootstrap.md`
+- `.claude/tasks/2026-04-19-slice-11-dev-operationalization.md`
+- `docs/runbooks/slice-11-dev-quickstart.md`
 - `docs/superpowers/plans/2026-04-14-slice-1-core-domain.md`
 - `docs/superpowers/plans/2026-04-15-slice-2-live-integrations.md`
 - `docs/superpowers/plans/2026-04-15-slice-3-oauth-public-app.md`

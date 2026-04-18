@@ -330,3 +330,37 @@ and `builder-admin-route` consume.
   upstream HubSpot failure.
 - **Mount point:** `POST /admin/lifecycle/bootstrap`, OUTSIDE `/api/*`,
   outside tenant middleware.
+
+## 11. Webhooks feature component (2026.03)
+
+Verified against `HubSpot/hubspot-project-components` on GitHub, path
+`2026.03/components/webhooks/src/app/webhooks/webhooks-hsmeta.json`
+(official HubSpot-owned reference). Confidence: **high**.
+
+- **Filename:** `webhooks-hsmeta.json`.
+- **Directory:** `apps/hubspot-project/src/app/webhooks/`.
+- **Top-level shape:** `{ "uid": "...", "type": "webhooks", "config": { ... } }`,
+  identical envelope to the existing `card-hsmeta.json` and
+  `settings-hsmeta.json` components.
+- **Required config fields:**
+  - `config.settings.targetUrl` — the public HTTPS URL HubSpot delivers to.
+  - `config.settings.maxConcurrentRequests` — delivery concurrency hint
+    (reference template uses `10`).
+  - `config.subscriptions` — object with `crmObjects`, `legacyCrmObjects`,
+    and `hubEvents` arrays (all may be empty for lifecycle-only apps).
+- **Variable substitution:** `${API_ORIGIN}` works inside
+  `config.settings.targetUrl` the same way it works in `app-hsmeta.json`,
+  so the component can point at `${API_ORIGIN}/webhooks/hubspot/lifecycle`.
+- **Lifecycle event ids (`4-1909196`, `4-1916193`):** NOT declared here.
+  The 2026.03 component schema has no slot for APP_LIFECYCLE_EVENT
+  subscriptions — those are registered exclusively via the
+  `/webhooks-journal/subscriptions/2026-03` management API called by
+  `ensureLifecycleSubscriptions`. Single source of truth preserved.
+- **Scopes:** unchanged. `developer.webhooks_journal.subscriptions.read`
+  and `.write` are client-credentials scopes used by the management API,
+  not end-user OAuth scopes, so they stay out of
+  `app-hsmeta.json config.auth.requiredScopes`.
+
+This component was added by
+`.claude/tasks/2026-04-19-slice-11-dev-operationalization.md` as the
+missing config-layer half of Slice 11.

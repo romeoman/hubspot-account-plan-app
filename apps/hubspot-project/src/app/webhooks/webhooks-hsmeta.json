@@ -1,0 +1,15 @@
+{
+  "uid": "hap_signal_workspace_webhooks",
+  "type": "webhooks",
+  "config": {
+    "settings": {
+      "targetUrl": "${API_ORIGIN}/webhooks/hubspot/lifecycle",
+      "maxConcurrentRequests": 10
+    },
+    "subscriptions": {
+      "crmObjects": [],
+      "legacyCrmObjects": [],
+      "hubEvents": []
+    }
+  }
+}
