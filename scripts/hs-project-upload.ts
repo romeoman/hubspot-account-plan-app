@@ -7,12 +7,22 @@
  * (cards/*.tsx files are reported "not found"). Same files upload cleanly
  * from a /tmp dir. See apps/hubspot-project/UPLOAD.md for the full diagnosis.
  *
+ * Slice 10: the wrapper now reads the selected HubSpot profile's
+ * `variables.API_ORIGIN` and sets `process.env.API_ORIGIN` before invoking
+ * the programmatic bundler, so `__HAP_API_ORIGIN__` is baked into both the
+ * card and settings bundles at build time.
+ *
  * @todo Slice 3: remove this wrapper if/when @hubspot/cli handles worktrees.
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+  extractApiOrigin,
+  loadProfile,
+  resolveProfilePath,
+} from "../apps/hubspot-extension/scripts/build-with-profile";
 
 const PROJECT_DIR = "apps/hubspot-project";
 // Default to PATH-resolved `hs` so the wrapper works across environments.
@@ -31,6 +41,7 @@ function runBundle(root: string): void {
   execFileSync("pnpm", ["tsx", "scripts/bundle-hubspot-card.ts"], {
     cwd: root,
     stdio: "inherit",
+    env: process.env,
   });
 }
 
@@ -43,26 +54,59 @@ export interface UploadDeps {
   log(message: string): void;
 }
 
+/**
+ * Pure helper: pull the `--profile`/`-p` value out of argv.
+ *
+ * Returns `undefined` when the flag is absent, so callers can still throw
+ * the "HubSpot profile required" error themselves.
+ */
+export function extractProfileName(args: string[]): string | undefined {
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "--profile" || arg === "-p") {
+      return args[i + 1];
+    }
+    if (arg?.startsWith("--profile=")) {
+      return arg.slice("--profile=".length);
+    }
+    if (arg?.startsWith("-p=")) {
+      return arg.slice("-p=".length);
+    }
+  }
+  return undefined;
+}
+
 export function buildUploadRunner(deps: UploadDeps) {
   return (args: string[]): number => {
-    const hasProfile =
-      args.includes("--profile") ||
-      args.includes("-p") ||
-      args.some((arg) => arg.startsWith("--profile=")) ||
-      args.some((arg) => arg.startsWith("-p="));
-    if (!hasProfile) {
+    const profileName = extractProfileName(args);
+    if (!profileName) {
       throw new Error("hs project upload requires --profile <name>");
     }
 
     const root = deps.repoRoot();
+    const profileDir = join(root, PROJECT_DIR);
+    const profilePath = resolveProfilePath(profileName, profileDir);
+    const profile = loadProfile(profilePath);
+    const apiOrigin = extractApiOrigin(profile);
+
     const src = join(root, PROJECT_DIR);
     const tmp = deps.makeTempDir();
 
-    deps.runBundle(root);
-    deps.log(`[hs-upload] copying ${src} → ${tmp}`);
-    deps.copyProject(src, tmp);
-    deps.log(`[hs-upload] running '${HS_CLI} project upload' from ${tmp}`);
-    return deps.runUpload(tmp, args);
+    const previousApiOrigin = process.env.API_ORIGIN;
+    process.env.API_ORIGIN = apiOrigin;
+    try {
+      deps.runBundle(root);
+      deps.log(`[hs-upload] copying ${src} → ${tmp}`);
+      deps.copyProject(src, tmp);
+      deps.log(`[hs-upload] running '${HS_CLI} project upload' from ${tmp}`);
+      return deps.runUpload(tmp, args);
+    } finally {
+      if (previousApiOrigin === undefined) {
+        delete process.env.API_ORIGIN;
+      } else {
+        process.env.API_ORIGIN = previousApiOrigin;
+      }
+    }
   };
 }
 
