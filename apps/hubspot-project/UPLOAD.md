@@ -15,11 +15,11 @@ The HubSpot CLI's project uploader (`@hubspot/cli` 8.4.0) cannot reliably upload
 
 This appears to be a worktree-context issue in the CLI's git-aware file walker, not a misconfiguration on our side. Reproduced consistently:
 
-| Source dir | Outcome |
-|---|---|
+| Source dir                                 | Outcome                                          |
+| ------------------------------------------ | ------------------------------------------------ |
 | `.worktrees/slice-2/apps/hubspot-project/` | upload succeeds; build FAILS (`*.tsx not found`) |
-| `/tmp/<copy>/` (no git) | build + deploy succeed |
-| `/tmp/<copy>/` (with `git init`) | build + deploy succeed |
+| `/tmp/<copy>/` (no git)                    | build + deploy succeed                           |
+| `/tmp/<copy>/` (with `git init`)           | build + deploy succeed                           |
 
 The wrapper script removes the worktree variable from the equation.
 
@@ -96,6 +96,26 @@ readiness contract is:
 - the selected HubSpot profile supplies `OAUTH_REDIRECT_URI` and `API_ORIGIN`
 - staging/production installs must use HTTPS callback URLs
 - the API-side `HUBSPOT_OAUTH_REDIRECT_URI` must match the active deployed origin
+
+Slice 10 closes the extension side of that contract: `hs-project-upload.ts`
+now threads the selected profile's `variables.API_ORIGIN` into the
+programmatic bundler (`scripts/bundle-hubspot-card.ts`) via
+`process.env.API_ORIGIN`. The bundler's `define` block embeds
+`__HAP_API_ORIGIN__` into both the card and settings bundles, so deployed
+extensions call the origin declared in `hsprofile.<name>.json` instead of
+the hardcoded default.
+
+Two profile-aware build paths now exist:
+
+- `apps/hubspot-extension` → `pnpm build:with-profile --profile <name>` —
+  single-bundle wrapper for local dev ergonomics.
+- `scripts/hs-project-upload.ts --profile <name>` — production two-bundle
+  path that actually ships to HubSpot.
+
+Both read the same `hsprofile.<name>.json` and share the same
+`__HAP_API_ORIGIN__` substitution contract. A profile that is missing
+`variables.API_ORIGIN` causes the upload wrapper to exit non-zero before
+any bundling or `hs project upload` subprocess runs.
 
 See also:
 
