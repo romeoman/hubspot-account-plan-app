@@ -86,6 +86,19 @@ function byEventTypeId(a: SubscriptionEntry, b: SubscriptionEntry): number {
   return 0;
 }
 
+/**
+ * HubSpot's webhooks-journal subscriptions API returns `id` as a NUMBER in
+ * practice (see `docs/slice-11-preflight-notes.md` §2 sample payload with
+ * `"id": 60001005`). Accept both string and finite number; normalize to
+ * string. Returns null for anything else (including empty strings and
+ * non-finite numbers like NaN / Infinity).
+ */
+function coerceSubscriptionId(value: unknown): string | null {
+  if (typeof value === "string" && value.length > 0) return value;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return null;
+}
+
 async function listLifecycleSubscriptions(
   fetchImpl: typeof fetch,
   token: string,
@@ -126,15 +139,16 @@ async function listLifecycleSubscriptions(
   const results = Array.isArray(body.results) ? body.results : [];
   for (const raw of results) {
     const item = raw as ListResultItem;
+    const id = coerceSubscriptionId(item.id);
     if (
-      typeof item.id === "string" &&
+      id !== null &&
       typeof item.eventTypeId === "string" &&
       item.subscriptionType === LIFECYCLE_SUBSCRIPTION_TYPE &&
       REQUIRED_EVENT_TYPE_IDS.includes(item.eventTypeId)
     ) {
       // First write wins; duplicates should not happen but we don't overwrite.
       if (!existing.has(item.eventTypeId)) {
-        existing.set(item.eventTypeId, item.id);
+        existing.set(item.eventTypeId, id);
       }
     }
   }
@@ -184,14 +198,15 @@ async function createLifecycleSubscription(
     );
   }
 
-  if (typeof body.id !== "string" || body.id.length === 0) {
+  const id = coerceSubscriptionId(body.id);
+  if (id === null) {
     throw new SubscriptionBootstrapError(
       `HubSpot subscriptions create response missing id for eventTypeId ${eventTypeId}`,
       { stage: "create", status: response.status, eventTypeId },
     );
   }
 
-  return body.id;
+  return id;
 }
 
 export async function ensureLifecycleSubscriptions(

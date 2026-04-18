@@ -224,6 +224,73 @@ describe("ensureLifecycleSubscriptions — both present", () => {
     ]);
     expect(calls).toHaveLength(1);
   });
+
+  it("normalizes numeric subscription ids from the list response to strings", async () => {
+    // Per docs/slice-11-preflight-notes.md §2, HubSpot's webhooks-journal
+    // subscriptions API returns `id` as a number (e.g. `"id": 60001005`).
+    // The list filter must accept numeric ids and coerce them to strings,
+    // otherwise existing subscriptions are silently skipped and we would
+    // duplicate-create them.
+    const { fetchImpl, calls } = makeFetch([
+      jsonResponse({
+        results: [
+          {
+            id: 60001005,
+            subscriptionType: "APP_LIFECYCLE_EVENT",
+            eventTypeId: INSTALL,
+          },
+          {
+            id: 60001006,
+            subscriptionType: "APP_LIFECYCLE_EVENT",
+            eventTypeId: UNINSTALL,
+          },
+        ],
+      }),
+    ]);
+
+    const report = await ensureLifecycleSubscriptions({
+      targetUrl: TARGET_URL,
+      fetchImpl,
+      getToken,
+    });
+
+    expect(report.created).toEqual([]);
+    expect(report.alreadyPresent).toEqual([
+      { eventTypeId: INSTALL, subscriptionId: "60001005" },
+      { eventTypeId: UNINSTALL, subscriptionId: "60001006" },
+    ]);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("normalizes numeric subscription ids from the create response to strings", async () => {
+    // Same numeric-id shape must be honored on create responses.
+    const { fetchImpl, calls } = makeFetch([
+      jsonResponse({ results: [] }),
+      jsonResponse({
+        id: 60001111,
+        subscriptionType: "APP_LIFECYCLE_EVENT",
+        eventTypeId: INSTALL,
+      }),
+      jsonResponse({
+        id: 60002222,
+        subscriptionType: "APP_LIFECYCLE_EVENT",
+        eventTypeId: UNINSTALL,
+      }),
+    ]);
+
+    const report = await ensureLifecycleSubscriptions({
+      targetUrl: TARGET_URL,
+      fetchImpl,
+      getToken,
+    });
+
+    expect(report.created).toEqual([
+      { eventTypeId: INSTALL, subscriptionId: "60001111" },
+      { eventTypeId: UNINSTALL, subscriptionId: "60002222" },
+    ]);
+    expect(report.alreadyPresent).toEqual([]);
+    expect(calls).toHaveLength(3);
+  });
 });
 
 describe("ensureLifecycleSubscriptions — error paths", () => {
