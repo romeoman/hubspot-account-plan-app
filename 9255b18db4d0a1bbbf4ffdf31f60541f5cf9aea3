@@ -1,0 +1,55 @@
+apps/api/src/lib/__tests__/hubspot-app-auth.test.ts
+  f5e7dda7755350a1 1-43,45-58,60-71,73-84,86-97,99-125,127-163,165-248
+biome.json
+  f5e7dda7755350a1 39
+apps/api/src/lib/hubspot-app-auth.ts
+  f5e7dda7755350a1 1-100,102-141,144-168
+apps/api/scripts/lifecycle-bootstrap.ts
+  f5e7dda7755350a1 1-23,25-48
+apps/api/src/lib/hubspot-subscription-bootstrap.ts
+  f5e7dda7755350a1 1-103,106-120,123-214,216-227
+docs/security/SECURITY.md
+  f5e7dda7755350a1 664-717
+apps/api/src/routes/admin/lifecycle-bootstrap.ts
+  f5e7dda7755350a1 1-104
+apps/api/src/routes/admin/__tests__/lifecycle-bootstrap.test.ts
+  f5e7dda7755350a1 1-38,40-46,48-52,54-57,59-68,70-77,79-94,96-100,102-117,119-123,125-140,142-146,148-171,173-201,203-232,234-247
+apps/api/src/lib/__tests__/hubspot-subscription-bootstrap.test.ts
+  f5e7dda7755350a1 1-74,76-79,81-102,105-153,155-186,188-303
+apps/api/package.json
+  f5e7dda7755350a1 9-10
+docs/runbooks/lifecycle-subscription-bootstrap.md
+  f5e7dda7755350a1 1-29,31-189,191-196,198-208
+.taskmaster/tasks/tasks.json
+  f5e7dda7755350a1 1306,1309-1310,1312
+docs/security/slice-11-audit.md
+  f5e7dda7755350a1 1-232
+.claude/tasks/2026-04-18-slice-11-lifecycle-subscription-bootstrap.md
+  f5e7dda7755350a1 129-439
+PLANNING_INDEX.md
+  f5e7dda7755350a1 51,53,56,63
+docs/slice-11-preflight-notes.md
+  f5e7dda7755350a1 1-54,56-244,246-332
+apps/api/src/index.ts
+  f5e7dda7755350a1 11,128-132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "9255b18db4d0a1bbbf4ffdf31f60541f5cf9aea3",
+  "prompts": {
+    "f5e7dda7755350a1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b9db770f-deb1-438a-bcc2-f53e6cffd296",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "romeoman",
+      "messages": [],
+      "total_additions": 2228,
+      "total_deletions": 52,
+      "accepted_lines": 2187,
+      "overriden_lines": 42
+    }
+  }
+}
