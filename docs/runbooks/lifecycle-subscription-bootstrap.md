@@ -82,8 +82,8 @@ not tenant-level, operation.
 {
   "targetUrl": "https://api.example.com/webhooks/hubspot/lifecycle",
   "created": [
-    { "eventTypeId": "4-1909196", "subscriptionId": 60001005 },
-    { "eventTypeId": "4-1916193", "subscriptionId": 60001006 }
+    { "eventTypeId": "4-1909196", "subscriptionId": "60001005" },
+    { "eventTypeId": "4-1916193", "subscriptionId": "60001006" }
   ],
   "alreadyPresent": []
 }
@@ -96,8 +96,8 @@ On an already-subscribed app:
   "targetUrl": "https://api.example.com/webhooks/hubspot/lifecycle",
   "created": [],
   "alreadyPresent": [
-    { "eventTypeId": "4-1909196", "subscriptionId": 60001005 },
-    { "eventTypeId": "4-1916193", "subscriptionId": 60001006 }
+    { "eventTypeId": "4-1909196", "subscriptionId": "60001005" },
+    { "eventTypeId": "4-1916193", "subscriptionId": "60001006" }
   ]
 }
 ```
@@ -188,8 +188,8 @@ Operational consequence:
 
 | Symptom                                                           | Likely cause                                                    | Next step                                                                                                                                                                                |
 | ----------------------------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `401 { error: "unauthorized" }` from the admin route              | `X-Internal-Bootstrap-Token` header missing                     | Add the header.                                                                                                                                                                          |
-| `403 { error: "forbidden" }` from the admin route                 | Header present but wrong value                                  | Check the env var vs the header value. Do NOT echo either in logs.                                                                                                                       |
+| `401 { error: "missing_internal_token" }` from the admin route    | `X-Internal-Bootstrap-Token` header missing                     | Add the header.                                                                                                                                                                          |
+| `403 { error: "invalid_internal_token" }` from the admin route    | Header present but wrong value                                  | Check the env var vs the header value. Do NOT echo either in logs.                                                                                                                       |
 | `503 { error: "bootstrap_not_configured" }`                       | Server-side `INTERNAL_BOOTSTRAP_TOKEN` env is unset             | Set the env var in the deploy environment and restart.                                                                                                                                   |
 | `502 { error: "upstream_failure", stage: "token" }`               | Token fetch against `/oauth/v1/token` failed                    | Check `HUBSPOT_APP_CLIENT_ID` / `HUBSPOT_APP_CLIENT_SECRET` / network egress. Never echo the secret.                                                                                     |
 | `502 { error: "upstream_failure", stage: "list" }`                | GET subscriptions failed                                        | Check scopes (`developer.webhooks_journal.subscriptions.read`) and the HubSpot `correlationId` in the error.                                                                             |

@@ -55,8 +55,8 @@ change itself: no tenant-scoped file in the repo is modified.
     is missing the token. This is intentionally distinct from 401/403
     so a missing-env misconfiguration is not conflated with a bad
     client-side header.
-  - `401 { error: "unauthorized" }` when the header is missing.
-  - `403 { error: "forbidden" }` when the header is present but wrong.
+  - `401 { error: "missing_internal_token" }` when the header is missing.
+  - `403 { error: "invalid_internal_token" }` when the header is present but wrong.
   - `200` with the typed JSON report on success.
   - `502 { error: "upstream_failure", stage, ... }` when HubSpot's
     token / list / create call fails. The stage is safe to surface.
