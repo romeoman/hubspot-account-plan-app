@@ -24,7 +24,8 @@
  * single origin rather than sweeping the matrix.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildUploadRunner, type UploadDeps } from "../hs-project-upload";
@@ -40,7 +41,10 @@ const CARD_BUNDLE = resolve(repoRoot, "apps/hubspot-project/src/app/cards/dist/i
 const SETTINGS_BUNDLE = resolve(repoRoot, "apps/hubspot-project/src/app/settings/dist/index.js");
 
 describe("hs-project-upload — e2e define contract", () => {
+  let scratchDir: string;
+
   beforeAll(() => {
+    scratchDir = mkdtempSync(join(tmpdir(), "hap-upload-e2e-"));
     writeFileSync(
       PROFILE_PATH,
       JSON.stringify(
@@ -63,13 +67,16 @@ describe("hs-project-upload — e2e define contract", () => {
       // would confuse later runs.
       rmSync(PROFILE_PATH, { force: true });
     }
+    if (scratchDir && existsSync(scratchDir)) {
+      rmSync(scratchDir, { recursive: true, force: true });
+    }
   });
 
   it("embeds the profile's API_ORIGIN into both the card and settings bundles", async () => {
     let uploadCalls = 0;
     const deps: UploadDeps = {
       repoRoot: () => repoRoot,
-      makeTempDir: () => join(repoRoot, ".bundle-artifacts-e2e-scratch"),
+      makeTempDir: () => scratchDir,
       copyProject: () => {
         // Skip copying to the temp dir — the upload is stubbed below, so
         // nothing downstream reads this path.

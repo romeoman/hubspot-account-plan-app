@@ -59,13 +59,21 @@ export interface UploadDeps {
  * Pure helper: pull the `--profile`/`-p` value out of argv.
  *
  * Returns `undefined` when the flag is absent, so callers can still throw
- * the "HubSpot profile required" error themselves.
+ * the "HubSpot profile required" error themselves. Throws a clear
+ * "Missing value for --profile flag" error when the flag is present but
+ * its value is missing (last arg) or another flag (starts with `-`), so
+ * `hs project upload -p --dry-run` fails fast instead of interpreting
+ * `--dry-run` as the profile name.
  */
 export function extractProfileName(args: string[]): string | undefined {
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
     if (arg === "--profile" || arg === "-p") {
-      return args[i + 1];
+      const next = args[i + 1];
+      if (next === undefined || next.startsWith("-")) {
+        throw new Error(`Missing value for --profile flag (got ${arg} with no value)`);
+      }
+      return next;
     }
     if (arg?.startsWith("--profile=")) {
       return arg.slice("--profile=".length);

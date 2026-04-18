@@ -42,6 +42,15 @@ describe("extractProfileName", () => {
   ])("%s", (_label, argv, expected) => {
     expect(extractProfileName(argv)).toBe(expected);
   });
+
+  it.each([
+    ["--profile as last arg", ["--profile"]],
+    ["-p as last arg", ["-p"]],
+    ["--profile followed by another flag", ["--profile", "--other"]],
+    ["-p followed by another flag", ["-p", "--other"]],
+  ])("throws a clear missing-value error: %s", (_label, argv) => {
+    expect(() => extractProfileName(argv)).toThrow(/missing value for --profile/i);
+  });
 });
 
 describe("hs-project-upload", () => {
