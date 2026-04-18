@@ -1,21 +1,35 @@
-import { cp, mkdir, rm, stat } from "node:fs/promises";
+/**
+ * Library module for the programmatic two-bundle HubSpot upload pipeline.
+ *
+ * Pure helpers + the `bundleTargets` declaration only. No top-level `vite`
+ * import, no plugin import, no CLI entry — those live in
+ * `bundle-hubspot-card-cli.ts` so this file can be imported from tests
+ * without pulling in `@vitejs/plugin-react` (not resolvable from the repo
+ * root under plain Node resolution) or kicking off a build as a side
+ * effect of import.
+ *
+ * The `define` block mirrors the Slice 8 contract pinned by
+ * `apps/hubspot-extension/vite.config.ts`:
+ *   - `__HAP_API_ORIGIN__` is always `JSON.stringify(apiOrigin)`
+ *   - an empty-string sentinel is emitted when the caller has no origin
+ *   - trailing slashes are preserved verbatim — no normalization
+ */
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import react from "@vitejs/plugin-react";
-import { build } from "vite";
+import type { InlineConfig } from "vite";
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const extensionDir = resolve(rootDir, "apps/hubspot-extension");
 const tempBundleRoot = resolve(extensionDir, ".bundle-artifacts");
 
-type BundleTarget = {
+export type BundleTarget = {
   name: "card" | "settings";
   entry: string;
   outDir: string;
   projectDistDir: string;
 };
 
-const bundleTargets: BundleTarget[] = [
+export const bundleTargets: BundleTarget[] = [
   {
     name: "card",
     entry: resolve(extensionDir, "src/hubspot-card-entry.tsx"),
@@ -30,17 +44,13 @@ const bundleTargets: BundleTarget[] = [
   },
 ];
 
-async function ensureFile(path: string) {
-  await stat(path);
-}
-
-async function buildTarget(target: BundleTarget) {
-  await rm(target.outDir, { recursive: true, force: true });
-
-  await build({
+export function buildViteOptions(target: BundleTarget, apiOrigin: string): InlineConfig {
+  return {
     configFile: false,
     root: extensionDir,
-    plugins: [react()],
+    define: {
+      __HAP_API_ORIGIN__: JSON.stringify(apiOrigin),
+    },
     build: {
       emptyOutDir: true,
       outDir: target.outDir,
@@ -54,30 +64,5 @@ async function buildTarget(target: BundleTarget) {
         },
       },
     },
-  });
-
-  const bundlePath = resolve(target.outDir, "index.js");
-  await ensureFile(bundlePath);
-
-  await mkdir(target.projectDistDir, { recursive: true });
-  await cp(bundlePath, resolve(target.projectDistDir, "index.js"));
-
-  const cssPath = resolve(target.outDir, "style.css");
-  try {
-    await ensureFile(cssPath);
-    await cp(cssPath, resolve(target.projectDistDir, "index.css"));
-  } catch {
-    // No stylesheet emitted for this bundle.
-  }
+  };
 }
-
-async function main() {
-  for (const target of bundleTargets) {
-    await buildTarget(target);
-  }
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
