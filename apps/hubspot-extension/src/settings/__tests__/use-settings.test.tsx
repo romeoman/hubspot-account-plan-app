@@ -179,6 +179,120 @@ describe("useSettings", () => {
     fetchSpy.mockRestore();
   });
 
+  it("testConnection wraps the injected tester and returns its response on success", async () => {
+    const renderer = createRenderer("settings");
+    const fetchSettings = vi.fn(async () => VALID_SETTINGS);
+    const testConnection = vi.fn(async () => ({
+      ok: true as const,
+      latencyMs: 99,
+    }));
+
+    function TesterProbe() {
+      const state = useSettings({ fetchSettings, testConnection });
+      const [result, setResult] = useState<string>("");
+
+      useEffect(() => {
+        if (state.loading) return;
+        if (result !== "") return;
+        void state
+          .testConnection({ target: "exa", useSavedKey: true })
+          .then((r) => setResult(JSON.stringify(r)));
+      }, [state.loading, state.testConnection, result]);
+
+      return <Text>{result || "pending"}</Text>;
+    }
+
+    renderer.render(<TesterProbe />);
+
+    await renderer.waitFor(() => {
+      const parsed = renderer.find(Text).text ?? "";
+      expect(parsed).not.toBe("pending");
+    });
+
+    expect(testConnection).toHaveBeenCalledTimes(1);
+    const rendered = renderer.find(Text).text ?? "";
+    expect(JSON.parse(rendered)).toEqual({ ok: true, latencyMs: 99 });
+  });
+
+  it("hook-level testConnection maps a thrown error to a network failure shape", async () => {
+    const renderer = createRenderer("settings");
+    const fetchSettings = vi.fn(async () => VALID_SETTINGS);
+    const testConnection = vi.fn(async () => {
+      throw new Error("boom");
+    });
+
+    function TesterProbe() {
+      const state = useSettings({ fetchSettings, testConnection });
+      const [result, setResult] = useState<string>("");
+
+      useEffect(() => {
+        if (state.loading) return;
+        if (result !== "") return;
+        void state
+          .testConnection({ target: "exa", useSavedKey: true })
+          .then((r) => setResult(JSON.stringify(r)));
+      }, [state.loading, state.testConnection, result]);
+
+      return <Text>{result || "pending"}</Text>;
+    }
+
+    renderer.render(<TesterProbe />);
+
+    await renderer.waitFor(() => {
+      const parsed = renderer.find(Text).text ?? "";
+      expect(parsed).not.toBe("pending");
+    });
+
+    const rendered = renderer.find(Text).text ?? "";
+    const parsed = JSON.parse(rendered);
+    expect(parsed).toMatchObject({ ok: false, code: "network" });
+  });
+
+  it("createSettingsConnectionTester maps HTTP 429 to { ok: false, code: 'rate_limit' }", async () => {
+    const { createSettingsConnectionTester } = await import("../api-fetcher");
+    const fetchSpy = vi.spyOn(hubspot, "fetch").mockResolvedValueOnce({
+      ok: false,
+      status: 429,
+      statusText: "Too Many Requests",
+      json: async () => ({}),
+    } as unknown as Response);
+
+    const tester = createSettingsConnectionTester();
+    const result = await tester({ target: "exa", useSavedKey: true });
+
+    expect(result).toMatchObject({ ok: false, code: "rate_limit" });
+
+    fetchSpy.mockRestore();
+  });
+
+  it("createSettingsConnectionTester maps HTTP 400/401 to { ok: false, code: 'unknown' }", async () => {
+    const { createSettingsConnectionTester } = await import("../api-fetcher");
+    const fetchSpy400 = vi.spyOn(hubspot, "fetch").mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      statusText: "Bad Request",
+      json: async () => ({}),
+    } as unknown as Response);
+
+    const tester = createSettingsConnectionTester();
+    const r1 = await tester({ target: "exa", useSavedKey: true });
+    expect(r1).toMatchObject({ ok: false, code: "unknown" });
+
+    fetchSpy400.mockRestore();
+
+    const fetchSpy401 = vi.spyOn(hubspot, "fetch").mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      json: async () => ({}),
+    } as unknown as Response);
+
+    const r2 = await tester({ target: "exa", useSavedKey: true });
+    expect(r2).toMatchObject({ ok: false, code: "unknown" });
+
+    fetchSpy401.mockRestore();
+  });
+
   it("does not refetch forever when callers pass inline fetcher functions", async () => {
     const renderer = createRenderer("settings");
     const fetchSpy = vi.fn(async () => VALID_SETTINGS);

@@ -500,4 +500,289 @@ describe("HubSpotSettingsPage", () => {
     )[0];
     expect(call.thresholds.minConfidence).toBe(0.65);
   });
+
+  describe("Test-connection buttons", () => {
+    const SETTINGS_NO_KEYS = {
+      ...VALID_SETTINGS,
+      signalProviders: {
+        exa: { enabled: true, hasApiKey: false },
+        hubspotEnrichment: { enabled: true, hasApiKey: false },
+      },
+      llm: {
+        provider: "openai" as const,
+        model: "gpt-5.4-mini",
+        hasApiKey: false,
+      },
+    };
+
+    it("disables the Exa Test-connection button when neither a draft nor a saved key exists", async () => {
+      const renderer = createRenderer("settings");
+      const fetchSettings = vi.fn(async () => SETTINGS_NO_KEYS);
+
+      renderer.render(<HubSpotSettingsPage fetchSettings={fetchSettings} />);
+
+      await renderer.waitFor(() => {
+        expect(renderer.find(LoadingButton).props.loading).toBe(false);
+      });
+
+      const btn = renderer.findByTestId(Button, "testExaConnection");
+      expect(btn.props.disabled).toBe(true);
+    });
+
+    it("sends { useSavedKey: true } when clicking Test connection on Exa with no draft key", async () => {
+      const renderer = createRenderer("settings");
+      const fetchSettings = vi.fn(async () => VALID_SETTINGS);
+      const testConnection = vi.fn(async () => ({
+        ok: true as const,
+        latencyMs: 17,
+      }));
+
+      renderer.render(
+        <HubSpotSettingsPage fetchSettings={fetchSettings} testConnection={testConnection} />,
+      );
+
+      await renderer.waitFor(() => {
+        expect(renderer.find(LoadingButton).props.loading).toBe(false);
+      });
+
+      renderer.findByTestId(Button, "testExaConnection").trigger("onClick");
+
+      await renderer.waitFor(() => {
+        expect(testConnection).toHaveBeenCalledTimes(1);
+      });
+
+      expect(testConnection).toHaveBeenCalledWith({
+        target: "exa",
+        useSavedKey: true,
+      });
+    });
+
+    it("sends { apiKey } (not useSavedKey) when clicking Test connection on Exa with a draft key", async () => {
+      const renderer = createRenderer("settings");
+      const fetchSettings = vi.fn(async () => VALID_SETTINGS);
+      const testConnection = vi.fn(async () => ({
+        ok: true as const,
+        latencyMs: 11,
+      }));
+
+      renderer.render(
+        <HubSpotSettingsPage fetchSettings={fetchSettings} testConnection={testConnection} />,
+      );
+
+      await renderer.waitFor(() => {
+        expect(renderer.find(LoadingButton).props.loading).toBe(false);
+      });
+
+      triggerValue(renderer.find(Input, { name: "exaApiKey" }), "draft-exa-value");
+      renderer.findByTestId(Button, "testExaConnection").trigger("onClick");
+
+      await renderer.waitFor(() => {
+        expect(testConnection).toHaveBeenCalledTimes(1);
+      });
+
+      expect(testConnection).toHaveBeenCalledWith({
+        target: "exa",
+        apiKey: "draft-exa-value",
+      });
+    });
+
+    it("disables the LLM Test-connection button when provider is 'none'", async () => {
+      const renderer = createRenderer("settings");
+      const fetchSettings = vi.fn(async () => VALID_SETTINGS);
+
+      renderer.render(<HubSpotSettingsPage fetchSettings={fetchSettings} />);
+
+      await renderer.waitFor(() => {
+        expect(renderer.find(LoadingButton).props.loading).toBe(false);
+      });
+
+      triggerValue(renderer.find(Select, { name: "llmProvider" }), "none");
+
+      await renderer.waitFor(() => {
+        const btn = renderer.findByTestId(Button, "testLlmConnection");
+        expect(btn.props.disabled).toBe(true);
+      });
+    });
+
+    it("disables the LLM Test-connection button when provider is 'custom' and endpointUrl is empty", async () => {
+      const renderer = createRenderer("settings");
+      const fetchSettings = vi.fn(async () => VALID_SETTINGS);
+
+      renderer.render(<HubSpotSettingsPage fetchSettings={fetchSettings} />);
+
+      await renderer.waitFor(() => {
+        expect(renderer.find(LoadingButton).props.loading).toBe(false);
+      });
+
+      triggerValue(renderer.find(Select, { name: "llmProvider" }), "custom");
+      triggerValue(renderer.find(Select, { name: "llmModel" }), "__other__");
+      triggerValue(renderer.find(Input, { name: "llmModelOther" }), "custom-model");
+
+      await renderer.waitFor(() => {
+        const btn = renderer.findByTestId(Button, "testLlmConnection");
+        expect(btn.props.disabled).toBe(true);
+      });
+    });
+
+    it("sends provider + model + saved key indicator when clicking Test connection on LLM with no draft key", async () => {
+      const renderer = createRenderer("settings");
+      const fetchSettings = vi.fn(async () => VALID_SETTINGS);
+      const testConnection = vi.fn(async () => ({
+        ok: true as const,
+        latencyMs: 88,
+      }));
+
+      renderer.render(
+        <HubSpotSettingsPage fetchSettings={fetchSettings} testConnection={testConnection} />,
+      );
+
+      await renderer.waitFor(() => {
+        expect(renderer.find(LoadingButton).props.loading).toBe(false);
+      });
+
+      renderer.findByTestId(Button, "testLlmConnection").trigger("onClick");
+
+      await renderer.waitFor(() => {
+        expect(testConnection).toHaveBeenCalledTimes(1);
+      });
+
+      expect(testConnection).toHaveBeenCalledWith({
+        target: "llm",
+        provider: "openai",
+        model: "gpt-5.4-mini",
+        useSavedKey: true,
+      });
+    });
+
+    it("includes endpointUrl in the LLM body when provider is 'custom'", async () => {
+      const renderer = createRenderer("settings");
+      const fetchSettings = vi.fn(async () => VALID_SETTINGS);
+      const testConnection = vi.fn(async () => ({
+        ok: true as const,
+        latencyMs: 12,
+      }));
+
+      renderer.render(
+        <HubSpotSettingsPage fetchSettings={fetchSettings} testConnection={testConnection} />,
+      );
+
+      await renderer.waitFor(() => {
+        expect(renderer.find(LoadingButton).props.loading).toBe(false);
+      });
+
+      triggerValue(renderer.find(Select, { name: "llmProvider" }), "custom");
+      triggerValue(renderer.find(Select, { name: "llmModel" }), "__other__");
+      triggerValue(renderer.find(Input, { name: "llmModelOther" }), "my-model");
+      triggerValue(renderer.find(Input, { name: "llmEndpointUrl" }), "https://example.test/v1");
+      triggerValue(renderer.find(Input, { name: "llmApiKey" }), "secret-xyz");
+
+      renderer.findByTestId(Button, "testLlmConnection").trigger("onClick");
+
+      await renderer.waitFor(() => {
+        expect(testConnection).toHaveBeenCalledTimes(1);
+      });
+
+      expect(testConnection).toHaveBeenCalledWith({
+        target: "llm",
+        provider: "custom",
+        model: "my-model",
+        endpointUrl: "https://example.test/v1",
+        apiKey: "secret-xyz",
+      });
+    });
+
+    it("renders the latency inline on a successful test-connection response", async () => {
+      const renderer = createRenderer("settings");
+      const fetchSettings = vi.fn(async () => VALID_SETTINGS);
+      const testConnection = vi.fn(async () => ({
+        ok: true as const,
+        latencyMs: 123,
+      }));
+
+      renderer.render(
+        <HubSpotSettingsPage fetchSettings={fetchSettings} testConnection={testConnection} />,
+      );
+
+      await renderer.waitFor(() => {
+        expect(renderer.find(LoadingButton).props.loading).toBe(false);
+      });
+
+      renderer.findByTestId(Button, "testExaConnection").trigger("onClick");
+
+      await renderer.waitFor(() => {
+        const combined = renderer
+          .findAll(Text)
+          .map((n) => n.text ?? "")
+          .join(" ");
+        expect(combined).toContain("123ms");
+      });
+    });
+
+    it("renders the human-readable message on a failed test-connection response", async () => {
+      const renderer = createRenderer("settings");
+      const fetchSettings = vi.fn(async () => VALID_SETTINGS);
+      const testConnection = vi.fn(async () => ({
+        ok: false as const,
+        code: "auth" as const,
+        message: "rejected",
+      }));
+
+      renderer.render(
+        <HubSpotSettingsPage fetchSettings={fetchSettings} testConnection={testConnection} />,
+      );
+
+      await renderer.waitFor(() => {
+        expect(renderer.find(LoadingButton).props.loading).toBe(false);
+      });
+
+      renderer.findByTestId(Button, "testLlmConnection").trigger("onClick");
+
+      await renderer.waitFor(() => {
+        const combined = renderer
+          .findAll(Text)
+          .map((n) => n.text ?? "")
+          .join(" ");
+        expect(combined).toMatch(/Authentication failed/i);
+      });
+    });
+
+    it("does NOT clear the status result when the user types in the key input after a result", async () => {
+      const renderer = createRenderer("settings");
+      const fetchSettings = vi.fn(async () => VALID_SETTINGS);
+      const testConnection = vi.fn(async () => ({
+        ok: true as const,
+        latencyMs: 55,
+      }));
+
+      renderer.render(
+        <HubSpotSettingsPage fetchSettings={fetchSettings} testConnection={testConnection} />,
+      );
+
+      await renderer.waitFor(() => {
+        expect(renderer.find(LoadingButton).props.loading).toBe(false);
+      });
+
+      renderer.findByTestId(Button, "testExaConnection").trigger("onClick");
+
+      await renderer.waitFor(() => {
+        const combined = renderer
+          .findAll(Text)
+          .map((n) => n.text ?? "")
+          .join(" ");
+        expect(combined).toContain("55ms");
+      });
+
+      // Typing in the key input must NOT re-fire the test and must NOT clear the result.
+      triggerValue(renderer.find(Input, { name: "exaApiKey" }), "new-typing");
+
+      // No auto-fire
+      expect(testConnection).toHaveBeenCalledTimes(1);
+      // Status still present
+      const combined = renderer
+        .findAll(Text)
+        .map((n) => n.text ?? "")
+        .join(" ");
+      expect(combined).toContain("55ms");
+    });
+  });
 });

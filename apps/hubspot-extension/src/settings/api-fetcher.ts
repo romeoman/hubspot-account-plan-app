@@ -1,4 +1,9 @@
-import type { SettingsResponse, SettingsUpdate } from "@hap/config";
+import type {
+  SettingsResponse,
+  SettingsUpdate,
+  TestConnectionBody,
+  TestConnectionResponse,
+} from "@hap/config";
 import { hubspot } from "@hubspot/ui-extensions";
 
 export const DEFAULT_API_BASE_URL = "https://hap-signal-workspace.vercel.app";
@@ -17,6 +22,9 @@ export class SettingsApiError extends Error {
 
 export type SettingsFetcher = () => Promise<unknown>;
 export type SettingsUpdater = (update: SettingsUpdate) => Promise<unknown>;
+export type SettingsConnectionTester = (
+  body: TestConnectionBody,
+) => Promise<TestConnectionResponse>;
 
 export function createSettingsFetcher(baseUrl = DEFAULT_API_BASE_URL): SettingsFetcher {
   return async () => {
@@ -44,5 +52,34 @@ export function createSettingsUpdater(baseUrl = DEFAULT_API_BASE_URL): SettingsU
     }
 
     return (await response.json()) as SettingsResponse;
+  };
+}
+
+export function createSettingsConnectionTester(
+  baseUrl = DEFAULT_API_BASE_URL,
+): SettingsConnectionTester {
+  return async (body) => {
+    const response = await hubspot.fetch(`${baseUrl}/api/settings/test-connection`, {
+      method: "POST",
+      body: body as unknown as Record<string, unknown>,
+    });
+
+    if (response.status === 429) {
+      return {
+        ok: false,
+        code: "rate_limit",
+        message: "Too many requests.",
+      };
+    }
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        code: "unknown",
+        message: `Request failed: ${response.status} ${response.statusText}`,
+      };
+    }
+
+    return (await response.json()) as TestConnectionResponse;
   };
 }

@@ -4,6 +4,7 @@ import {
   type LlmProviderType,
   type SettingsResponse,
   type SettingsUpdate,
+  type TestConnectionBody,
 } from "@hap/config";
 import {
   Button,
@@ -18,7 +19,8 @@ import {
   Toggle,
 } from "@hubspot/ui-extensions";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { SettingsFetcher, SettingsUpdater } from "./api-fetcher";
+import type { SettingsConnectionTester, SettingsFetcher, SettingsUpdater } from "./api-fetcher";
+import { ConnectionTestStatus, type ConnectionTestStatusState } from "./connection-test-status";
 import { decimalToPercent, percentToDecimal } from "./percent-format";
 import { useSettings } from "./use-settings";
 
@@ -57,6 +59,7 @@ type DraftState = {
 export type HubSpotSettingsPageProps = {
   fetchSettings?: SettingsFetcher;
   updateSettings?: SettingsUpdater;
+  testConnection?: SettingsConnectionTester;
 };
 
 const LLM_PROVIDER_OPTIONS: { label: string; value: ProviderSelection }[] = [
@@ -139,12 +142,18 @@ function resolveDraftModel(draft: DraftState): string {
   return draft.llm.modelSelection.trim();
 }
 
-export function HubSpotSettingsPage({ fetchSettings, updateSettings }: HubSpotSettingsPageProps) {
-  const state = useSettings({ fetchSettings, updateSettings });
+export function HubSpotSettingsPage({
+  fetchSettings,
+  updateSettings,
+  testConnection,
+}: HubSpotSettingsPageProps) {
+  const state = useSettings({ fetchSettings, updateSettings, testConnection });
   const [draft, setDraft] = useState<DraftState | null>(null);
   const draftRef = useRef<DraftState | null>(null);
   draftRef.current = draft;
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [exaStatus, setExaStatus] = useState<ConnectionTestStatusState>("idle");
+  const [llmStatus, setLlmStatus] = useState<ConnectionTestStatusState>("idle");
 
   useEffect(() => {
     if (state.settings) {
@@ -166,6 +175,46 @@ export function HubSpotSettingsPage({ fetchSettings, updateSettings }: HubSpotSe
   if (!draft || !state.settings) {
     return <Text>Loading…</Text>;
   }
+
+  const runExaTestConnection = async () => {
+    const current = draftRef.current;
+    if (!current) return;
+    const draftKey = current.signalProviders.exaApiKey.trim();
+    const body: TestConnectionBody =
+      draftKey.length > 0
+        ? { target: "exa", apiKey: draftKey }
+        : { target: "exa", useSavedKey: true };
+    setExaStatus("loading");
+    const result = await state.testConnection(body);
+    setExaStatus(result);
+  };
+
+  const runLlmTestConnection = async () => {
+    const current = draftRef.current;
+    if (!current || current.llm.provider === "none") return;
+    const resolvedModel = resolveDraftModel(current);
+    if (resolvedModel.length === 0) return;
+    if (current.llm.provider === "custom" && current.llm.endpointUrl.trim().length === 0) {
+      return;
+    }
+    const draftKey = current.llm.apiKey.trim();
+    const base = {
+      target: "llm" as const,
+      provider: current.llm.provider,
+      model: resolvedModel,
+    };
+    const withEndpoint =
+      current.llm.provider === "custom"
+        ? { ...base, endpointUrl: current.llm.endpointUrl.trim() }
+        : base;
+    const body: TestConnectionBody =
+      draftKey.length > 0
+        ? { ...withEndpoint, apiKey: draftKey }
+        : { ...withEndpoint, useSavedKey: true };
+    setLlmStatus("loading");
+    const result = await state.testConnection(body);
+    setLlmStatus(result);
+  };
 
   const saveSettings = async () => {
     const current = draftRef.current;
@@ -236,6 +285,18 @@ export function HubSpotSettingsPage({ fetchSettings, updateSettings }: HubSpotSe
     draft.llm.provider !== "none" && draft.llm.modelSelection === OTHER_MODEL_VALUE;
   const exaHasStoredKey = state.settings.signalProviders.exa.hasApiKey;
   const llmHasStoredKey = state.settings.llm.hasApiKey;
+
+  const exaDraftHasKey = draft.signalProviders.exaApiKey.trim().length > 0;
+  const exaTestDisabled = !exaDraftHasKey && !exaHasStoredKey;
+
+  const llmDraftHasKey = draft.llm.apiKey.trim().length > 0;
+  const llmResolvedModel = resolveDraftModel(draft);
+  const llmEndpointOk = draft.llm.provider !== "custom" || draft.llm.endpointUrl.trim().length > 0;
+  const llmTestDisabled =
+    draft.llm.provider === "none" ||
+    (!llmDraftHasKey && !llmHasStoredKey) ||
+    llmResolvedModel.length === 0 ||
+    !llmEndpointOk;
 
   return (
     <Flex direction="column" gap="md">
@@ -308,7 +369,16 @@ export function HubSpotSettingsPage({ fetchSettings, updateSettings }: HubSpotSe
             Clear key
           </Button>
         ) : null}
+        <Button
+          testId="testExaConnection"
+          variant="secondary"
+          disabled={exaTestDisabled}
+          onClick={() => void runExaTestConnection()}
+        >
+          Test connection
+        </Button>
       </Flex>
+      <ConnectionTestStatus state={exaStatus} />
 
       {/* HubSpot enrichment (OAuth, no API key) */}
       <Heading>HubSpot enrichment</Heading>
@@ -458,7 +528,16 @@ export function HubSpotSettingsPage({ fetchSettings, updateSettings }: HubSpotSe
             Clear key
           </Button>
         ) : null}
+        <Button
+          testId="testLlmConnection"
+          variant="secondary"
+          disabled={llmTestDisabled}
+          onClick={() => void runLlmTestConnection()}
+        >
+          Test connection
+        </Button>
       </Flex>
+      <ConnectionTestStatus state={llmStatus} />
 
       <Divider />
       <Heading>Eligibility</Heading>
