@@ -9,7 +9,6 @@ const VALID_SETTINGS = {
   tenantId: "tenant-1",
   signalProviders: {
     exa: { enabled: true, hasApiKey: true },
-    news: { enabled: false, hasApiKey: false },
     hubspotEnrichment: { enabled: true, hasApiKey: false },
   },
   llm: {
@@ -76,7 +75,12 @@ function InlineFetcherProbe({ fetchSpy }: { fetchSpy: () => Promise<typeof VALID
   }, [state.loading, state.settings, tick]);
 
   return (
-    <Text>{JSON.stringify({ loading: state.loading, tenantId: state.settings?.tenantId })}</Text>
+    <Text>
+      {JSON.stringify({
+        loading: state.loading,
+        tenantId: state.settings?.tenantId,
+      })}
+    </Text>
   );
 }
 

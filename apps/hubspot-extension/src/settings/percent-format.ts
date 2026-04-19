@@ -19,9 +19,7 @@ const PERCENT_MAX = 100;
 
 function assertFinite(value: number, label: string): void {
   if (!Number.isFinite(value)) {
-    throw new TypeError(
-      `${label} must be a finite number, received ${String(value)}`,
-    );
+    throw new TypeError(`${label} must be a finite number, received ${String(value)}`);
   }
 }
 
