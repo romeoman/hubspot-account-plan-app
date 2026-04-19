@@ -89,7 +89,10 @@ describe("HubSpotSettingsPage", () => {
     }));
 
     renderer.render(
-      <HubSpotSettingsPage fetchSettings={fetchSettings} updateSettings={updateSettings} />,
+      <HubSpotSettingsPage
+        fetchSettings={fetchSettings}
+        updateSettings={updateSettings}
+      />,
     );
 
     await renderer.waitFor(() => {
@@ -99,12 +102,20 @@ describe("HubSpotSettingsPage", () => {
     triggerValue(renderer.find(Toggle, { name: "newsEnabled" }), true);
     triggerValue(renderer.find(Select, { name: "llmProvider" }), "custom");
     triggerValue(renderer.find(Input, { name: "llmModel" }), "custom-model");
-    triggerValue(renderer.find(Input, { name: "llmEndpointUrl" }), "https://example.test/v1");
+    triggerValue(
+      renderer.find(Input, { name: "llmEndpointUrl" }),
+      "https://example.test/v1",
+    );
     triggerValue(renderer.find(Input, { name: "llmApiKey" }), "custom-secret");
     triggerValue(renderer.find(Input, { name: "exaApiKey" }), "exa-rotated");
-    triggerValue(renderer.find(Input, { name: "eligibilityPropertyName" }), "custom_target_flag");
+    triggerValue(
+      renderer.find(Input, { name: "eligibilityPropertyName" }),
+      "custom_target_flag",
+    );
     triggerValue(renderer.find(NumberInput, { name: "freshnessMaxDays" }), 21);
-    triggerValue(renderer.find(NumberInput, { name: "minConfidence" }), 0.8);
+    // Minimum confidence is displayed as a percent (0..100). The wire payload
+    // still carries the 0..1 decimal (0.8) — percent-format helpers round-trip.
+    triggerValue(renderer.find(NumberInput, { name: "minConfidence" }), 80);
     renderer.find(LoadingButton).trigger("onClick");
 
     await renderer.waitFor(() => {
@@ -147,7 +158,10 @@ describe("HubSpotSettingsPage", () => {
     const updateSettings = vi.fn();
 
     renderer.render(
-      <HubSpotSettingsPage fetchSettings={fetchSettings} updateSettings={updateSettings} />,
+      <HubSpotSettingsPage
+        fetchSettings={fetchSettings}
+        updateSettings={updateSettings}
+      />,
     );
 
     await renderer.waitFor(() => {
@@ -183,7 +197,10 @@ describe("HubSpotSettingsPage", () => {
     }));
 
     renderer.render(
-      <HubSpotSettingsPage fetchSettings={fetchSettings} updateSettings={updateSettings} />,
+      <HubSpotSettingsPage
+        fetchSettings={fetchSettings}
+        updateSettings={updateSettings}
+      />,
     );
 
     await renderer.waitFor(() => {
@@ -239,6 +256,62 @@ describe("HubSpotSettingsPage", () => {
     expect(text).not.toBe("Loading…");
   });
 
+  it("renders tooltips on Freshness max days and Minimum confidence and displays confidence as a percent", async () => {
+    const renderer = createRenderer("settings");
+    const fetchSettings = vi.fn(async () => VALID_SETTINGS);
+
+    renderer.render(<HubSpotSettingsPage fetchSettings={fetchSettings} />);
+
+    await renderer.waitFor(() => {
+      expect(renderer.find(LoadingButton).props.loading).toBe(false);
+    });
+
+    const freshnessInput = renderer.find(NumberInput, {
+      name: "freshnessMaxDays",
+    });
+    expect(freshnessInput.props.tooltip).toMatch(/stale/i);
+
+    const minConfidenceInput = renderer.find(NumberInput, {
+      name: "minConfidence",
+    });
+    expect(minConfidenceInput.props.tooltip).toMatch(/confidence/i);
+    // Wire value is 0.5; UI shows it as 50 (percent).
+    expect(minConfidenceInput.props.value).toBe(50);
+    expect(minConfidenceInput.props.label).toMatch(/%/);
+  });
+
+  it("preserves the 0..1 decimal wire value for minimum confidence when the user edits via percent", async () => {
+    const renderer = createRenderer("settings");
+    const fetchSettings = vi.fn(async () => VALID_SETTINGS);
+    const updateSettings = vi.fn(async () => VALID_SETTINGS);
+
+    renderer.render(
+      <HubSpotSettingsPage
+        fetchSettings={fetchSettings}
+        updateSettings={updateSettings}
+      />,
+    );
+
+    await renderer.waitFor(() => {
+      expect(renderer.find(LoadingButton).props.loading).toBe(false);
+    });
+
+    // User types 65 (percent). Wire payload must be 0.65 (decimal).
+    triggerValue(renderer.find(NumberInput, { name: "minConfidence" }), 65);
+    renderer.find(LoadingButton).trigger("onClick");
+
+    await renderer.waitFor(() => {
+      expect(updateSettings).toHaveBeenCalledTimes(1);
+    });
+
+    const call = (
+      updateSettings.mock.calls[0] as unknown as [
+        { thresholds: { minConfidence: number } },
+      ]
+    )[0];
+    expect(call.thresholds.minConfidence).toBe(0.65);
+  });
+
   it("shows a HubSpot enrichment api key input when configuring that provider", async () => {
     const renderer = createRenderer("settings");
     const fetchSettings = vi.fn(async () => VALID_SETTINGS);
@@ -249,6 +322,8 @@ describe("HubSpotSettingsPage", () => {
       expect(renderer.find(LoadingButton).props.loading).toBe(false);
     });
 
-    expect(renderer.find(Input, { name: "hubspotEnrichmentApiKey" })).toBeTruthy();
+    expect(
+      renderer.find(Input, { name: "hubspotEnrichmentApiKey" }),
+    ).toBeTruthy();
   });
 });

@@ -1,4 +1,8 @@
-import type { LlmProviderType, SettingsResponse, SettingsUpdate } from "@hap/config";
+import type {
+  LlmProviderType,
+  SettingsResponse,
+  SettingsUpdate,
+} from "@hap/config";
 import {
   Divider,
   Flex,
@@ -12,7 +16,13 @@ import {
 } from "@hubspot/ui-extensions";
 import { useEffect, useState } from "react";
 import type { SettingsFetcher, SettingsUpdater } from "./api-fetcher";
+import { decimalToPercent, percentToDecimal } from "./percent-format";
 import { useSettings } from "./use-settings";
+
+const FRESHNESS_TOOLTIP =
+  "Evidence older than this is treated as stale and won't feed the reason-to-contact.";
+const MIN_CONFIDENCE_TOOLTIP =
+  "Evidence below this confidence (0–100%) is dropped before it reaches the UI.";
 
 type DraftState = {
   signalProviders: {
@@ -53,7 +63,8 @@ function buildDraft(settings: SettingsResponse): DraftState {
     signalProviders: {
       exaEnabled: settings.signalProviders.exa.enabled,
       newsEnabled: settings.signalProviders.news.enabled,
-      hubspotEnrichmentEnabled: settings.signalProviders.hubspotEnrichment.enabled,
+      hubspotEnrichmentEnabled:
+        settings.signalProviders.hubspotEnrichment.enabled,
       exaApiKey: "",
       newsApiKey: "",
       hubspotEnrichmentApiKey: "",
@@ -70,7 +81,10 @@ function buildDraft(settings: SettingsResponse): DraftState {
   };
 }
 
-export function HubSpotSettingsPage({ fetchSettings, updateSettings }: HubSpotSettingsPageProps) {
+export function HubSpotSettingsPage({
+  fetchSettings,
+  updateSettings,
+}: HubSpotSettingsPageProps) {
   const state = useSettings({ fetchSettings, updateSettings });
   const [draft, setDraft] = useState<DraftState | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -95,7 +109,10 @@ export function HubSpotSettingsPage({ fetchSettings, updateSettings }: HubSpotSe
 
   const saveSettings = async () => {
     setValidationError(null);
-    if (draft.llm.provider === "custom" && draft.llm.endpointUrl.trim().length === 0) {
+    if (
+      draft.llm.provider === "custom" &&
+      draft.llm.endpointUrl.trim().length === 0
+    ) {
       setValidationError("Custom provider requires an endpoint URL.");
       return;
     }
@@ -130,7 +147,9 @@ export function HubSpotSettingsPage({ fetchSettings, updateSettings }: HubSpotSe
               ...(draft.llm.endpointUrl.trim().length > 0
                 ? { endpointUrl: draft.llm.endpointUrl.trim() }
                 : {}),
-              ...(draft.llm.apiKey.trim().length > 0 ? { apiKey: draft.llm.apiKey.trim() } : {}),
+              ...(draft.llm.apiKey.trim().length > 0
+                ? { apiKey: draft.llm.apiKey.trim() }
+                : {}),
             },
       eligibility: {
         propertyName: draft.eligibilityPropertyName,
@@ -156,13 +175,18 @@ export function HubSpotSettingsPage({ fetchSettings, updateSettings }: HubSpotSe
             current
               ? {
                   ...current,
-                  signalProviders: { ...current.signalProviders, exaEnabled: checked },
+                  signalProviders: {
+                    ...current.signalProviders,
+                    exaEnabled: checked,
+                  },
                 }
               : current,
           )
         }
       />
-      {state.settings.signalProviders.exa.hasApiKey ? <Text>Stored key on file</Text> : null}
+      {state.settings.signalProviders.exa.hasApiKey ? (
+        <Text>Stored key on file</Text>
+      ) : null}
       <Input
         name="exaApiKey"
         label="Exa API key"
@@ -173,7 +197,10 @@ export function HubSpotSettingsPage({ fetchSettings, updateSettings }: HubSpotSe
             current
               ? {
                   ...current,
-                  signalProviders: { ...current.signalProviders, exaApiKey: value },
+                  signalProviders: {
+                    ...current.signalProviders,
+                    exaApiKey: value,
+                  },
                 }
               : current,
           )
@@ -188,7 +215,10 @@ export function HubSpotSettingsPage({ fetchSettings, updateSettings }: HubSpotSe
             current
               ? {
                   ...current,
-                  signalProviders: { ...current.signalProviders, newsEnabled: checked },
+                  signalProviders: {
+                    ...current.signalProviders,
+                    newsEnabled: checked,
+                  },
                 }
               : current,
           )
@@ -204,7 +234,10 @@ export function HubSpotSettingsPage({ fetchSettings, updateSettings }: HubSpotSe
             current
               ? {
                   ...current,
-                  signalProviders: { ...current.signalProviders, newsApiKey: value },
+                  signalProviders: {
+                    ...current.signalProviders,
+                    newsApiKey: value,
+                  },
                 }
               : current,
           )
@@ -258,13 +291,18 @@ export function HubSpotSettingsPage({ fetchSettings, updateSettings }: HubSpotSe
         name="llmProvider"
         label="Provider"
         value={draft.llm.provider}
-        options={LLM_PROVIDER_OPTIONS as unknown as { label: string; value: string }[]}
+        options={
+          LLM_PROVIDER_OPTIONS as unknown as { label: string; value: string }[]
+        }
         onChange={(value) =>
           setDraft((current) =>
             current
               ? {
                   ...current,
-                  llm: { ...current.llm, provider: value as DraftState["llm"]["provider"] },
+                  llm: {
+                    ...current.llm,
+                    provider: value as DraftState["llm"]["provider"],
+                  },
                 }
               : current,
           )
@@ -276,7 +314,9 @@ export function HubSpotSettingsPage({ fetchSettings, updateSettings }: HubSpotSe
         value={draft.llm.model}
         onChange={(value) =>
           setDraft((current) =>
-            current ? { ...current, llm: { ...current.llm, model: value } } : current,
+            current
+              ? { ...current, llm: { ...current.llm, model: value } }
+              : current,
           )
         }
       />
@@ -286,7 +326,9 @@ export function HubSpotSettingsPage({ fetchSettings, updateSettings }: HubSpotSe
         value={draft.llm.endpointUrl}
         onChange={(value) =>
           setDraft((current) =>
-            current ? { ...current, llm: { ...current.llm, endpointUrl: value } } : current,
+            current
+              ? { ...current, llm: { ...current.llm, endpointUrl: value } }
+              : current,
           )
         }
       />
@@ -297,7 +339,9 @@ export function HubSpotSettingsPage({ fetchSettings, updateSettings }: HubSpotSe
         value={draft.llm.apiKey}
         onChange={(value) =>
           setDraft((current) =>
-            current ? { ...current, llm: { ...current.llm, apiKey: value } } : current,
+            current
+              ? { ...current, llm: { ...current.llm, apiKey: value } }
+              : current,
           )
         }
       />
@@ -320,17 +364,25 @@ export function HubSpotSettingsPage({ fetchSettings, updateSettings }: HubSpotSe
       <NumberInput
         name="freshnessMaxDays"
         label="Freshness max days"
+        tooltip={FRESHNESS_TOOLTIP}
         value={draft.freshnessMaxDays}
         onChange={(value) =>
-          setDraft((current) => (current ? { ...current, freshnessMaxDays: value } : current))
+          setDraft((current) =>
+            current ? { ...current, freshnessMaxDays: value } : current,
+          )
         }
       />
       <NumberInput
         name="minConfidence"
-        label="Minimum confidence"
-        value={draft.minConfidence}
+        label="Minimum confidence (%)"
+        tooltip={MIN_CONFIDENCE_TOOLTIP}
+        value={decimalToPercent(draft.minConfidence)}
         onChange={(value) =>
-          setDraft((current) => (current ? { ...current, minConfidence: value } : current))
+          setDraft((current) =>
+            current
+              ? { ...current, minConfidence: percentToDecimal(value) }
+              : current,
+          )
         }
       />
 
