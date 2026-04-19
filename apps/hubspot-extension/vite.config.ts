@@ -30,6 +30,12 @@ export default defineConfig(() => {
         formats: ["es"],
       },
       rollupOptions: {
+        // React/react-dom live in `dependencies`, not peerDependencies, so
+        // Vite lib mode does not auto-externalize them. Without this list a
+        // second copy of React gets inlined and the first useState call at
+        // runtime throws "Cannot read properties of null (reading
+        // 'useState')" (issue #17). Mirrors scripts/bundle-hubspot-card.ts.
+        external: ["react", "react-dom", "react/jsx-runtime", "@hubspot/ui-extensions"],
         output: {
           entryFileNames: "index.js",
         },
