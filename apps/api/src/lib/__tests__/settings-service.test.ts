@@ -3,7 +3,7 @@ import { createDatabase, llmConfig, providerConfig, tenants } from "@hap/db";
 import { and, eq, like } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { __resetEncryptionCacheForTests, decryptProviderKey } from "../encryption";
-import { readSettings, updateSettings } from "../settings-service";
+import { readSettings, SettingsValidationError, updateSettings } from "../settings-service";
 
 const DATABASE_URL =
   process.env.DATABASE_URL ?? "postgresql://hap:hap_local_dev@localhost:5433/hap_dev";
@@ -60,7 +60,6 @@ describe("readSettings", () => {
       tenantId: tenant.id,
       signalProviders: {
         exa: { enabled: false, hasApiKey: false },
-        news: { enabled: false, hasApiKey: false },
         hubspotEnrichment: { enabled: false, hasApiKey: false },
       },
       llm: {
@@ -89,7 +88,6 @@ describe("updateSettings", () => {
       {
         signalProviders: {
           exa: { enabled: true, apiKey: "exa-secret-1" },
-          news: { enabled: true },
           hubspotEnrichment: { enabled: true },
         },
         llm: {
@@ -124,12 +122,15 @@ describe("updateSettings", () => {
     expect(decryptProviderKey(tenant.id, llmRow?.apiKeyEncrypted ?? "")).toBe("openai-secret-1");
 
     const settings = await readSettings({ db, tenantId: tenant.id });
-    expect(settings.signalProviders.exa).toEqual({ enabled: true, hasApiKey: true });
-    expect(settings.signalProviders.news).toEqual({ enabled: true, hasApiKey: false });
+    expect(settings.signalProviders.exa).toEqual({
+      enabled: true,
+      hasApiKey: true,
+    });
     expect(settings.signalProviders.hubspotEnrichment).toEqual({
       enabled: true,
       hasApiKey: false,
     });
+    expect((settings.signalProviders as Record<string, unknown>).news).toBeUndefined();
     expect(settings.llm).toEqual({
       provider: "openai",
       model: "gpt-5.4-mini",
@@ -315,5 +316,56 @@ describe("updateSettings", () => {
       endpointUrl: undefined,
       hasApiKey: true,
     });
+  });
+
+  it("rejects an attempt to store an apiKey on hubspotEnrichment", async () => {
+    const tenant = await seedTenant();
+
+    await expect(
+      updateSettings(
+        { db, tenantId: tenant.id },
+        {
+          signalProviders: {
+            hubspotEnrichment: { enabled: true, apiKey: "fake" } as unknown as {
+              enabled?: boolean;
+            },
+          },
+        },
+      ),
+    ).rejects.toBeInstanceOf(SettingsValidationError);
+
+    // Guard must run before any write — no row should exist.
+    const rows = await db
+      .select()
+      .from(providerConfig)
+      .where(
+        and(
+          eq(providerConfig.tenantId, tenant.id),
+          eq(providerConfig.providerName, "hubspot-enrichment"),
+        ),
+      );
+    expect(rows[0]?.apiKeyEncrypted ?? null).toBeNull();
+  });
+
+  it("no longer writes or reads a 'news' provider slot", async () => {
+    const tenant = await seedTenant();
+
+    await updateSettings(
+      { db, tenantId: tenant.id },
+      {
+        signalProviders: {
+          exa: { enabled: true, apiKey: "exa-secret" },
+        },
+      },
+    );
+
+    const rows = await db
+      .select()
+      .from(providerConfig)
+      .where(and(eq(providerConfig.tenantId, tenant.id), eq(providerConfig.providerName, "news")));
+    expect(rows).toHaveLength(0);
+
+    const settings = await readSettings({ db, tenantId: tenant.id });
+    expect((settings.signalProviders as Record<string, unknown>).news).toBeUndefined();
   });
 });

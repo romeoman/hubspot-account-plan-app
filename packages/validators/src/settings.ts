@@ -10,7 +10,6 @@ function preserveBlankSecret(value: unknown): string | undefined {
 
 export const settingsSignalProviderNameSchema = z.enum([
   "exa",
-  "news",
   "hubspot-enrichment",
 ]) satisfies z.ZodType<SettingsSignalProviderName>;
 
@@ -27,7 +26,6 @@ export const settingsResponseSchema = z
     signalProviders: z
       .object({
         exa: settingsProviderStateSchema,
-        news: settingsProviderStateSchema,
         hubspotEnrichment: settingsProviderStateSchema,
       })
       .strict(),
@@ -60,6 +58,15 @@ const providerUpdateSchema = z
     path: ["clearApiKey"],
   });
 
+// HubSpot enrichment is OAuth-backed. Its update leaf must NOT accept
+// `apiKey` / `clearApiKey` — the previous UI field was cosmetic and
+// misleading. `.strict()` makes any stray `apiKey` submission fail with 400.
+const hubspotEnrichmentUpdateSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+  })
+  .strict();
+
 const llmUpdateSchema = z
   .object({
     provider: llmProviderTypeSchema.nullable().optional(),
@@ -79,8 +86,7 @@ export const settingsUpdateSchema = z
     signalProviders: z
       .object({
         exa: providerUpdateSchema.optional(),
-        news: providerUpdateSchema.optional(),
-        hubspotEnrichment: providerUpdateSchema.optional(),
+        hubspotEnrichment: hubspotEnrichmentUpdateSchema.optional(),
       })
       .strict()
       .optional(),

@@ -64,6 +64,13 @@
       "when": 1776453600000,
       "tag": "0008_tenant_lifecycle_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1776556800000,
+      "tag": "0009_drop_news_provider",
+      "breakpoints": true
     }
   ]
 }

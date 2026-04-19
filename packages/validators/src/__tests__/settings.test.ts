@@ -12,7 +12,6 @@ describe("settings schemas", () => {
         tenantId: "tenant-settings",
         signalProviders: {
           exa: { enabled: true, hasApiKey: true },
-          news: { enabled: false, hasApiKey: false },
           hubspotEnrichment: { enabled: true, hasApiKey: false },
         },
         llm: {
@@ -38,7 +37,6 @@ describe("settings schemas", () => {
         tenantId: "tenant-settings",
         signalProviders: {
           exa: { enabled: true, hasApiKey: true, apiKey: "should-not-leak" },
-          news: { enabled: false, hasApiKey: false },
           hubspotEnrichment: { enabled: true, hasApiKey: false },
         },
         llm: {
@@ -55,6 +53,54 @@ describe("settings schemas", () => {
         },
       }).success,
     ).toBe(false);
+  });
+
+  it("rejects a settings response that includes the legacy 'news' slot", () => {
+    expect(
+      settingsResponseSchema.safeParse({
+        tenantId: "tenant-settings",
+        signalProviders: {
+          exa: { enabled: true, hasApiKey: true },
+          news: { enabled: false, hasApiKey: false },
+          hubspotEnrichment: { enabled: true, hasApiKey: false },
+        },
+        llm: {
+          provider: "openai",
+          model: "gpt-5.4-mini",
+          hasApiKey: true,
+        },
+        eligibility: { propertyName: "hs_is_target_account" },
+        thresholds: { freshnessMaxDays: 30, minConfidence: 0.5 },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a settings update that targets the legacy 'news' slot", () => {
+    expect(
+      settingsUpdateSchema.safeParse({
+        signalProviders: {
+          news: { enabled: true, apiKey: "news-key" },
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a settings update that attaches an apiKey to hubspotEnrichment", () => {
+    const result = settingsUpdateSchema.safeParse({
+      signalProviders: {
+        hubspotEnrichment: { enabled: true, apiKey: "fake-key" },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts a hubspotEnrichment update with just enabled", () => {
+    const result = settingsUpdateSchema.safeParse({
+      signalProviders: {
+        hubspotEnrichment: { enabled: true },
+      },
+    });
+    expect(result.success).toBe(true);
   });
 
   it("accepts an update payload that rotates a secret", () => {

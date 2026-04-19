@@ -132,11 +132,13 @@ async function resolveLlmAdapter(
  * Signal providers probed from `provider_config` rows in listed order; first
  * enabled match wins.
  *
- * Slice 3 adds `news` (now a real adapter). `hubspot-enrichment` stays out
- * until the adapter body is implemented — its factory throws at construction,
- * which `resolveSignalAdapter` treats the same as "no config row" = `null`.
+ * `news` was removed as a top-level provider slot — it now runs as a
+ * secondary adapter driven by the Exa row via {@link createExaSignalAdapters}.
+ * `hubspot-enrichment` stays out of this probe list because its factory
+ * throws when tenant-scoped deps are missing; the snapshot path treats that
+ * the same as "no config row".
  */
-const REAL_SIGNAL_PROVIDERS = ["exa", "news"] as const;
+const REAL_SIGNAL_PROVIDERS = ["exa"] as const;
 
 /**
  * Successful signal resolution — contains the adapter plus per-provider

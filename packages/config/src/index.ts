@@ -11,3 +11,4 @@
 export * from "./domain-types";
 export * from "./env";
 export * from "./factories";
+export * from "./llm-catalog";
