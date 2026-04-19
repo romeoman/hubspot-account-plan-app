@@ -1,0 +1,33 @@
+apps/hubspot-extension/src/settings/__tests__/settings-page.test.tsx
+  f5e7dda7755350a1 116-118,161-164,200-203,259-269,271-274,276-314
+apps/hubspot-extension/src/settings/settings-page.tsx
+  f5e7dda7755350a1 19,22-26,66-67,84-87,112-115,150-152,178-181,187-189,200-203,218-221,237-240,294-296,302-305,317-319,329-331,342-344,367,370-372,377-379,381-384
+apps/hubspot-extension/src/settings/__tests__/percent-format.test.ts
+  f5e7dda7755350a1 1-79
+apps/hubspot-extension/src/settings/percent-format.ts
+  f5e7dda7755350a1 1-22,24-55
+apps/hubspot-project/src/app/cards/card-hsmeta.json
+  f5e7dda7755350a1 5
+docs/qa/slice-2-walkthrough.md
+  f5e7dda7755350a1 75,97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "ceefd455a4cc567538e2c67d3f812de34cbf9dfc",
+  "prompts": {
+    "f5e7dda7755350a1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b9db770f-deb1-438a-bcc2-f53e6cffd296",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "romeoman",
+      "messages": [],
+      "total_additions": 201,
+      "total_deletions": 10,
+      "accepted_lines": 206,
+      "overriden_lines": 3
+    }
+  }
+}
