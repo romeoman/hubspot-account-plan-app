@@ -1,0 +1,35 @@
+apps/hubspot-extension/src/settings/__tests__/use-settings.test.tsx
+  f5e7dda7755350a1 182-186,188-295
+apps/hubspot-extension/src/settings/api-fetcher.ts
+  f5e7dda7755350a1 1-6,25-27,57-85
+apps/hubspot-extension/src/settings/__tests__/connection-test-status.test.tsx
+  f5e7dda7755350a1 1-48,50-104
+apps/hubspot-extension/src/settings/connection-test-status.tsx
+  f5e7dda7755350a1 1-38,40-42
+apps/hubspot-extension/src/settings/settings-page.tsx
+  f5e7dda7755350a1 7,62,145-150,155-156,179-218,289-300,372-379,381,531-538,540
+apps/hubspot-extension/src/settings/__tests__/settings-page.test.tsx
+  f5e7dda7755350a1 503-536,538-564,566-631,633-661,663-698,700-753,755-787
+apps/hubspot-extension/src/settings/use-settings.ts
+  f5e7dda7755350a1 1-6,10,13,21,31,37,47,54,107-121,129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "20d27d0da0aa4fe36b6c1668fd416469edc15cf2",
+  "prompts": {
+    "f5e7dda7755350a1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b9db770f-deb1-438a-bcc2-f53e6cffd296",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "romeoman",
+      "messages": [],
+      "total_additions": 718,
+      "total_deletions": 38,
+      "accepted_lines": 679,
+      "overriden_lines": 12
+    }
+  }
+}
