@@ -1,4 +1,10 @@
-import type { SettingsResponse, SettingsSignalProviderName, SettingsUpdate } from "@hap/config";
+import type {
+  SettingsResponse,
+  SettingsSignalProviderName,
+  SettingsUpdate,
+  TestConnectionBody,
+  TestConnectionResponse,
+} from "@hap/config";
 import { z } from "zod";
 import { llmProviderTypeSchema, thresholdConfigSchema } from "./snapshot";
 
@@ -80,6 +86,102 @@ const llmUpdateSchema = z
     message: "clearApiKey cannot be combined with apiKey",
     path: ["clearApiKey"],
   });
+
+/**
+ * XOR refinement used by both LLM and Exa branches of
+ * {@link testConnectionBodySchema}: exactly one of `apiKey` / `useSavedKey`
+ * must be present. Both-present or both-absent fail with a 400.
+ */
+function refineApiKeyXor<T extends { apiKey?: string | undefined; useSavedKey?: true | undefined }>(
+  value: T,
+  ctx: z.RefinementCtx,
+): void {
+  const hasDraft = value.apiKey !== undefined;
+  const hasSaved = value.useSavedKey === true;
+  if (hasDraft && hasSaved) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "apiKey and useSavedKey are mutually exclusive",
+      path: ["apiKey"],
+    });
+  } else if (!hasDraft && !hasSaved) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "exactly one of apiKey or useSavedKey must be provided",
+      path: ["apiKey"],
+    });
+  }
+}
+
+const testConnectionLlmBodyBaseSchema = z
+  .object({
+    target: z.literal("llm"),
+    provider: llmProviderTypeSchema,
+    model: z.string().min(1),
+    // Required when provider === "custom" (refined below). Must be HTTPS.
+    endpointUrl: z.string().url().optional(),
+    apiKey: z.preprocess(preserveBlankSecret, z.string().min(1).optional()),
+    useSavedKey: z.literal(true).optional(),
+  })
+  .strict();
+
+const testConnectionExaBodyBaseSchema = z
+  .object({
+    target: z.literal("exa"),
+    apiKey: z.preprocess(preserveBlankSecret, z.string().min(1).optional()),
+    useSavedKey: z.literal(true).optional(),
+  })
+  .strict();
+
+/**
+ * Body of `POST /api/settings/test-connection`.
+ *
+ * Discriminated union on `target`. For each branch:
+ *   - `apiKey` and `useSavedKey` are XOR (refineApiKeyXor enforces 400 when
+ *     both or neither are present).
+ *   - For `target === "llm"`, `provider === "custom"` additionally requires
+ *     `endpointUrl` to be present and HTTPS.
+ */
+export const testConnectionBodySchema = z.discriminatedUnion("target", [
+  testConnectionLlmBodyBaseSchema.superRefine((value, ctx) => {
+    refineApiKeyXor(value, ctx);
+    if (value.provider === "custom") {
+      if (!value.endpointUrl) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "endpointUrl is required when provider === 'custom'",
+          path: ["endpointUrl"],
+        });
+      } else if (!value.endpointUrl.startsWith("https://")) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "endpointUrl must be HTTPS",
+          path: ["endpointUrl"],
+        });
+      }
+    }
+  }),
+  testConnectionExaBodyBaseSchema.superRefine((value, ctx) => {
+    refineApiKeyXor(value, ctx);
+  }),
+]) satisfies z.ZodType<TestConnectionBody>;
+
+export const testConnectionResponseSchema = z.union([
+  z
+    .object({
+      ok: z.literal(true),
+      latencyMs: z.number().int().nonnegative(),
+      providerEcho: z.object({ model: z.string().optional() }).strict().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      ok: z.literal(false),
+      code: z.enum(["auth", "model", "endpoint", "network", "rate_limit", "unknown"]),
+      message: z.string().min(1),
+    })
+    .strict(),
+]) satisfies z.ZodType<TestConnectionResponse>;
 
 export const settingsUpdateSchema = z
   .object({

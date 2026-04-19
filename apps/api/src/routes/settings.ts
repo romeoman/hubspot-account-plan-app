@@ -3,8 +3,14 @@ import { settingsResponseSchema, settingsUpdateSchema } from "@hap/validators";
 import { Hono } from "hono";
 import { readSettings, SettingsValidationError, updateSettings } from "../lib/settings-service";
 import type { TenantVariables } from "../middleware/tenant";
+import { createTestConnectionRoute } from "./settings-test-connection";
 
 export const settingsRoutes = new Hono<{ Variables: TenantVariables }>();
+
+// B4: Credential verification endpoint — mounted under the settings router so
+// it inherits the `/api/*` auth + tenant middleware chain. See
+// `./settings-test-connection.ts` for the full contract.
+settingsRoutes.route("/test-connection", createTestConnectionRoute());
 
 settingsRoutes.get("/", async (c) => {
   const tenantId = c.get("tenantId");

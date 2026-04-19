@@ -257,6 +257,49 @@ export type SettingsSignalProviderUpdates = {
 };
 
 /**
+ * Body of `POST /api/settings/test-connection` — discriminated union on
+ * `target`. Draft-key and saved-key modes are mutually exclusive (XOR
+ * enforced by the Zod validator in `@hap/validators`).
+ *
+ * `endpointUrl` is REQUIRED when `provider === "custom"` and MUST be HTTPS.
+ * The backend additionally enforces SSRF guards against loopback, link-local,
+ * private-range, and cloud-metadata hostnames.
+ */
+export type TestConnectionLlmBody = {
+  target: "llm";
+  provider: LlmProviderType;
+  model: string;
+  endpointUrl?: string;
+  apiKey?: string;
+  useSavedKey?: true;
+};
+
+export type TestConnectionExaBody = {
+  target: "exa";
+  apiKey?: string;
+  useSavedKey?: true;
+};
+
+export type TestConnectionBody = TestConnectionLlmBody | TestConnectionExaBody;
+
+/**
+ * Narrow error codes returned by the test-connection service. Vendor error
+ * bodies are NEVER forwarded verbatim — all vendor failures collapse to one
+ * of these codes plus a short sanitized human-readable `message`.
+ */
+export type TestConnectionErrorCode =
+  | "auth"
+  | "model"
+  | "endpoint"
+  | "network"
+  | "rate_limit"
+  | "unknown";
+
+export type TestConnectionResponse =
+  | { ok: true; latencyMs: number; providerEcho?: { model?: string } }
+  | { ok: false; code: TestConnectionErrorCode; message: string };
+
+/**
  * Partial update payload for tenant settings writes.
  */
 export type SettingsUpdate = {
