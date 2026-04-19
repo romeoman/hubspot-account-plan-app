@@ -13,12 +13,12 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { HUBSPOT_LIFECYCLE_EVENT_IDS } from "../../routes/lifecycle";
+import { HUBSPOT_LIFECYCLE_EVENT_IDS } from "../../routes/lifecycle.js";
 import {
   ensureLifecycleSubscriptions,
   HUBSPOT_SUBSCRIPTIONS_URL,
   SubscriptionBootstrapError,
-} from "../hubspot-subscription-bootstrap";
+} from "../hubspot-subscription-bootstrap.js";
 
 const INSTALL = HUBSPOT_LIFECYCLE_EVENT_IDS.APP_INSTALL;
 const UNINSTALL = HUBSPOT_LIFECYCLE_EVENT_IDS.APP_UNINSTALL;
@@ -258,6 +258,38 @@ describe("ensureLifecycleSubscriptions — both present", () => {
     expect(report.alreadyPresent).toEqual([
       { eventTypeId: INSTALL, subscriptionId: "60001005" },
       { eventTypeId: UNINSTALL, subscriptionId: "60001006" },
+    ]);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("recognizes live 2026-03 list responses that return objectTypeId for lifecycle events", async () => {
+    const { fetchImpl, calls } = makeFetch([
+      jsonResponse({
+        results: [
+          {
+            id: 60227053,
+            subscriptionType: "APP_LIFECYCLE_EVENT",
+            objectTypeId: INSTALL,
+          },
+          {
+            id: 60227054,
+            subscriptionType: "APP_LIFECYCLE_EVENT",
+            objectTypeId: UNINSTALL,
+          },
+        ],
+      }),
+    ]);
+
+    const report = await ensureLifecycleSubscriptions({
+      targetUrl: TARGET_URL,
+      fetchImpl,
+      getToken,
+    });
+
+    expect(report.created).toEqual([]);
+    expect(report.alreadyPresent).toEqual([
+      { eventTypeId: INSTALL, subscriptionId: "60227053" },
+      { eventTypeId: UNINSTALL, subscriptionId: "60227054" },
     ]);
     expect(calls).toHaveLength(1);
   });

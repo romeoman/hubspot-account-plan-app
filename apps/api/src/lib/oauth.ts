@@ -183,6 +183,17 @@ export const HUBSPOT_TOKEN_URL = "https://api.hubapi.com/oauth/2026-03/token";
 export const HUBSPOT_TOKEN_IDENTITY_URL_PREFIX = "https://api.hubapi.com/oauth/v1/access-tokens/";
 
 /** Minimum contract every OAuth helper needs: a fetch implementation. */
+type OAuthHttpResponse = {
+  ok: boolean;
+  status: number;
+  json(): Promise<unknown>;
+};
+
+type OAuthFetch = (
+  input: Parameters<typeof fetch>[0],
+  init?: Parameters<typeof fetch>[1],
+) => Promise<OAuthHttpResponse>;
+
 export type OAuthHttpDeps = {
   /**
    * Optional fetch override. Defaults to the global `fetch`. Tests inject
@@ -214,7 +225,7 @@ function resolveFetch(deps: OAuthHttpDeps): typeof fetch {
   return deps.fetch ?? fetch;
 }
 
-async function parseTokenResponse(response: Response): Promise<OAuthTokenResponse> {
+async function parseTokenResponse(response: OAuthHttpResponse): Promise<OAuthTokenResponse> {
   if (!response.ok) {
     // Read the body safely — HubSpot returns JSON error docs on 4xx.
     let body: unknown = null;
@@ -264,11 +275,11 @@ export async function exchangeCodeForTokens(
     code: args.code,
     redirect_uri: args.redirectUri,
   });
-  const response = await resolveFetch(args)(HUBSPOT_TOKEN_URL, {
+  const response = (await resolveFetch(args)(HUBSPOT_TOKEN_URL, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: body.toString(),
-  });
+  })) as OAuthHttpResponse;
   return parseTokenResponse(response);
 }
 
@@ -290,11 +301,11 @@ export async function refreshAccessToken(
     client_secret: args.clientSecret,
     refresh_token: args.refreshToken,
   });
-  const response = await resolveFetch(args)(HUBSPOT_TOKEN_URL, {
+  const response = (await resolveFetch(args)(HUBSPOT_TOKEN_URL, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: body.toString(),
-  });
+  })) as OAuthHttpResponse;
   return parseTokenResponse(response);
 }
 
@@ -319,7 +330,7 @@ export async function fetchTokenIdentity(
   args: { accessToken: string } & OAuthHttpDeps,
 ): Promise<TokenIdentity> {
   const url = `${HUBSPOT_TOKEN_IDENTITY_URL_PREFIX}${encodeURIComponent(args.accessToken)}`;
-  const response = await resolveFetch(args)(url, { method: "GET" });
+  const response = (await resolveFetch(args)(url, { method: "GET" })) as OAuthHttpResponse;
 
   if (!response.ok) {
     let body: unknown = null;

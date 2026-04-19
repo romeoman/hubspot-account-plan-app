@@ -17,7 +17,7 @@ import {
   OAuthStateExpiredError,
   signState,
   verifyState,
-} from "../oauth";
+} from "../oauth.js";
 
 const SECRET = "test-client-secret-32-bytes-minimum-length-value";
 const DIFFERENT_SECRET = "different-client-secret-different-value-here";
@@ -85,7 +85,7 @@ describe("buildAuthorizeUrl", () => {
     const url = buildAuthorizeUrl({
       clientId: "abc-123-xyz",
       redirectUri: "http://localhost:3000/oauth/callback",
-      scopes: ["crm.objects.companies.read", "crm.objects.contacts.read"],
+      scopes: ["oauth", "crm.objects.companies.read", "crm.objects.contacts.read"],
       state: "signed-state-value",
     });
 
@@ -94,7 +94,7 @@ describe("buildAuthorizeUrl", () => {
     expect(parsed.searchParams.get("client_id")).toBe("abc-123-xyz");
     expect(parsed.searchParams.get("redirect_uri")).toBe("http://localhost:3000/oauth/callback");
     expect(parsed.searchParams.get("scope")).toBe(
-      "crm.objects.companies.read crm.objects.contacts.read",
+      "oauth crm.objects.companies.read crm.objects.contacts.read",
     );
     expect(parsed.searchParams.get("state")).toBe("signed-state-value");
   });

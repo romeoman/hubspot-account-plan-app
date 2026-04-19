@@ -14,6 +14,7 @@ import settingsHsmeta from "../src/app/settings/settings-hsmeta.json";
 // still picked up by vitest (root config: include "**/*.test.ts").
 
 describe("HubSpot project scaffold (Slice 3 Task 5)", () => {
+  const OAUTH_INSTALL_URI_VARIABLE = `\${OAUTH_INSTALL_URI}`;
   const OAUTH_REDIRECT_URI_VARIABLE = `\${OAUTH_REDIRECT_URI}`;
   const API_ORIGIN_VARIABLE = `\${API_ORIGIN}`;
 
@@ -23,9 +24,9 @@ describe("HubSpot project scaffold (Slice 3 Task 5)", () => {
     expect(appHsmeta.config.auth.type).toBe("oauth");
   });
 
-  it("app-hsmeta.json has redirectUrls with localhost for dev", () => {
+  it("app-hsmeta.json exposes install and callback OAuth URLs", () => {
     const urls = (appHsmeta.config.auth as { redirectUrls?: string[] }).redirectUrls ?? [];
-    expect(urls).toEqual([OAUTH_REDIRECT_URI_VARIABLE]);
+    expect(urls).toEqual([OAUTH_INSTALL_URI_VARIABLE, OAUTH_REDIRECT_URI_VARIABLE]);
   });
 
   it("app-hsmeta.json permittedUrls.fetch includes https://api.hubapi.com for OAuth token exchange", () => {
@@ -51,6 +52,7 @@ describe("HubSpot project scaffold (Slice 3 Task 5)", () => {
       };
 
       expect(typeof profile.accountId).toBe("number");
+      expect(profile.variables?.OAUTH_INSTALL_URI).toBeDefined();
       expect(profile.variables?.OAUTH_REDIRECT_URI).toBeDefined();
       expect(profile.variables?.API_ORIGIN).toBeDefined();
     }
@@ -73,8 +75,9 @@ describe("HubSpot project scaffold (Slice 3 Task 5)", () => {
     expect(localProxy.proxy?.[localApiOrigin ?? ""]).toBe("http://localhost:3001");
   });
 
-  it("app-hsmeta.json scopes match the wedge (companies + contacts read)", () => {
+  it("app-hsmeta.json scopes match the wedge (oauth + companies/contact read)", () => {
     const scopes = appHsmeta.config.auth.requiredScopes;
+    expect(scopes).toContain("oauth");
     expect(scopes).toContain("crm.objects.companies.read");
     expect(scopes).toContain("crm.objects.contacts.read");
   });

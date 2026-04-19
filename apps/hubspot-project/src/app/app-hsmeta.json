@@ -7,8 +7,8 @@
     "distribution": "marketplace",
     "auth": {
       "type": "oauth",
-      "redirectUrls": ["${OAUTH_REDIRECT_URI}"],
-      "requiredScopes": ["crm.objects.companies.read", "crm.objects.contacts.read"],
+      "redirectUrls": ["${OAUTH_INSTALL_URI}", "${OAUTH_REDIRECT_URI}"],
+      "requiredScopes": ["oauth", "crm.objects.companies.read", "crm.objects.contacts.read"],
       "optionalScopes": [],
       "conditionallyRequiredScopes": []
     },
@@ -18,9 +18,9 @@
       "img": []
     },
     "support": {
-      "supportEmail": "support@man-digital.com",
-      "documentationUrl": "https://github.com/romeoman/hubspot-account-plan-app",
-      "supportUrl": "https://github.com/romeoman/hubspot-account-plan-app/issues",
+      "supportEmail": "hello@man.digital",
+      "documentationUrl": "https://www.man.digital",
+      "supportUrl": "https://www.man.digital",
       "supportPhone": "+18005555555"
     }
   }

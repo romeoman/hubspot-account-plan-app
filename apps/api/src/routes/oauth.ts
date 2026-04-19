@@ -28,7 +28,7 @@
 import { tenantHubspotOauth, tenants } from "@hap/db";
 import { sql } from "drizzle-orm";
 import { Hono } from "hono";
-import { encryptProviderKey } from "../lib/encryption";
+import { encryptProviderKey } from "../lib/encryption.js";
 import {
   buildAuthorizeUrl,
   exchangeCodeForTokens,
@@ -39,7 +39,7 @@ import {
   refreshAccessToken,
   signState,
   verifyState,
-} from "../lib/oauth";
+} from "../lib/oauth.js";
 
 export type OAuthConfig = {
   clientId: string;

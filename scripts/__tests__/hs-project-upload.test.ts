@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -84,6 +84,28 @@ describe("hs-project-upload", () => {
       "/tmp/hap-upload",
     );
     expect(deps.runUpload).toHaveBeenCalledWith("/tmp/hap-upload", ["--profile", "dev"]);
+  });
+
+  it("mirrors the selected profile into tmp/src so HubSpot CLI can load it", () => {
+    const uploadTmp = mkdtempSync(join(tmpdir(), "hap-upload-dest-"));
+    const deps = makeDeps({
+      repoRoot: () => profileRoot,
+      makeTempDir: () => uploadTmp,
+      copyProject: (src, tmp) => {
+        cpSync(src, tmp, { recursive: true });
+      },
+    });
+
+    try {
+      const exitCode = buildUploadRunner(deps)(["--profile", "dev"]);
+
+      expect(exitCode).toBe(0);
+      expect(readFileSync(join(uploadTmp, "src", "hsprofile.dev.json"), "utf8")).toBe(
+        readFileSync(join(profileRoot, "apps/hubspot-project", "hsprofile.dev.json"), "utf8"),
+      );
+    } finally {
+      rmSync(uploadTmp, { recursive: true, force: true });
+    }
   });
 
   it("does not upload when bundling fails", () => {

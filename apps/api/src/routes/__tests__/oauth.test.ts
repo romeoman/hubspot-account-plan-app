@@ -28,10 +28,10 @@ import * as schema from "@hap/db";
 import { createDatabase, createTestClient } from "@hap/db";
 import { eq, like } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { decryptProviderKey } from "../../lib/encryption";
-import { signState } from "../../lib/oauth";
-import { deactivateTenant } from "../../lib/tenant-lifecycle";
-import { createOAuthRoutes } from "../oauth";
+import { decryptProviderKey } from "../../lib/encryption.js";
+import { signState } from "../../lib/oauth.js";
+import { deactivateTenant } from "../../lib/tenant-lifecycle.js";
+import { createOAuthRoutes } from "../oauth.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const cassettesDir = join(here, "..", "..", "lib", "__tests__", "cassettes");
@@ -53,7 +53,7 @@ const CONFIG = {
   clientId: "test-client-id",
   clientSecret: "test-client-secret",
   redirectUri: "http://localhost:3000/oauth/callback",
-  scopes: ["crm.objects.companies.read", "crm.objects.contacts.read"],
+  scopes: ["oauth", "crm.objects.companies.read", "crm.objects.contacts.read"],
   stateTtlSeconds: 600,
 };
 

@@ -15,7 +15,7 @@
  * @todo Slice 3: remove this wrapper if/when @hubspot/cli handles worktrees.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -44,6 +44,25 @@ function runBundle(root: string): void {
     stdio: "inherit",
     env: process.env,
   });
+}
+
+/**
+ * HubSpot CLI 8.4.0 resolves `--profile <name>` successfully only when the
+ * matching `hsprofile.<name>.json` is present under `src/` in the upload
+ * directory. The temp-copy wrapper already preserves the root-level profile
+ * file, but that alone now triggers "Failed to load profile". Mirror the
+ * selected profile into `src/` so the current CLI can hydrate profile vars.
+ */
+export function mirrorProfileIntoSrc(
+  tmpDir: string,
+  profileName: string,
+  profilePath: string,
+): string {
+  const targetDir = join(tmpDir, "src");
+  mkdirSync(targetDir, { recursive: true });
+  const targetPath = join(targetDir, `hsprofile.${profileName}.json`);
+  cpSync(profilePath, targetPath);
+  return targetPath;
 }
 
 export interface UploadDeps {
@@ -107,6 +126,8 @@ export function buildUploadRunner(deps: UploadDeps) {
       deps.runBundle(root);
       deps.log(`[hs-upload] copying ${src} → ${tmp}`);
       deps.copyProject(src, tmp);
+      const mirroredProfilePath = mirrorProfileIntoSrc(tmp, profileName, profilePath);
+      deps.log(`[hs-upload] mirroring ${profilePath} → ${mirroredProfilePath}`);
       deps.log(`[hs-upload] running '${HS_CLI} project upload' from ${tmp}`);
       return deps.runUpload(tmp, args);
     } finally {

@@ -18,8 +18,8 @@
  *     response body. Only HTTP status + the eventTypeId that failed.
  */
 
-import { HUBSPOT_LIFECYCLE_EVENT_IDS } from "../routes/lifecycle";
-import { getAppAccessToken } from "./hubspot-app-auth";
+import { HUBSPOT_LIFECYCLE_EVENT_IDS } from "../routes/lifecycle.js";
+import { AppAuthError, getAppAccessToken } from "./hubspot-app-auth.js";
 
 export const HUBSPOT_SUBSCRIPTIONS_URL =
   "https://api.hubapi.com/webhooks-journal/subscriptions/2026-03";
@@ -64,10 +64,17 @@ export class SubscriptionBootstrapError extends Error {
   }
 }
 
+type SubscriptionApiResponse = {
+  ok: boolean;
+  status: number;
+  json(): Promise<unknown>;
+};
+
 type ListResultItem = {
   id?: unknown;
   subscriptionType?: unknown;
   eventTypeId?: unknown;
+  objectTypeId?: unknown;
 };
 
 type ListResponseBody = {
@@ -103,15 +110,15 @@ async function listLifecycleSubscriptions(
   fetchImpl: typeof fetch,
   token: string,
 ): Promise<Map<string, string>> {
-  let response: Response;
+  let response: SubscriptionApiResponse;
   try {
-    response = await fetchImpl(HUBSPOT_SUBSCRIPTIONS_URL, {
+    response = (await fetchImpl(HUBSPOT_SUBSCRIPTIONS_URL, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: "application/json",
       },
-    });
+    })) as SubscriptionApiResponse;
   } catch (_cause) {
     throw new SubscriptionBootstrapError("failed to reach HubSpot subscriptions list endpoint", {
       stage: "list",
@@ -140,15 +147,21 @@ async function listLifecycleSubscriptions(
   for (const raw of results) {
     const item = raw as ListResultItem;
     const id = coerceSubscriptionId(item.id);
+    const lifecycleTypeId =
+      typeof item.eventTypeId === "string"
+        ? item.eventTypeId
+        : typeof item.objectTypeId === "string"
+          ? item.objectTypeId
+          : null;
     if (
       id !== null &&
-      typeof item.eventTypeId === "string" &&
+      lifecycleTypeId !== null &&
       item.subscriptionType === LIFECYCLE_SUBSCRIPTION_TYPE &&
-      REQUIRED_EVENT_TYPE_IDS.includes(item.eventTypeId)
+      REQUIRED_EVENT_TYPE_IDS.includes(lifecycleTypeId)
     ) {
       // First write wins; duplicates should not happen but we don't overwrite.
-      if (!existing.has(item.eventTypeId)) {
-        existing.set(item.eventTypeId, id);
+      if (!existing.has(lifecycleTypeId)) {
+        existing.set(lifecycleTypeId, id);
       }
     }
   }
@@ -160,9 +173,9 @@ async function createLifecycleSubscription(
   token: string,
   eventTypeId: string,
 ): Promise<string> {
-  let response: Response;
+  let response: SubscriptionApiResponse;
   try {
-    response = await fetchImpl(HUBSPOT_SUBSCRIPTIONS_URL, {
+    response = (await fetchImpl(HUBSPOT_SUBSCRIPTIONS_URL, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -173,7 +186,7 @@ async function createLifecycleSubscription(
         subscriptionType: LIFECYCLE_SUBSCRIPTION_TYPE,
         eventTypeId,
       }),
-    });
+    })) as SubscriptionApiResponse;
   } catch (_cause) {
     throw new SubscriptionBootstrapError(
       `failed to reach HubSpot subscriptions create endpoint for eventTypeId ${eventTypeId}`,
@@ -215,7 +228,18 @@ export async function ensureLifecycleSubscriptions(
   const fetchImpl = options.fetchImpl ?? fetch;
   const getToken = options.getToken ?? (() => getAppAccessToken());
 
-  const token = await getToken();
+  let token: string;
+  try {
+    token = await getToken();
+  } catch (cause) {
+    if (cause instanceof AppAuthError) {
+      throw new SubscriptionBootstrapError("failed to obtain HubSpot app access token", {
+        stage: "list",
+        status: cause.status,
+      });
+    }
+    throw cause;
+  }
   const existing = await listLifecycleSubscriptions(fetchImpl, token);
 
   const alreadyPresent: SubscriptionEntry[] = [];

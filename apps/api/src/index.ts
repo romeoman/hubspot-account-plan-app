@@ -3,16 +3,16 @@ import { createDatabase } from "@hap/db";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { withTenantTxHandle } from "./lib/tenant-tx";
-import { authMiddleware } from "./middleware/auth";
-import { type CorrelationVariables, correlationMiddleware } from "./middleware/correlation";
-import { nonceMiddleware } from "./middleware/nonce";
-import { type TenantVariables, tenantMiddleware } from "./middleware/tenant";
-import { createLifecycleBootstrapRoute } from "./routes/admin/lifecycle-bootstrap";
-import { lifecycleWebhookRoutes } from "./routes/lifecycle";
-import { createOAuthRoutes } from "./routes/oauth";
-import { settingsRoutes } from "./routes/settings";
-import { snapshotRoutes } from "./routes/snapshot";
+import { withTenantTxHandle } from "./lib/tenant-tx.js";
+import { authMiddleware } from "./middleware/auth.js";
+import { type CorrelationVariables, correlationMiddleware } from "./middleware/correlation.js";
+import { nonceMiddleware } from "./middleware/nonce.js";
+import { type TenantVariables, tenantMiddleware } from "./middleware/tenant.js";
+import { createLifecycleBootstrapRoute } from "./routes/admin/lifecycle-bootstrap.js";
+import { lifecycleWebhookRoutes } from "./routes/lifecycle.js";
+import { createOAuthRoutes } from "./routes/oauth.js";
+import { settingsRoutes } from "./routes/settings.js";
+import { snapshotRoutes } from "./routes/snapshot.js";
 
 type AppVars = TenantVariables & CorrelationVariables & { portalId?: string; rawBody?: string };
 
@@ -112,7 +112,7 @@ app.route(
       clientId: process.env.HUBSPOT_CLIENT_ID ?? "",
       clientSecret: process.env.HUBSPOT_CLIENT_SECRET ?? "",
       redirectUri: resolveHubSpotOAuthRedirectUri(),
-      scopes: ["crm.objects.companies.read", "crm.objects.contacts.read"],
+      scopes: ["oauth", "crm.objects.companies.read", "crm.objects.contacts.read"],
       stateTtlSeconds: 600,
     },
     db: getDb(),
@@ -162,7 +162,11 @@ app.route("/api/snapshot", snapshotRoutes);
 // Only start the real HTTP server outside test runners. Some tests
 // temporarily simulate production mode while importing this module, so the
 // guard must not rely on NODE_ENV alone.
-if (process.env.NODE_ENV !== "test" && process.env.VITEST !== "true") {
+if (
+  process.env.NODE_ENV !== "test" &&
+  process.env.VITEST !== "true" &&
+  !process.env.VERCEL
+) {
   const port = Number(process.env.PORT) || 3001;
   console.log(`API server starting on port ${port}`);
   serve({ fetch: app.fetch, port });
