@@ -264,6 +264,123 @@ describe("testLlmConnection — Custom (SSRF + URL rules)", () => {
   });
 });
 
+describe("assertSafeCustomEndpoint — IPv4-mapped IPv6 + unspecified + hex", () => {
+  const customBody = (endpointUrl: string): TestConnectionBody => ({
+    target: "llm",
+    provider: "custom",
+    model: "oss-model",
+    endpointUrl,
+    apiKey: PLAINTEXT_SENTINEL,
+  });
+
+  it("rejects https://[::ffff:169.254.169.254]/v1/models (AWS metadata via v4-mapped v6)", async () => {
+    const fetchImpl = stubFetch(() => jsonResponse(200, { data: [{ id: "oss-model" }] }));
+    const result = await testConnection(
+      tenantA,
+      customBody("https://[::ffff:169.254.169.254]/v1/models"),
+      { fetch: fetchImpl, now: () => 1 },
+    );
+    expect(result).toMatchObject({ ok: false, code: "endpoint" });
+    expect((fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
+  });
+
+  it("rejects https://[::ffff:169.254.169.254]/ bare (AWS metadata via v4-mapped v6)", async () => {
+    const fetchImpl = stubFetch(() => jsonResponse(200, {}));
+    const result = await testConnection(tenantA, customBody("https://[::ffff:169.254.169.254]/"), {
+      fetch: fetchImpl,
+      now: () => 1,
+    });
+    expect(result).toMatchObject({ ok: false, code: "endpoint" });
+  });
+
+  it("rejects https://[::ffff:127.0.0.1]/ (loopback via v4-mapped v6)", async () => {
+    const fetchImpl = stubFetch(() => jsonResponse(200, {}));
+    const result = await testConnection(tenantA, customBody("https://[::ffff:127.0.0.1]/"), {
+      fetch: fetchImpl,
+      now: () => 1,
+    });
+    expect(result).toMatchObject({ ok: false, code: "endpoint" });
+  });
+
+  it("rejects https://[::ffff:10.0.0.5]/ (private v4 via v4-mapped v6)", async () => {
+    const fetchImpl = stubFetch(() => jsonResponse(200, {}));
+    const result = await testConnection(tenantA, customBody("https://[::ffff:10.0.0.5]/"), {
+      fetch: fetchImpl,
+      now: () => 1,
+    });
+    expect(result).toMatchObject({ ok: false, code: "endpoint" });
+  });
+
+  it("rejects https://[::ffff:192.168.1.1]/", async () => {
+    const fetchImpl = stubFetch(() => jsonResponse(200, {}));
+    const result = await testConnection(tenantA, customBody("https://[::ffff:192.168.1.1]/"), {
+      fetch: fetchImpl,
+      now: () => 1,
+    });
+    expect(result).toMatchObject({ ok: false, code: "endpoint" });
+  });
+
+  it("rejects https://[::ffff:172.16.0.1]/", async () => {
+    const fetchImpl = stubFetch(() => jsonResponse(200, {}));
+    const result = await testConnection(tenantA, customBody("https://[::ffff:172.16.0.1]/"), {
+      fetch: fetchImpl,
+      now: () => 1,
+    });
+    expect(result).toMatchObject({ ok: false, code: "endpoint" });
+  });
+
+  it("rejects https://[::]/ (unspecified IPv6)", async () => {
+    const fetchImpl = stubFetch(() => jsonResponse(200, {}));
+    const result = await testConnection(tenantA, customBody("https://[::]/"), {
+      fetch: fetchImpl,
+      now: () => 1,
+    });
+    expect(result).toMatchObject({ ok: false, code: "endpoint" });
+  });
+
+  it("rejects https://[::ffff:a9fe:a9fe]/ (hex form of 169.254.169.254)", async () => {
+    const fetchImpl = stubFetch(() => jsonResponse(200, {}));
+    const result = await testConnection(tenantA, customBody("https://[::ffff:a9fe:a9fe]/"), {
+      fetch: fetchImpl,
+      now: () => 1,
+    });
+    expect(result).toMatchObject({ ok: false, code: "endpoint" });
+  });
+
+  it("rejects https://[::ffff:7f00:1]/ (hex form of 127.0.0.1)", async () => {
+    const fetchImpl = stubFetch(() => jsonResponse(200, {}));
+    const result = await testConnection(tenantA, customBody("https://[::ffff:7f00:1]/"), {
+      fetch: fetchImpl,
+      now: () => 1,
+    });
+    expect(result).toMatchObject({ ok: false, code: "endpoint" });
+  });
+
+  it("rejects https://foo.localhost/ (hostname ending in .localhost)", async () => {
+    const fetchImpl = stubFetch(() => jsonResponse(200, {}));
+    const result = await testConnection(tenantA, customBody("https://foo.localhost/"), {
+      fetch: fetchImpl,
+      now: () => 1,
+    });
+    expect(result).toMatchObject({ ok: false, code: "endpoint" });
+  });
+
+  it("sanity: https://api.openai.com/v1/models still succeeds", async () => {
+    const seen: string[] = [];
+    const fetchImpl = stubFetch((url) => {
+      seen.push(url);
+      return jsonResponse(200, { data: [{ id: "oss-model" }] });
+    });
+    const result = await testConnection(tenantA, customBody("https://api.openai.com"), {
+      fetch: fetchImpl,
+      now: () => 1,
+    });
+    expect(result.ok).toBe(true);
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen[0]).toMatch(/^https:\/\/api\.openai\.com\/(v1\/)?models$/);
+  });
+});
+
 describe("testExaConnection", () => {
   const body = (): TestConnectionBody => ({
     target: "exa",

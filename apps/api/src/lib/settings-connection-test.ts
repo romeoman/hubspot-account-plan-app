@@ -23,6 +23,7 @@
  * responses, assert log outputs, and stub the encryption path without a DB.
  */
 
+import { BlockList, isIP } from "node:net";
 import type {
   LlmProviderType,
   TestConnectionBody,
@@ -33,6 +34,38 @@ import type {
 import { type Database, llmConfig, providerConfig } from "@hap/db";
 import { and, eq } from "drizzle-orm";
 import { decryptProviderKey } from "./encryption";
+
+/**
+ * Authoritative blocklist of IP ranges that are unsafe for outbound
+ * custom-endpoint probes. Uses Node's built-in {@link BlockList} — the
+ * same primitive undici/fetch uses internally to parse addresses — so
+ * IPv4-mapped IPv6 forms like `::ffff:169.254.169.254` and hex forms
+ * like `::ffff:a9fe:a9fe` are normalized and matched correctly.
+ *
+ * Naive string-prefix checks on the bracket-stripped host are NOT
+ * sufficient: they miss v4-mapped v6 (credential-metadata bypass) and
+ * the hex representation of the same addresses.
+ */
+const BLOCKED_IPS: BlockList = (() => {
+  const list = new BlockList();
+  // IPv4 unsafe ranges.
+  list.addSubnet("0.0.0.0", 8, "ipv4");
+  list.addSubnet("10.0.0.0", 8, "ipv4");
+  list.addSubnet("127.0.0.0", 8, "ipv4");
+  list.addSubnet("169.254.0.0", 16, "ipv4");
+  list.addSubnet("172.16.0.0", 12, "ipv4");
+  list.addSubnet("192.168.0.0", 16, "ipv4");
+  // IPv6 unsafe ranges.
+  list.addAddress("::", "ipv6"); // unspecified
+  list.addAddress("::1", "ipv6"); // loopback
+  list.addSubnet("fc00::", 7, "ipv6"); // unique-local (ULA)
+  list.addSubnet("fe80::", 10, "ipv6"); // link-local
+  // IPv4-mapped IPv6 space (::ffff:0:0/96) — covers every v4-mapped v6
+  // including hex forms like ::ffff:a9fe:a9fe. `BlockList.check` with
+  // family "ipv6" resolves the embedded IPv4 against this subnet.
+  list.addSubnet("::ffff:0:0", 96, "ipv6");
+  return list;
+})();
 
 /**
  * Minimal structured logger surface. Matches the fields emitted by
@@ -114,12 +147,19 @@ function fail(code: TestConnectionErrorCode, message: string): TestConnectionRes
  * Rules:
  *   - Must parse as a URL.
  *   - Must use https scheme.
- *   - Hostname must not be loopback (`localhost`, `127.0.0.0/8`, `::1`),
- *     link-local (`169.254.0.0/16`), private (`10/8`, `172.16/12`,
- *     `192.168/16`), or an IPv6 ULA (`fc00::/7`).
+ *   - Must not contain userinfo (`https://example.com@169.254.169.254/`
+ *     style bypass).
+ *   - IP literal hosts (v4 or v6, in any normalized form) are checked
+ *     against {@link BLOCKED_IPS} — a Node {@link BlockList} covering
+ *     loopback, link-local, private, ULA, unspecified, and the
+ *     IPv4-mapped-IPv6 (`::ffff:0:0/96`) subnet so that forms like
+ *     `::ffff:169.254.169.254` and `::ffff:a9fe:a9fe` cannot bypass
+ *     the v4 checks.
+ *   - Hostnames resolving to `localhost` or ending in `.localhost`
+ *     (per RFC 6761) are rejected.
  *
- * The string-only host check is sufficient for V1: it blocks the obvious
- * SSRF vectors. A stricter DNS-resolution pass is out of scope.
+ * A DNS-resolution pass for arbitrary hostnames is out of scope for V1;
+ * this still blocks the literal-IP and localhost bypass classes.
  */
 export function assertSafeCustomEndpoint(rawUrl: string): void {
   let parsed: URL;
@@ -131,44 +171,36 @@ export function assertSafeCustomEndpoint(rawUrl: string): void {
   if (parsed.protocol !== "https:") {
     throw new SsrfError("must be HTTPS");
   }
+  // Reject userinfo in the authority — e.g. https://example.com@169.254.169.254/.
+  // URL.username/password are empty strings when absent.
+  if (parsed.username !== "" || parsed.password !== "") {
+    throw new SsrfError("userinfo not allowed");
+  }
+
   const host = parsed.hostname.toLowerCase();
   const stripped = host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
 
+  const family = isIP(stripped);
+  if (family === 4) {
+    if (BLOCKED_IPS.check(stripped, "ipv4")) {
+      throw new SsrfError("blocked IPv4 host");
+    }
+    return;
+  }
+  if (family === 6) {
+    if (BLOCKED_IPS.check(stripped, "ipv6")) {
+      throw new SsrfError("blocked IPv6 host");
+    }
+    return;
+  }
+
+  // Hostname path. family === 0.
   if (stripped === "localhost" || stripped === "ip6-localhost") {
     throw new SsrfError("loopback host not allowed");
   }
-  // IPv6 loopback (::1)
-  if (stripped === "::1") {
+  // RFC 6761: any name ending in `.localhost` must resolve to loopback.
+  if (stripped.endsWith(".localhost")) {
     throw new SsrfError("loopback host not allowed");
-  }
-  // IPv6 link-local (fe80::/10) and ULA (fc00::/7)
-  if (stripped.startsWith("fe80:") || /^fc[0-9a-f]{2}:/.test(stripped)) {
-    throw new SsrfError("link-local or unique-local host not allowed");
-  }
-  if (stripped.startsWith("fc") && stripped.includes(":")) {
-    throw new SsrfError("unique-local host not allowed");
-  }
-
-  // IPv4 literal checks.
-  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(stripped);
-  if (ipv4) {
-    const octets = ipv4.slice(1, 5).map((s) => Number.parseInt(s, 10));
-    if (octets.some((o) => Number.isNaN(o) || o < 0 || o > 255)) {
-      throw new SsrfError("invalid IPv4");
-    }
-    const [a = 0, b = 0] = octets;
-    // 127.0.0.0/8
-    if (a === 127) throw new SsrfError("loopback host not allowed");
-    // 10.0.0.0/8
-    if (a === 10) throw new SsrfError("private host not allowed");
-    // 169.254.0.0/16 (link-local, AWS/GCP metadata 169.254.169.254)
-    if (a === 169 && b === 254) throw new SsrfError("link-local host not allowed");
-    // 172.16.0.0/12
-    if (a === 172 && b >= 16 && b <= 31) throw new SsrfError("private host not allowed");
-    // 192.168.0.0/16
-    if (a === 192 && b === 168) throw new SsrfError("private host not allowed");
-    // 0.0.0.0/8
-    if (a === 0) throw new SsrfError("unspecified host not allowed");
   }
 }
 
