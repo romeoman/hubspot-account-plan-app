@@ -10,9 +10,11 @@
  * `api_key_encrypted` into `apiKeyRef` before returning, so this factory just
  * reads plaintext from the config. The factory never touches ciphertext.
  *
- * Provider status (Slice 3):
- *  - `exa` → real {@link ./exa.ExaAdapter}.
- *  - `news` → real {@link ./news.NewsAdapter} (Exa news vertical).
+ * Provider status:
+ *  - `exa` → real {@link ./exa.ExaAdapter}. The Exa provider row also drives
+ *    the {@link ./news.NewsAdapter} via the shared API key — see
+ *    {@link createExaSignalAdapters}. News is no longer a top-level provider
+ *    slot.
  *  - `hubspot-enrichment` → real per-tenant HubSpot CRM enrichment
  *    backed by the OAuth-aware `HubSpotClient`.
  *
@@ -97,16 +99,55 @@ export function createSignalAdapter(
         })();
       return new HubSpotEnrichmentAdapter(client);
     }
-    case "news":
-      return new NewsAdapter({
-        apiKey: config.apiKeyRef,
-        fetch: fetchImpl,
-      });
     default: {
       const name = (config as { name: string }).name;
       throw new Error(`Unknown signal provider: ${name}`);
     }
   }
+}
+
+/**
+ * Build the full set of signal adapters driven by the Exa provider row.
+ *
+ * News is no longer a top-level provider slot — it shares Exa's credential
+ * and runs as a secondary adapter. Gating rules:
+ *
+ *  - `config.enabled === false` → returns `[]`. Neither Exa main nor News.
+ *  - `config.settings.newsEnabled === false` → returns `[ExaAdapter]` only.
+ *  - Otherwise (enabled, `newsEnabled` unset or `true`) → returns
+ *    `[ExaAdapter, NewsAdapter]` both wired to the same API key.
+ *
+ * The caller is responsible for wrapping each returned adapter with
+ * {@link wrapSignalWithGuards} per-tenant before handing them to the
+ * snapshot assembler.
+ */
+export function createExaSignalAdapters(
+  config: ProviderConfig,
+  deps?: SignalFactoryDeps,
+): ProviderAdapter[] {
+  if (config.name !== "exa") {
+    throw new Error(`createExaSignalAdapters expects an exa provider config; got '${config.name}'`);
+  }
+  if (!config.enabled) {
+    return [];
+  }
+
+  const fetchImpl = deps?.fetch;
+  const adapters: ProviderAdapter[] = [
+    new ExaAdapter({ apiKey: config.apiKeyRef, fetch: fetchImpl }),
+  ];
+
+  const newsEnabled =
+    config.settings && typeof config.settings === "object"
+      ? (config.settings as Record<string, unknown>).newsEnabled
+      : undefined;
+
+  // Default: news on. Only `newsEnabled === false` turns it off.
+  if (newsEnabled !== false) {
+    adapters.push(new NewsAdapter({ apiKey: config.apiKeyRef, fetch: fetchImpl }));
+  }
+
+  return adapters;
 }
 
 /** Context required to wrap an adapter call with rate-limiter + observability. */

@@ -106,7 +106,12 @@ describe("GET /api/settings", () => {
     const body = (await res.json()) as {
       tenantId: string;
       signalProviders: Record<string, { enabled: boolean; hasApiKey: boolean }>;
-      llm: { provider: string | null; model: string; hasApiKey: boolean; endpointUrl?: string };
+      llm: {
+        provider: string | null;
+        model: string;
+        hasApiKey: boolean;
+        endpointUrl?: string;
+      };
       eligibility: { propertyName: string };
       thresholds: { freshnessMaxDays: number; minConfidence: number };
     };
@@ -115,7 +120,6 @@ describe("GET /api/settings", () => {
       tenantId: tenant.id,
       signalProviders: {
         exa: { enabled: false, hasApiKey: false },
-        news: { enabled: false, hasApiKey: false },
         hubspotEnrichment: { enabled: false, hasApiKey: false },
       },
       llm: {
@@ -149,7 +153,6 @@ describe("PUT /api/settings", () => {
       body: JSON.stringify({
         signalProviders: {
           exa: { enabled: true, apiKey: "exa-secret-route" },
-          news: { enabled: true },
           hubspotEnrichment: { enabled: true },
         },
         llm: {
@@ -175,7 +178,6 @@ describe("PUT /api/settings", () => {
       tenantId: tenant.id,
       signalProviders: {
         exa: { enabled: true, hasApiKey: true },
-        news: { enabled: true, hasApiKey: false },
         hubspotEnrichment: { enabled: true, hasApiKey: false },
       },
       llm: {
@@ -327,7 +329,10 @@ describe("PUT /api/settings", () => {
       signalProviders: { exa: { enabled: boolean; hasApiKey: boolean } };
     };
     expect(body.tenantId).toBe(tenantB.id);
-    expect(body.signalProviders.exa).toEqual({ enabled: false, hasApiKey: false });
+    expect(body.signalProviders.exa).toEqual({
+      enabled: false,
+      hasApiKey: false,
+    });
   });
 
   it("invalidates cached provider and llm config immediately after settings save", async () => {
@@ -394,5 +399,45 @@ describe("PUT /api/settings", () => {
     expect(freshLlm?.provider).toBe("openai");
     expect(freshLlm?.model).toBe("gpt-5.4-mini");
     expect(freshLlm?.apiKeyRef).toBe("openai-new");
+  });
+
+  it("rejects a PUT payload that includes the legacy 'news' signal provider slot with 400", async () => {
+    const tenant = await seedTenant();
+    const app = await loadApp();
+
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: {
+        Authorization: "Bearer anything",
+        "x-test-portal-id": tenant.hubspotPortalId,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        signalProviders: {
+          news: { enabled: true, apiKey: "news-key" },
+        },
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a PUT payload that attaches an apiKey to hubspotEnrichment with 400", async () => {
+    const tenant = await seedTenant();
+    const app = await loadApp();
+
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: {
+        Authorization: "Bearer anything",
+        "x-test-portal-id": tenant.hubspotPortalId,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        signalProviders: {
+          hubspotEnrichment: { enabled: true, apiKey: "fake-key" },
+        },
+      }),
+    });
+    expect(res.status).toBe(400);
   });
 });

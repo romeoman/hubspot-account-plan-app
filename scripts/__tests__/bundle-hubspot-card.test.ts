@@ -62,4 +62,24 @@ describe("bundle-hubspot-card — programmatic define contract", () => {
       );
     }
   });
+
+  it("externalizes react, react-dom, react/jsx-runtime, and @hubspot/ui-extensions for both targets", () => {
+    // Vite lib mode auto-externalizes peerDependencies only. The extension's
+    // package.json lists react/react-dom in `dependencies`, so without an
+    // explicit `rollupOptions.external` the built bundle inlines a second
+    // copy of React. That second copy's ReactCurrentDispatcher is null at
+    // runtime, and the first useState call inside the settings page throws
+    // "Cannot read properties of null (reading 'useState')". Pin the
+    // external contract so the bundler cannot silently regress.
+    const required = ["react", "react-dom", "react/jsx-runtime", "@hubspot/ui-extensions"];
+    for (const target of bundleTargets) {
+      const options = buildViteOptions(target, "https://example.test");
+      const external = options.build?.rollupOptions?.external;
+      expect(external).toBeDefined();
+      const externalArray = Array.isArray(external) ? external : [external];
+      for (const entry of required) {
+        expect(externalArray).toContain(entry);
+      }
+    }
+  });
 });

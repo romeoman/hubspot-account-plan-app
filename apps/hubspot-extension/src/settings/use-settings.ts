@@ -1,9 +1,16 @@
-import type { SettingsResponse, SettingsUpdate } from "@hap/config";
+import type {
+  SettingsResponse,
+  SettingsUpdate,
+  TestConnectionBody,
+  TestConnectionResponse,
+} from "@hap/config";
 import { settingsResponseSchema } from "@hap/validators";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  createSettingsConnectionTester,
   createSettingsFetcher,
   createSettingsUpdater,
+  type SettingsConnectionTester,
   type SettingsFetcher,
   type SettingsUpdater,
 } from "./api-fetcher";
@@ -11,6 +18,7 @@ import {
 export type UseSettingsArgs = {
   fetchSettings?: SettingsFetcher;
   updateSettings?: SettingsUpdater;
+  testConnection?: SettingsConnectionTester;
 };
 
 export type UseSettingsState = {
@@ -20,11 +28,13 @@ export type UseSettingsState = {
   saveSucceeded: boolean;
   error?: Error;
   save: (update: SettingsUpdate) => Promise<void>;
+  testConnection: (body: TestConnectionBody) => Promise<TestConnectionResponse>;
 };
 
 export function useSettings({
   fetchSettings,
   updateSettings,
+  testConnection: testConnectionInjected,
 }: UseSettingsArgs = {}): UseSettingsState {
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -34,11 +44,14 @@ export function useSettings({
 
   const defaultFetcher = useMemo(() => createSettingsFetcher(), []);
   const defaultUpdater = useMemo(() => createSettingsUpdater(), []);
+  const defaultTester = useMemo(() => createSettingsConnectionTester(), []);
   const activeFetcherRef = useRef<SettingsFetcher>(fetchSettings ?? defaultFetcher);
   const activeUpdaterRef = useRef<SettingsUpdater>(updateSettings ?? defaultUpdater);
+  const activeTesterRef = useRef<SettingsConnectionTester>(testConnectionInjected ?? defaultTester);
 
   activeFetcherRef.current = fetchSettings ?? defaultFetcher;
   activeUpdaterRef.current = updateSettings ?? defaultUpdater;
+  activeTesterRef.current = testConnectionInjected ?? defaultTester;
 
   useEffect(() => {
     let cancelled = false;
@@ -91,6 +104,21 @@ export function useSettings({
     }
   }, []);
 
+  const testConnection = useCallback(
+    async (body: TestConnectionBody): Promise<TestConnectionResponse> => {
+      try {
+        return await activeTesterRef.current(body);
+      } catch (err: unknown) {
+        return {
+          ok: false,
+          code: "network",
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+    [],
+  );
+
   return {
     settings,
     loading,
@@ -98,5 +126,6 @@ export function useSettings({
     saveSucceeded,
     error,
     save,
+    testConnection,
   };
 }

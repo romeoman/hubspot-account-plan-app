@@ -10,9 +10,20 @@ import { DEFAULT_ELIGIBILITY_PROPERTY } from "../services/eligibility";
 import { DEFAULT_THRESHOLDS, invalidateTenantConfig } from "./config-resolver";
 import { encryptProviderKey } from "./encryption";
 
+/**
+ * Thrown when `updateSettings` receives a payload that passed initial
+ * validation but violates a service-level invariant (defense-in-depth). The
+ * route layer maps this to HTTP 400.
+ */
+export class SettingsValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SettingsValidationError";
+  }
+}
+
 const MANAGED_SIGNAL_PROVIDERS = [
   { key: "exa", providerName: "exa" },
-  { key: "news", providerName: "news" },
   { key: "hubspotEnrichment", providerName: "hubspot-enrichment" },
 ] as const;
 
@@ -143,10 +154,6 @@ export async function readSettings(deps: SettingsServiceDeps): Promise<SettingsR
       exa: {
         enabled: rowByProvider.get("exa")?.enabled ?? false,
         hasApiKey: !!rowByProvider.get("exa")?.apiKeyEncrypted,
-      },
-      news: {
-        enabled: rowByProvider.get("news")?.enabled ?? false,
-        hasApiKey: !!rowByProvider.get("news")?.apiKeyEncrypted,
       },
       hubspotEnrichment: {
         enabled: rowByProvider.get("hubspot-enrichment")?.enabled ?? false,
@@ -286,17 +293,45 @@ export async function updateSettings(
     }
 
     if (update.signalProviders) {
-      for (const { key, providerName } of MANAGED_SIGNAL_PROVIDERS) {
-        const patch = update.signalProviders[key];
-        if (!patch) continue;
-        const existing = providerByName.get(providerName);
-        await upsertSignalProvider(txDb, tenantId, providerName, {
-          enabled: patch.enabled ?? existing?.enabled ?? false,
-          apiKeyEncrypted: patch.clearApiKey
+      const exaPatch = update.signalProviders.exa;
+      if (exaPatch) {
+        const existing = providerByName.get("exa");
+        await upsertSignalProvider(txDb, tenantId, "exa", {
+          enabled: exaPatch.enabled ?? existing?.enabled ?? false,
+          apiKeyEncrypted: exaPatch.clearApiKey
             ? null
-            : patch.apiKey
-              ? encryptProviderKey(tenantId, patch.apiKey)
+            : exaPatch.apiKey
+              ? encryptProviderKey(tenantId, exaPatch.apiKey)
               : (existing?.apiKeyEncrypted ?? null),
+          thresholds: {
+            ...DEFAULT_THRESHOLDS,
+            ...parseThresholds(existing?.thresholds),
+            ...update.thresholds,
+          },
+        });
+      }
+
+      const enrichmentPatch = update.signalProviders.hubspotEnrichment;
+      if (enrichmentPatch) {
+        // Defense in depth: the validator already rejects `apiKey` /
+        // `clearApiKey` for the OAuth-backed HubSpot enrichment slot. If a
+        // caller somehow bypasses the validator, surface a hard error rather
+        // than silently dropping the field.
+        const stray = enrichmentPatch as {
+          apiKey?: unknown;
+          clearApiKey?: unknown;
+        };
+        if (stray.apiKey !== undefined || stray.clearApiKey !== undefined) {
+          throw new SettingsValidationError(
+            "hubspotEnrichment does not accept apiKey/clearApiKey; it is OAuth-backed",
+          );
+        }
+        const existing = providerByName.get("hubspot-enrichment");
+        await upsertSignalProvider(txDb, tenantId, "hubspot-enrichment", {
+          enabled: enrichmentPatch.enabled ?? existing?.enabled ?? false,
+          // Preserve any historical ciphertext rather than deleting — the DB
+          // migration path owns cleanup. No API key is ever written here.
+          apiKeyEncrypted: existing?.apiKeyEncrypted ?? null,
           thresholds: {
             ...DEFAULT_THRESHOLDS,
             ...parseThresholds(existing?.thresholds),

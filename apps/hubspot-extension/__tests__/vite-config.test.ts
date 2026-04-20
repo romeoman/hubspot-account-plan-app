@@ -76,6 +76,22 @@ describe("hubspot-extension vite.config.ts", () => {
     expect(block.__HAP_API_ORIGIN__).toBe(JSON.stringify(""));
   });
 
+  it("externalizes react, react-dom, react/jsx-runtime, and @hubspot/ui-extensions", async () => {
+    // Vite lib mode only auto-externalizes peerDependencies. react/react-dom
+    // are declared in `dependencies` so without this explicit list the
+    // bundle inlines a second copy of React, and at runtime the first
+    // useState call throws "Cannot read properties of null (reading
+    // 'useState')". Pin the external contract here so a refactor cannot
+    // silently regress the settings extension.
+    const cfg = await loadConfigWithEnv({ API_ORIGIN: "https://example.test" });
+    const external = cfg.build?.rollupOptions?.external;
+    expect(external).toBeDefined();
+    const externalArray = Array.isArray(external) ? external : [external];
+    for (const entry of ["react", "react-dom", "react/jsx-runtime", "@hubspot/ui-extensions"]) {
+      expect(externalArray).toContain(entry);
+    }
+  });
+
   it("preserves the API_ORIGIN value verbatim (no trailing-slash normalization)", async () => {
     // Clarity: the resolver does NOT strip trailing slashes. If a profile
     // supplies "https://host/" the built bundle carries that exact string

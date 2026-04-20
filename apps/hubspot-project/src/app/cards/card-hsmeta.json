@@ -2,7 +2,7 @@
   "uid": "hap_signal_workspace_card",
   "type": "card",
   "config": {
-    "name": "Account Signal",
+    "name": "Account Planning",
     "location": "crm.record.tab",
     "entrypoint": "/app/cards/SignalCard.tsx",
     "objectTypes": ["companies"]

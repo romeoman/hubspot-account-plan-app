@@ -72,7 +72,7 @@ recreate them.
 Fill in the `Company ID` / `Contact IDs` columns after the first real run by
 pasting the results-table rows printed by the seed script. The
 `Expected Card Render` column is the acceptance criterion you verify by
-opening the company record in HubSpot and looking at the Account Signal
+opening the company record in HubSpot and looking at the Account Planning
 `crm.record.tab`.
 
 | QA State        | Company Name                   | Company ID   | Contact IDs                              | Expected Card Render                                                                                                                               |
@@ -94,7 +94,7 @@ For each row above:
 2. Navigate to Contacts → Companies.
 3. Search for the company name (e.g. `Slice2-EligibleStrong-AcmeCorp`).
 4. Click into the company record.
-5. Confirm the Account Signal card renders in the record tab strip.
+5. Confirm the Account Planning card renders in the record tab strip.
 6. Verify the expected state per the table above.
 7. Take a screenshot (attach to the linked Linear/Taskmaster task).
 8. Capture the `X-Request-Id` response header (Step 7's observability) from

@@ -154,6 +154,12 @@ export type ProviderConfig = {
    * match via `endsWith`) is dropped. Block always wins over allow.
    */
   blockList?: string[];
+  /**
+   * Optional per-provider JSONB settings bag. Used by the Exa provider to
+   * gate the news sub-adapter via `newsEnabled` without exposing News as a
+   * top-level provider slot. Absent / undefined = default behavior.
+   */
+  settings?: Record<string, unknown>;
 };
 
 /**
@@ -176,9 +182,13 @@ export type TenantConfig = {
 };
 
 /**
- * Signal providers exposed in the Slice 4 settings surface.
+ * Signal providers exposed in the settings surface.
+ *
+ * The News vertical is driven by the Exa provider at adapter-factory time
+ * (same API key, separate `NewsAdapter`), so `news` is intentionally NOT in
+ * this union — it is not a user-configurable provider slot.
  */
-export type SettingsSignalProviderName = "exa" | "news" | "hubspot-enrichment";
+export type SettingsSignalProviderName = "exa" | "hubspot-enrichment";
 
 /**
  * Presence-only provider settings state returned by the settings API.
@@ -199,7 +209,6 @@ export type SettingsProviderState = {
  */
 export type SettingsSignalProviders = {
   exa: SettingsProviderState;
-  news: SettingsProviderState;
   hubspotEnrichment: SettingsProviderState;
 };
 
@@ -222,7 +231,7 @@ export type SettingsResponse = {
 };
 
 /**
- * Partial update for a single signal provider from the Slice 4 settings UI.
+ * Partial update for a single signal provider from the settings UI.
  *
  * `apiKey` is replace-only. Blank input is treated as "preserve existing";
  * explicit deletion, if supported, uses `clearApiKey`.
@@ -233,11 +242,62 @@ export type SettingsProviderUpdate = {
   clearApiKey?: boolean;
 };
 
+/**
+ * HubSpot enrichment is OAuth-backed, so its update leaf has no `apiKey` or
+ * `clearApiKey` field. A dedicated type prevents the UI/wire contract from
+ * silently accepting a fake API key that would never be used.
+ */
+export type SettingsHubspotEnrichmentUpdate = {
+  enabled?: boolean;
+};
+
 export type SettingsSignalProviderUpdates = {
   exa?: SettingsProviderUpdate;
-  news?: SettingsProviderUpdate;
-  hubspotEnrichment?: SettingsProviderUpdate;
+  hubspotEnrichment?: SettingsHubspotEnrichmentUpdate;
 };
+
+/**
+ * Body of `POST /api/settings/test-connection` — discriminated union on
+ * `target`. Draft-key and saved-key modes are mutually exclusive (XOR
+ * enforced by the Zod validator in `@hap/validators`).
+ *
+ * `endpointUrl` is REQUIRED when `provider === "custom"` and MUST be HTTPS.
+ * The backend additionally enforces SSRF guards against loopback, link-local,
+ * private-range, and cloud-metadata hostnames.
+ */
+export type TestConnectionLlmBody = {
+  target: "llm";
+  provider: LlmProviderType;
+  model: string;
+  endpointUrl?: string;
+  apiKey?: string;
+  useSavedKey?: true;
+};
+
+export type TestConnectionExaBody = {
+  target: "exa";
+  apiKey?: string;
+  useSavedKey?: true;
+};
+
+export type TestConnectionBody = TestConnectionLlmBody | TestConnectionExaBody;
+
+/**
+ * Narrow error codes returned by the test-connection service. Vendor error
+ * bodies are NEVER forwarded verbatim — all vendor failures collapse to one
+ * of these codes plus a short sanitized human-readable `message`.
+ */
+export type TestConnectionErrorCode =
+  | "auth"
+  | "model"
+  | "endpoint"
+  | "network"
+  | "rate_limit"
+  | "unknown";
+
+export type TestConnectionResponse =
+  | { ok: true; latencyMs: number; providerEcho?: { model?: string } }
+  | { ok: false; code: TestConnectionErrorCode; message: string };
 
 /**
  * Partial update payload for tenant settings writes.

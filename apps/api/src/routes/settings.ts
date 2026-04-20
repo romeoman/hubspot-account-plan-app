@@ -1,10 +1,16 @@
 import type { SettingsUpdate } from "@hap/config";
 import { settingsResponseSchema, settingsUpdateSchema } from "@hap/validators";
 import { Hono } from "hono";
-import { readSettings, updateSettings } from "../lib/settings-service";
+import { readSettings, SettingsValidationError, updateSettings } from "../lib/settings-service";
 import type { TenantVariables } from "../middleware/tenant";
+import { createTestConnectionRoute } from "./settings-test-connection";
 
 export const settingsRoutes = new Hono<{ Variables: TenantVariables }>();
+
+// B4: Credential verification endpoint — mounted under the settings router so
+// it inherits the `/api/*` auth + tenant middleware chain. See
+// `./settings-test-connection.ts` for the full contract.
+settingsRoutes.route("/test-connection", createTestConnectionRoute());
 
 settingsRoutes.get("/", async (c) => {
   const tenantId = c.get("tenantId");
@@ -40,7 +46,14 @@ settingsRoutes.put("/", async (c) => {
     return c.json({ error: "invalid_settings", issues: parsed.error.issues }, 400);
   }
 
-  await updateSettings({ db, tenantId }, parsed.data as SettingsUpdate);
+  try {
+    await updateSettings({ db, tenantId }, parsed.data as SettingsUpdate);
+  } catch (err) {
+    if (err instanceof SettingsValidationError) {
+      return c.json({ error: "invalid_settings", detail: err.message }, 400);
+    }
+    throw err;
+  }
   const settings = await readSettings({ db, tenantId });
   const response = settingsResponseSchema.safeParse(settings);
   if (!response.success) {

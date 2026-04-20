@@ -59,6 +59,12 @@ export function buildViteOptions(target: BundleTarget, apiOrigin: string): Inlin
         formats: ["es"],
       },
       rollupOptions: {
+        // React/react-dom are declared in `dependencies`, not peerDependencies,
+        // so Vite lib mode does not auto-externalize them. Without this list
+        // the settings bundle inlines a second copy of React whose
+        // ReactCurrentDispatcher is null at runtime, and `useState` throws
+        // "Cannot read properties of null (reading 'useState')" (issue #17).
+        external: ["react", "react-dom", "react/jsx-runtime", "@hubspot/ui-extensions"],
         output: {
           entryFileNames: "index.js",
         },
