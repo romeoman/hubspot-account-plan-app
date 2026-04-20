@@ -37,7 +37,7 @@
  * individual ids — those rotate too fast.
  */
 
-import type { LlmProviderType } from "./domain-types";
+import type { LlmProviderType } from "./domain-types.js";
 
 export type LlmCatalogEntry = {
   /** Wire value (the model id sent to the provider API). */

@@ -31,8 +31,8 @@ import { Hono } from "hono";
 import {
   applyHubSpotLifecycleEvent,
   type HubSpotLifecycleEventType,
-} from "../lib/tenant-lifecycle";
-import { verifyHubSpotSignatureV3 } from "../middleware/hubspot-signature";
+} from "../lib/tenant-lifecycle.js";
+import { verifyHubSpotSignatureV3 } from "../middleware/hubspot-signature.js";
 
 /**
  * HubSpot's documented event-type IDs for APP_LIFECYCLE_EVENT webhooks.

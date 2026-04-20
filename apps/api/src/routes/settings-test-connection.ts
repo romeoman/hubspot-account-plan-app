@@ -25,12 +25,12 @@ import {
   createDefaultSavedKeyLoader,
   type TestConnectionDeps,
   testConnection,
-} from "../lib/settings-connection-test";
+} from "../lib/settings-connection-test.js";
 import {
   getTestConnectionRateLimiter,
   type TestConnectionRateLimiter,
-} from "../lib/test-connection-rate-limit";
-import type { TenantVariables } from "../middleware/tenant";
+} from "../lib/test-connection-rate-limit.js";
+import type { TenantVariables } from "../middleware/tenant.js";
 
 export interface TestConnectionRouteDeps {
   /** Override connection-test service deps (fetch, logger, loadSavedKey). */

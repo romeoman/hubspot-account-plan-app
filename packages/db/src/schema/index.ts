@@ -1,12 +1,12 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import { evidence } from "./evidence";
-import { llmConfig } from "./llm-config";
-import { people } from "./people";
-import { providerConfig } from "./provider-config";
-import { signedRequestNonce } from "./signed-request-nonce";
-import { snapshots } from "./snapshots";
-import { tenantHubspotOauth } from "./tenant-hubspot-oauth";
-import { tenants } from "./tenants";
+import { evidence } from "./evidence.js";
+import { llmConfig } from "./llm-config.js";
+import { people } from "./people.js";
+import { providerConfig } from "./provider-config.js";
+import { signedRequestNonce } from "./signed-request-nonce.js";
+import { snapshots } from "./snapshots.js";
+import { tenantHubspotOauth } from "./tenant-hubspot-oauth.js";
+import { tenants } from "./tenants.js";
 
 export {
   evidence,

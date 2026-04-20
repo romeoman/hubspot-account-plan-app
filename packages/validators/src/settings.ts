@@ -6,7 +6,7 @@ import type {
   TestConnectionResponse,
 } from "@hap/config";
 import { z } from "zod";
-import { llmProviderTypeSchema, thresholdConfigSchema } from "./snapshot";
+import { llmProviderTypeSchema, thresholdConfigSchema } from "./snapshot.js";
 
 function preserveBlankSecret(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;

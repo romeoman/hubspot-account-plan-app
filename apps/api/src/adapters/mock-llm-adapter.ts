@@ -13,7 +13,7 @@
  * provisioned `llm_config` row.
  */
 
-import type { LlmAdapter, LlmOptions, LlmResponse } from "./llm-adapter";
+import type { LlmAdapter, LlmOptions, LlmResponse } from "./llm-adapter.js";
 
 export type MockLlmStyle = "short" | "long" | "error";
 

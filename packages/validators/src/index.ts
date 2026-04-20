@@ -5,5 +5,5 @@
  * compile-time types from `@hap/config`; import runtime schemas here.
  */
 
-export * from "./settings";
-export * from "./snapshot";
+export * from "./settings.js";
+export * from "./snapshot.js";

@@ -26,18 +26,18 @@ import {
   type ObservabilityContext,
   type SuccessAnnotations,
   withObservability,
-} from "../../lib/observability";
+} from "../../lib/observability.js";
 import {
   DEFAULT_RATE_LIMIT_CONFIG,
   type RateLimitConfig,
   type RateLimiter,
-} from "../../lib/rate-limiter";
-import type { LlmAdapter, LlmOptions, LlmResponse } from "../llm-adapter";
-import { AnthropicAdapter } from "./anthropic";
-import { GeminiAdapter } from "./gemini";
-import { OpenAiAdapter } from "./openai";
-import { OpenAiCompatibleAdapter } from "./openai-compatible";
-import { OpenRouterAdapter } from "./openrouter";
+} from "../../lib/rate-limiter.js";
+import type { LlmAdapter, LlmOptions, LlmResponse } from "../llm-adapter.js";
+import { AnthropicAdapter } from "./anthropic.js";
+import { GeminiAdapter } from "./gemini.js";
+import { OpenAiAdapter } from "./openai.js";
+import { OpenAiCompatibleAdapter } from "./openai-compatible.js";
+import { OpenRouterAdapter } from "./openrouter.js";
 
 /** Optional constructor-injection hooks for tests and non-default wiring. */
 export interface LlmFactoryDeps {

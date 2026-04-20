@@ -25,17 +25,17 @@
  */
 
 import type { Evidence, ProviderConfig } from "@hap/config";
-import { HubSpotClient, type HubSpotClientOptions } from "../../lib/hubspot-client";
-import { type ObservabilityContext, withObservability } from "../../lib/observability";
+import { HubSpotClient, type HubSpotClientOptions } from "../../lib/hubspot-client.js";
+import { type ObservabilityContext, withObservability } from "../../lib/observability.js";
 import {
   DEFAULT_RATE_LIMIT_CONFIG,
   type RateLimitConfig,
   type RateLimiter,
-} from "../../lib/rate-limiter";
-import type { ProviderAdapter, ProviderCompanyContext } from "../provider-adapter";
-import { ExaAdapter } from "./exa";
-import { HubSpotEnrichmentAdapter } from "./hubspot-enrichment";
-import { NewsAdapter } from "./news";
+} from "../../lib/rate-limiter.js";
+import type { ProviderAdapter, ProviderCompanyContext } from "../provider-adapter.js";
+import { ExaAdapter } from "./exa.js";
+import { HubSpotEnrichmentAdapter } from "./hubspot-enrichment.js";
+import { NewsAdapter } from "./news.js";
 
 /** Optional constructor-injection hooks for tests and non-default wiring. */
 export interface SignalFactoryDeps {

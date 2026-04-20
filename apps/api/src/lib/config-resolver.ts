@@ -48,8 +48,8 @@ import type {
 } from "@hap/config";
 import { type Database, llmConfig, providerConfig, tenants } from "@hap/db";
 import { and, asc, eq } from "drizzle-orm";
-import { type CacheAdapter, InMemoryCacheAdapter } from "./cache-adapter";
-import { decryptProviderKey } from "./encryption";
+import { type CacheAdapter, InMemoryCacheAdapter } from "./cache-adapter.js";
+import { decryptProviderKey } from "./encryption.js";
 
 /** Cache TTL: 5 minutes. Matches eligibility-service TTL for consistency. */
 export const CONFIG_RESOLVER_CACHE_TTL_MS = 5 * 60 * 1000;

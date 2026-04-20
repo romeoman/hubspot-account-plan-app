@@ -1,6 +1,6 @@
 import type { MiddlewareHandler } from "hono";
-import { computeBodyHash, recordNonce } from "../lib/replay-nonce";
-import type { TenantVariables } from "./tenant";
+import { computeBodyHash, recordNonce } from "../lib/replay-nonce.js";
+import type { TenantVariables } from "./tenant.js";
 
 const TIMESTAMP_HEADER = "x-hubspot-request-timestamp";
 

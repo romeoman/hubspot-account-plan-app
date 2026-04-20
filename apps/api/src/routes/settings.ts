@@ -1,9 +1,9 @@
 import type { SettingsUpdate } from "@hap/config";
 import { settingsResponseSchema, settingsUpdateSchema } from "@hap/validators";
 import { Hono } from "hono";
-import { readSettings, SettingsValidationError, updateSettings } from "../lib/settings-service";
-import type { TenantVariables } from "../middleware/tenant";
-import { createTestConnectionRoute } from "./settings-test-connection";
+import { readSettings, SettingsValidationError, updateSettings } from "../lib/settings-service.js";
+import type { TenantVariables } from "../middleware/tenant.js";
+import { createTestConnectionRoute } from "./settings-test-connection.js";
 
 export const settingsRoutes = new Hono<{ Variables: TenantVariables }>();
 

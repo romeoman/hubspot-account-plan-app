@@ -29,7 +29,7 @@
  */
 
 import { MAX_NEXT_MOVE_CHARS, type Snapshot } from "@hap/config";
-import type { LlmAdapter } from "../adapters/llm-adapter";
+import type { LlmAdapter } from "../adapters/llm-adapter.js";
 
 export interface NextMoveDeps {
   /** Post-hygiene, post-suppression snapshot. */

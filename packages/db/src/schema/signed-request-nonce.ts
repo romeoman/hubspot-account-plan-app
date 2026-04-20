@@ -1,5 +1,5 @@
 import { bigint, customType, pgTable, primaryKey, timestamp, uuid } from "drizzle-orm/pg-core";
-import { tenants } from "./tenants";
+import { tenants } from "./tenants.js";
 
 /**
  * Slice 3 Task 2 — replay-nonce store for HubSpot `X-HubSpot-Signature-v3`.

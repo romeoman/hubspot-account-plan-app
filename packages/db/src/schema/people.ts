@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { index, jsonb, pgTable, text, uuid } from "drizzle-orm/pg-core";
-import { snapshots } from "./snapshots";
-import { tenants } from "./tenants";
+import { snapshots } from "./snapshots.js";
+import { tenants } from "./tenants.js";
 
 export const people = pgTable(
   "people",

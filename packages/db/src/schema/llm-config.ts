@@ -1,5 +1,5 @@
 import { integer, jsonb, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
-import { tenants } from "./tenants";
+import { tenants } from "./tenants.js";
 
 export const llmConfig = pgTable(
   "llm_config",

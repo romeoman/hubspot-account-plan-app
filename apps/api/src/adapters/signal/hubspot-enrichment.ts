@@ -8,8 +8,8 @@
  */
 
 import { createEvidence, type Evidence } from "@hap/config";
-import type { HubSpotClient } from "../../lib/hubspot-client";
-import type { ProviderAdapter, ProviderCompanyContext } from "../provider-adapter";
+import type { HubSpotClient } from "../../lib/hubspot-client.js";
+import type { ProviderAdapter, ProviderCompanyContext } from "../provider-adapter.js";
 
 export const HUBSPOT_ENRICHMENT_PROVIDER_NAME = "hubspot-enrichment" as const;
 

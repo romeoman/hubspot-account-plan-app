@@ -31,7 +31,7 @@ import {
   type EnsureLifecycleSubscriptionsOptions,
   type EnsureLifecycleSubscriptionsReport,
   SubscriptionBootstrapError,
-} from "../../lib/hubspot-subscription-bootstrap";
+} from "../../lib/hubspot-subscription-bootstrap.js";
 
 const INTERNAL_TOKEN_HEADER = "x-internal-bootstrap-token";
 

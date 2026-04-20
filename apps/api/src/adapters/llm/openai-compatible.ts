@@ -10,7 +10,7 @@
  * verbatim; only the URL is swappable).
  */
 
-import type { LlmAdapter, LlmOptions, LlmResponse } from "../llm-adapter";
+import type { LlmAdapter, LlmOptions, LlmResponse } from "../llm-adapter.js";
 
 export const CUSTOM_PROVIDER_NAME = "custom" as const;
 

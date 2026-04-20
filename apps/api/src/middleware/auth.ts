@@ -12,6 +12,6 @@
  * retrieved doc date.
  */
 
-import { hubspotSignatureMiddleware } from "./hubspot-signature";
+import { hubspotSignatureMiddleware } from "./hubspot-signature.js";
 
 export const authMiddleware = hubspotSignatureMiddleware;

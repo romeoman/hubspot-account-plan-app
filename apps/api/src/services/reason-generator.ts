@@ -16,7 +16,7 @@
  */
 
 import type { Evidence, ThresholdConfig } from "@hap/config";
-import type { LlmAdapter } from "../adapters/llm-adapter";
+import type { LlmAdapter } from "../adapters/llm-adapter.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

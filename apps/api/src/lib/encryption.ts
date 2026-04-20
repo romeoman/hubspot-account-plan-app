@@ -28,7 +28,7 @@
 
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { loadEnv } from "@hap/config";
-import { deriveTenantKek } from "./kek";
+import { deriveTenantKek } from "./kek.js";
 
 /** Current envelope version. Bump on rotation; `decryptProviderKey` accepts
  * all versions known to this module. */

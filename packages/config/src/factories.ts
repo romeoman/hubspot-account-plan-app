@@ -10,7 +10,7 @@
  * the `tenantId` passed in is propagated to every nested Evidence row.
  */
 
-import type { EligibilityState, Evidence, Person, Snapshot, StateFlags } from "./domain-types";
+import type { EligibilityState, Evidence, Person, Snapshot, StateFlags } from "./domain-types.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

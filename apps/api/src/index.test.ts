@@ -8,12 +8,12 @@ afterEach(() => {
 describe("API health endpoint", () => {
   it("should be importable", async () => {
     // Verify the Hono app module can be imported without errors
-    const mod = await import("./index");
+    const mod = await import("./index.js");
     expect(mod.default).toBeDefined();
   });
 
   it("should respond to /health", async () => {
-    const { default: app } = await import("./index");
+    const { default: app } = await import("./index.js");
     const res = await app.request("/health");
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
@@ -22,7 +22,7 @@ describe("API health endpoint", () => {
   });
 
   it("mounts the HubSpot lifecycle webhook receiver at /webhooks/hubspot/lifecycle and rejects unsigned requests with 401", async () => {
-    const { default: app } = await import("./index");
+    const { default: app } = await import("./index.js");
     const res = await app.request("/webhooks/hubspot/lifecycle", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -49,7 +49,7 @@ describe("API health endpoint", () => {
       "https://hap-signal-workspace-staging.vercel.app/oauth/callback";
 
     try {
-      const mod = await import("./index");
+      const mod = await import("./index.js");
       expect(mod.default).toBeDefined();
       expect(serveSpy).not.toHaveBeenCalled();
     } finally {
