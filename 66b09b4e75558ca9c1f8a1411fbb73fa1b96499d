@@ -1,0 +1,37 @@
+apps/api/src/middleware/correlation.ts
+  d800bf4f0dade7de 64-70
+  656a3fa3437997db 71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "66b09b4e75558ca9c1f8a1411fbb73fa1b96499d",
+  "prompts": {
+    "656a3fa3437997db": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d9b24-3d0f-7b32-9244-d4187db52bcc",
+        "model": "gpt-5.4"
+      },
+      "human_author": "romeoman",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 71,
+      "overriden_lines": 195
+    },
+    "d800bf4f0dade7de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ead1f7e8-05f5-4927-9a37-4333473f61d5",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "romeoman",
+      "messages": [],
+      "total_additions": 7,
+      "total_deletions": 3,
+      "accepted_lines": 7,
+      "overriden_lines": 0
+    }
+  }
+}
