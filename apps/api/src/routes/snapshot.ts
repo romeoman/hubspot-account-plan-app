@@ -10,7 +10,11 @@ import { Hono } from "hono";
 import { createLlmAdapter, wrapWithGuards } from "../adapters/llm/factory";
 import type { LlmAdapter } from "../adapters/llm-adapter";
 import type { ProviderAdapter } from "../adapters/provider-adapter";
-import { createSignalAdapter, wrapSignalWithGuards } from "../adapters/signal/factory";
+import {
+  createExaSignalAdapters,
+  createSignalAdapter,
+  wrapSignalWithGuards,
+} from "../adapters/signal/factory";
 import { DEFAULT_THRESHOLDS, getLlmConfig, getProviderConfig } from "../lib/config-resolver";
 import { TenantAccessRevokedError } from "../lib/hubspot-client";
 import { getProcessRateLimiter } from "../lib/rate-limiter";
@@ -152,12 +156,43 @@ type SignalResolution = {
 };
 
 /**
+ * Compose N wrapped adapters into a single `ProviderAdapter` whose
+ * `fetchSignals` runs all of them in parallel and flattens the resulting
+ * evidence arrays.
+ *
+ * If any sub-adapter rejects, the composite rejects — matching the existing
+ * single-adapter contract. The snapshot assembler catches that rejection and
+ * marks the snapshot `degraded`.
+ *
+ * The composite's `name` mirrors the primary provider (e.g. `"exa"`) so
+ * upstream logs and metrics don't suddenly see a new adapter name. Each
+ * sub-adapter retains its own `name` inside the `wrapSignalWithGuards`
+ * wrapper, so rate-limit buckets + observability log lines attribute
+ * correctly per source (`exa` vs `news`).
+ */
+export function composeSignalAdapters(
+  adapters: ProviderAdapter[],
+  compositeName: string,
+): ProviderAdapter {
+  return {
+    name: compositeName,
+    async fetchSignals(tenantId, company) {
+      const results = await Promise.all(adapters.map((a) => a.fetchSignals(tenantId, company)));
+      return results.flat();
+    },
+  };
+}
+
+/**
  * Resolve the signal adapter for a tenant.
  *
  * Probes `provider_config` for each of {@link REAL_SIGNAL_PROVIDERS} in order.
  * On the first enabled hit, builds the real adapter and wraps with guards.
- * Returns `null` when no enabled provider row exists or adapter construction
- * fails. The caller short-circuits to `eligibilityState: "unconfigured"`.
+ * For the Exa row this fans out to both Exa search and the Exa news vertical
+ * (NewsAdapter) via {@link createExaSignalAdapters}, gated by the row's
+ * `settings.newsEnabled` flag. Returns `null` when no enabled provider row
+ * exists or adapter construction fails. The caller short-circuits to
+ * `eligibilityState: "unconfigured"`.
  */
 async function resolveSignalAdapter(
   db: Database,
@@ -185,12 +220,38 @@ async function resolveSignalAdapter(
   // Construction can throw — e.g., required tenant-scoped deps are missing,
   // or a provider config row has a non-null field that's nullable in the
   // schema. Treat as unconfigured, not a 500.
-  let real: ProviderAdapter;
+  //
+  // For the Exa row we fan out: `createExaSignalAdapters` returns the main
+  // ExaAdapter plus (when `settings.newsEnabled !== false`) a NewsAdapter
+  // driven off the same API key. Each sub-adapter is wrapped individually
+  // so the process rate limiter + observability log apply per-source; the
+  // composite is then handed to the snapshot assembler as a single
+  // `ProviderAdapter` whose `fetchSignals` flattens evidence from all
+  // sub-adapters. Non-Exa providers (none today — `hubspot-enrichment` is
+  // excluded from `REAL_SIGNAL_PROVIDERS`) stay on the single-adapter path.
+  let adapter: ProviderAdapter;
   try {
-    real = createSignalAdapter(chosen, {
-      db,
-      tenantId,
-    });
+    if (chosen.name === "exa") {
+      const subAdapters = createExaSignalAdapters(chosen, { db, tenantId });
+      if (subAdapters.length === 0) {
+        return null;
+      }
+      const wrapped = subAdapters.map((sub) =>
+        wrapSignalWithGuards(sub, {
+          tenantId,
+          correlationId,
+          rateLimiter: getProcessRateLimiter(),
+        }),
+      );
+      adapter = composeSignalAdapters(wrapped, chosen.name);
+    } else {
+      const real = createSignalAdapter(chosen, { db, tenantId });
+      adapter = wrapSignalWithGuards(real, {
+        tenantId,
+        correlationId,
+        rateLimiter: getProcessRateLimiter(),
+      });
+    }
   } catch (err) {
     console.error("signal_adapter_construction_failed", {
       tenantId,
@@ -200,11 +261,6 @@ async function resolveSignalAdapter(
     return null;
   }
 
-  const adapter = wrapSignalWithGuards(real, {
-    tenantId,
-    correlationId,
-    rateLimiter: getProcessRateLimiter(),
-  });
   return {
     adapter,
     allowList: chosen.allowList,

@@ -64,8 +64,43 @@ const BLOCKED_IPS: BlockList = (() => {
   // including hex forms like ::ffff:a9fe:a9fe. `BlockList.check` with
   // family "ipv6" resolves the embedded IPv4 against this subnet.
   list.addSubnet("::ffff:0:0", 96, "ipv6");
+  // 6to4 encapsulation (RFC 3056). 2002:<v4>::/48 decodes to an arbitrary
+  // IPv4 destination, so 2002:a9fe:a9fe::/48 → 169.254.169.254 metadata.
+  // Block the entire 2002::/16 tunnel prefix — we never legitimately probe
+  // a 6to4-encapsulated endpoint from this service.
+  list.addSubnet("2002::", 16, "ipv6");
+  // Teredo (RFC 4380) — 2001::/32 tunnels IPv4 over UDP/IPv6. Same class
+  // of v4 smuggling risk as 6to4. Block the tunnel prefix.
+  list.addSubnet("2001::", 32, "ipv6");
   return list;
 })();
+
+/**
+ * Detect IPv4-compatible IPv6 addresses (`::a.b.c.d`, deprecated per
+ * RFC 4291 §2.5.5.1 but still resolvable on some stacks). These are
+ * distinct from the IPv4-mapped form (`::ffff:a.b.c.d`) already handled
+ * by the BlockList: IPv4-compat has zero in the "ffff" word, so
+ * `::169.254.169.254` → `::a9fe:a9fe`, which passes `::ffff:0:0/96`.
+ *
+ * Any non-zero IPv4 embedded in the last 32 bits of an all-zero-upper
+ * IPv6 address is suspect. `::` and `::1` are already separately
+ * blocked; this helper covers the rest of `::/96` with a non-zero v4.
+ */
+function isBlockedIpv4CompatibleIpv6(hostStripped: string, family: number): boolean {
+  if (family !== 6) return false;
+  // Normalize "::a.b.c.d" to "::a.b.c.d" and "::hex:hex" forms by parsing
+  // through URL. A 6-word-zero + final 32-bit form means the upper 96 bits
+  // are zero.
+  // Quick literal check for dotted form.
+  const dotted = /^::(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(hostStripped);
+  if (dotted) return true;
+  // Hex form: `::x:y` where x,y are 1-4 hex. Reject unless explicitly
+  // whitelisted (::1 and :: are already handled upstream).
+  if (/^::[0-9a-f]{1,4}:[0-9a-f]{1,4}$/.test(hostStripped)) {
+    return hostStripped !== "::1"; // ::1 already caught earlier
+  }
+  return false;
+}
 
 /**
  * Minimal structured logger surface. Matches the fields emitted by
@@ -190,6 +225,13 @@ export function assertSafeCustomEndpoint(rawUrl: string): void {
   if (family === 6) {
     if (BLOCKED_IPS.check(stripped, "ipv6")) {
       throw new SsrfError("blocked IPv6 host");
+    }
+    // IPv4-compatible IPv6 (`::a.b.c.d`, deprecated) is not caught by
+    // `::ffff:0:0/96` because the "ffff" word is zero. Reject these too —
+    // they smuggle the v4 destination through a format the BlockList
+    // can't match without a separate check.
+    if (isBlockedIpv4CompatibleIpv6(stripped, family)) {
+      throw new SsrfError("blocked IPv4-compatible IPv6 host");
     }
     return;
   }

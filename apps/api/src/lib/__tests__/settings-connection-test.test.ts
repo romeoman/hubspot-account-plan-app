@@ -381,6 +381,83 @@ describe("assertSafeCustomEndpoint — IPv4-mapped IPv6 + unspecified + hex", ()
   });
 });
 
+describe("assertSafeCustomEndpoint — 6to4 / Teredo / IPv4-compatible IPv6", () => {
+  const customBody = (endpointUrl: string): TestConnectionBody => ({
+    target: "llm",
+    provider: "custom",
+    model: "oss-model",
+    endpointUrl,
+    apiKey: PLAINTEXT_SENTINEL,
+  });
+
+  it("rejects 6to4 encapsulation of AWS metadata: https://[2002:a9fe:a9fe::]/", async () => {
+    const fetchImpl = stubFetch(() => jsonResponse(200, {}));
+    const result = await testConnection(tenantA, customBody("https://[2002:a9fe:a9fe::]/"), {
+      fetch: fetchImpl,
+      now: () => 1,
+    });
+    expect(result).toMatchObject({ ok: false, code: "endpoint" });
+    expect((fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
+  });
+
+  it("rejects arbitrary 6to4 prefix: https://[2002::1]/", async () => {
+    const fetchImpl = stubFetch(() => jsonResponse(200, {}));
+    const result = await testConnection(tenantA, customBody("https://[2002::1]/"), {
+      fetch: fetchImpl,
+      now: () => 1,
+    });
+    expect(result).toMatchObject({ ok: false, code: "endpoint" });
+  });
+
+  it("rejects Teredo prefix: https://[2001::1]/", async () => {
+    const fetchImpl = stubFetch(() => jsonResponse(200, {}));
+    const result = await testConnection(tenantA, customBody("https://[2001::1]/"), {
+      fetch: fetchImpl,
+      now: () => 1,
+    });
+    expect(result).toMatchObject({ ok: false, code: "endpoint" });
+  });
+
+  it("rejects IPv4-compatible IPv6 dotted form: https://[::169.254.169.254]/", async () => {
+    const fetchImpl = stubFetch(() => jsonResponse(200, {}));
+    const result = await testConnection(tenantA, customBody("https://[::169.254.169.254]/"), {
+      fetch: fetchImpl,
+      now: () => 1,
+    });
+    expect(result).toMatchObject({ ok: false, code: "endpoint" });
+    expect((fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
+  });
+
+  it("rejects IPv4-compatible IPv6 hex form: https://[::a9fe:a9fe]/", async () => {
+    const fetchImpl = stubFetch(() => jsonResponse(200, {}));
+    const result = await testConnection(tenantA, customBody("https://[::a9fe:a9fe]/"), {
+      fetch: fetchImpl,
+      now: () => 1,
+    });
+    expect(result).toMatchObject({ ok: false, code: "endpoint" });
+  });
+
+  it("rejects IPv4-compatible loopback: https://[::127.0.0.1]/", async () => {
+    const fetchImpl = stubFetch(() => jsonResponse(200, {}));
+    const result = await testConnection(tenantA, customBody("https://[::127.0.0.1]/"), {
+      fetch: fetchImpl,
+      now: () => 1,
+    });
+    expect(result).toMatchObject({ ok: false, code: "endpoint" });
+  });
+
+  it("sanity: public IPv6 addresses outside tunnel/compat ranges still succeed", async () => {
+    const fetchImpl = stubFetch(() => jsonResponse(200, { data: [{ id: "oss-model" }] }));
+    // 2606:4700:4700::1111 is Cloudflare public DNS — a valid public IPv6
+    // that must NOT be blocked by our guard.
+    const result = await testConnection(tenantA, customBody("https://[2606:4700:4700::1111]/"), {
+      fetch: fetchImpl,
+      now: () => 1,
+    });
+    expect(result.ok).toBe(true);
+  });
+});
+
 describe("testExaConnection", () => {
   const body = (): TestConnectionBody => ({
     target: "exa",
