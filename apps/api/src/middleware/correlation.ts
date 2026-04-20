@@ -61,10 +61,14 @@ export function correlationMiddleware(): MiddlewareHandler<{
     try {
       await next();
     } finally {
-      // Echo regardless of success/failure. Hono's final response object
-      // exists even when the downstream handler throws (via the framework's
-      // onError path).
-      c.res.headers.set(HEADER, id);
+      // Echo regardless of success/failure. Hono's `c.header()` handles the
+      // post-finalized case internally (it sets the header on the already-
+      // constructed response), so this works in the finally branch even when
+      // the downstream handler throws. Prefer this over `c.res.headers.set`
+      // because the latter trips a TS2339 in Vercel's Node build env under
+      // Hono v4 + @types/node v22 (the lib typing of `Response.headers`
+      // resolves without `.set` in that build chain).
+      c.header(HEADER, id);
     }
   };
 }
