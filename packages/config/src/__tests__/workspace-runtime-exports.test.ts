@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 type ExportTarget = {
   default: string;
+  development: string;
   import: string;
   types: string;
 };
@@ -38,6 +39,7 @@ describe("workspace runtime export surface", () => {
     expect(configPkg.exports).toEqual({
       ".": {
         default: "./dist/index.js",
+        development: "./src/index.ts",
         import: "./dist/index.js",
         types: "./dist/index.d.ts",
       } satisfies ExportTarget,
@@ -47,11 +49,13 @@ describe("workspace runtime export surface", () => {
     expect(dbPkg.exports).toEqual({
       ".": {
         default: "./dist/index.js",
+        development: "./src/index.ts",
         import: "./dist/index.js",
         types: "./dist/index.d.ts",
       } satisfies ExportTarget,
       "./schema": {
         default: "./dist/schema/index.js",
+        development: "./src/schema/index.ts",
         import: "./dist/schema/index.js",
         types: "./dist/schema/index.d.ts",
       } satisfies ExportTarget,
@@ -61,6 +65,7 @@ describe("workspace runtime export surface", () => {
     expect(validatorsPkg.exports).toEqual({
       ".": {
         default: "./dist/index.js",
+        development: "./src/index.ts",
         import: "./dist/index.js",
         types: "./dist/index.d.ts",
       } satisfies ExportTarget,
