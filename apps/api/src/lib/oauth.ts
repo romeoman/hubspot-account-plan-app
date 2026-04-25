@@ -189,11 +189,6 @@ type OAuthHttpResponse = {
   json(): Promise<unknown>;
 };
 
-type OAuthFetch = (
-  input: Parameters<typeof fetch>[0],
-  init?: Parameters<typeof fetch>[1],
-) => Promise<OAuthHttpResponse>;
-
 export type OAuthHttpDeps = {
   /**
    * Optional fetch override. Defaults to the global `fetch`. Tests inject
