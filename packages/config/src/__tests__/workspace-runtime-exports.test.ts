@@ -83,9 +83,11 @@ describe("workspace runtime export surface", () => {
 
     for (const file of files) {
       const text = readFileSync(file, "utf8");
-      const matches = text.matchAll(/\b(?:import|export)\b[\s\S]*?\bfrom\s+["'](\.[^"']+)["']/g);
+      const matches = text.matchAll(
+        /\bimport\s+["'](\.[^"']+)["']|\bimport\s*\(\s*["'](\.[^"']+)["']\s*\)|\b(?:import|export)\b[\s\S]*?\bfrom\s+["'](\.[^"']+)["']/g,
+      );
       for (const match of matches) {
-        const specifier = match[1];
+        const specifier = match[1] ?? match[2] ?? match[3];
         if (!specifier) {
           continue;
         }
