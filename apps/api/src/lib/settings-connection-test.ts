@@ -33,7 +33,7 @@ import type {
 } from "@hap/config";
 import { type Database, llmConfig, providerConfig } from "@hap/db";
 import { and, eq } from "drizzle-orm";
-import { decryptProviderKey } from "./encryption";
+import { decryptProviderKey } from "./encryption.js";
 
 /**
  * Authoritative blocklist of IP ranges that are unsafe for outbound

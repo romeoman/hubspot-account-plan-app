@@ -39,7 +39,7 @@
  */
 
 import { createEvidence, type Evidence } from "@hap/config";
-import type { ProviderAdapter, ProviderCompanyContext } from "../provider-adapter";
+import type { ProviderAdapter, ProviderCompanyContext } from "../provider-adapter.js";
 
 /** Stable provider identifier — used by the factory and `provider_config.provider_name`. */
 export const EXA_PROVIDER_NAME = "exa" as const;

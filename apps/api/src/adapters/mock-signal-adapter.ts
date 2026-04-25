@@ -15,7 +15,7 @@
  */
 
 import { createEvidence, type Evidence } from "@hap/config";
-import type { ProviderAdapter } from "./provider-adapter";
+import type { ProviderAdapter } from "./provider-adapter.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

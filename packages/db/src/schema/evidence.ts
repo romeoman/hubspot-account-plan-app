@@ -1,6 +1,6 @@
 import { boolean, index, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { snapshots } from "./snapshots";
-import { tenants } from "./tenants";
+import { snapshots } from "./snapshots.js";
+import { tenants } from "./tenants.js";
 
 export const evidence = pgTable(
   "evidence",

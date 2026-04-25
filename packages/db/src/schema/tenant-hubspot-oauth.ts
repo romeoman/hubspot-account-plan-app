@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { check, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { tenants } from "./tenants";
+import { tenants } from "./tenants.js";
 
 /**
  * Slice 3 Task 2 — per-tenant HubSpot OAuth tokens.

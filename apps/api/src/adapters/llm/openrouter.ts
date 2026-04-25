@@ -8,7 +8,7 @@
  * provider-prefixed (e.g. `anthropic/claude-3.5-sonnet`).
  */
 
-import type { LlmAdapter, LlmOptions, LlmResponse } from "../llm-adapter";
+import type { LlmAdapter, LlmOptions, LlmResponse } from "../llm-adapter.js";
 
 export const OPENROUTER_PROVIDER_NAME = "openrouter" as const;
 

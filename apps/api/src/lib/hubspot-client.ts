@@ -23,9 +23,9 @@ import { loadEnv } from "@hap/config";
 import type { Database } from "@hap/db";
 import { tenantHubspotOauth } from "@hap/db";
 import { eq } from "drizzle-orm";
-import { decryptProviderKey, encryptProviderKey } from "./encryption";
-import { OAuthHttpError, refreshAccessToken } from "./oauth";
-import { deactivateTenant } from "./tenant-lifecycle";
+import { decryptProviderKey, encryptProviderKey } from "./encryption.js";
+import { OAuthHttpError, refreshAccessToken } from "./oauth.js";
+import { deactivateTenant } from "./tenant-lifecycle.js";
 
 const HUBSPOT_API_ROOT = "https://api.hubapi.com";
 

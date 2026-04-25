@@ -14,7 +14,7 @@
  */
 
 import { createEvidence, type Evidence } from "@hap/config";
-import type { ProviderAdapter, ProviderCompanyContext } from "../provider-adapter";
+import type { ProviderAdapter, ProviderCompanyContext } from "../provider-adapter.js";
 
 export const NEWS_PROVIDER_NAME = "news" as const;
 

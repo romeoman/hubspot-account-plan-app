@@ -7,22 +7,22 @@ import {
 } from "@hap/config";
 import type { Database } from "@hap/db";
 import { Hono } from "hono";
-import { createLlmAdapter, wrapWithGuards } from "../adapters/llm/factory";
-import type { LlmAdapter } from "../adapters/llm-adapter";
-import type { ProviderAdapter } from "../adapters/provider-adapter";
+import { createLlmAdapter, wrapWithGuards } from "../adapters/llm/factory.js";
+import type { LlmAdapter } from "../adapters/llm-adapter.js";
+import type { ProviderAdapter } from "../adapters/provider-adapter.js";
 import {
   createExaSignalAdapters,
   createSignalAdapter,
   wrapSignalWithGuards,
-} from "../adapters/signal/factory";
-import { DEFAULT_THRESHOLDS, getLlmConfig, getProviderConfig } from "../lib/config-resolver";
-import { TenantAccessRevokedError } from "../lib/hubspot-client";
-import { getProcessRateLimiter } from "../lib/rate-limiter";
-import type { CorrelationVariables } from "../middleware/correlation";
-import type { TenantVariables } from "../middleware/tenant";
-import type { CompanyPropertyFetcher } from "../services/eligibility";
-import type { ContactFetcher } from "../services/people-selector";
-import { assembleSnapshot } from "../services/snapshot-assembler";
+} from "../adapters/signal/factory.js";
+import { DEFAULT_THRESHOLDS, getLlmConfig, getProviderConfig } from "../lib/config-resolver.js";
+import { TenantAccessRevokedError } from "../lib/hubspot-client.js";
+import { getProcessRateLimiter } from "../lib/rate-limiter.js";
+import type { CorrelationVariables } from "../middleware/correlation.js";
+import type { TenantVariables } from "../middleware/tenant.js";
+import type { CompanyPropertyFetcher } from "../services/eligibility.js";
+import type { ContactFetcher } from "../services/people-selector.js";
+import { assembleSnapshot } from "../services/snapshot-assembler.js";
 
 type Vars = TenantVariables & CorrelationVariables & { portalId?: string };
 

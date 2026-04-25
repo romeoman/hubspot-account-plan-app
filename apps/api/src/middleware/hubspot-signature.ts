@@ -36,7 +36,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { loadEnv } from "@hap/config";
 import type { MiddlewareHandler } from "hono";
-import type { TenantVariables } from "./tenant";
+import type { TenantVariables } from "./tenant.js";
 
 /**
  * HubSpot v3 signature freshness window.

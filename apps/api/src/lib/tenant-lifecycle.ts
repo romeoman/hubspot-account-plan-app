@@ -1,6 +1,6 @@
 import { type Database, tenantHubspotOauth, tenants } from "@hap/db";
 import { eq } from "drizzle-orm";
-import { invalidateTenantConfig } from "./config-resolver";
+import { invalidateTenantConfig } from "./config-resolver.js";
 
 type LifecycleDeps = {
   db: Database;

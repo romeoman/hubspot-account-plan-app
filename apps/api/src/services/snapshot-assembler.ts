@@ -30,16 +30,21 @@ import {
   type ThresholdConfig,
 } from "@hap/config";
 import type { Database } from "@hap/db";
-import type { LlmAdapter } from "../adapters/llm-adapter";
-import type { ProviderAdapter } from "../adapters/provider-adapter";
-import { TenantAccessRevokedError } from "../lib/hubspot-client";
-import { type CompanyPropertyFetcher, checkEligibility } from "./eligibility";
-import { dedupEvidence } from "./hygiene/dedup";
-import { sweepStaleness } from "./hygiene/staleness-sweeper";
-import { generateNextMove } from "./next-move";
-import { type ContactFetcher, fetchContacts, rankContacts, selectPeople } from "./people-selector";
-import { extractDominantSignal, generateReasonText } from "./reason-generator";
-import { createTrustEvaluator, type TrustEvaluator } from "./trust";
+import type { LlmAdapter } from "../adapters/llm-adapter.js";
+import type { ProviderAdapter } from "../adapters/provider-adapter.js";
+import { TenantAccessRevokedError } from "../lib/hubspot-client.js";
+import { type CompanyPropertyFetcher, checkEligibility } from "./eligibility.js";
+import { dedupEvidence } from "./hygiene/dedup.js";
+import { sweepStaleness } from "./hygiene/staleness-sweeper.js";
+import { generateNextMove } from "./next-move.js";
+import {
+  type ContactFetcher,
+  fetchContacts,
+  rankContacts,
+  selectPeople,
+} from "./people-selector.js";
+import { extractDominantSignal, generateReasonText } from "./reason-generator.js";
+import { createTrustEvaluator, type TrustEvaluator } from "./trust.js";
 
 export type AssembleSnapshotDeps = {
   db: Database;

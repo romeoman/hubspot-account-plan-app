@@ -24,7 +24,7 @@
  * `__tests__/cassettes/gemini-completion.json` (scrubbed of the API key).
  */
 
-import type { LlmAdapter, LlmOptions, LlmResponse } from "../llm-adapter";
+import type { LlmAdapter, LlmOptions, LlmResponse } from "../llm-adapter.js";
 
 /** Stable provider identifier — used by the factory and `llm_config.provider_name`. */
 export const GEMINI_PROVIDER_NAME = "gemini" as const;

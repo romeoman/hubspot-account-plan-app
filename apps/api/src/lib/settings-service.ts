@@ -6,9 +6,9 @@ import type {
 } from "@hap/config";
 import { type Database, llmConfig, providerConfig, tenants } from "@hap/db";
 import { and, asc, eq, sql } from "drizzle-orm";
-import { DEFAULT_ELIGIBILITY_PROPERTY } from "../services/eligibility";
-import { DEFAULT_THRESHOLDS, invalidateTenantConfig } from "./config-resolver";
-import { encryptProviderKey } from "./encryption";
+import { DEFAULT_ELIGIBILITY_PROPERTY } from "../services/eligibility.js";
+import { DEFAULT_THRESHOLDS, invalidateTenantConfig } from "./config-resolver.js";
+import { encryptProviderKey } from "./encryption.js";
 
 /**
  * Thrown when `updateSettings` receives a payload that passed initial

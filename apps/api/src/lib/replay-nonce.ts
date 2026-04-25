@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { type Database, sql as drizzleSql, signedRequestNonce, tenants } from "@hap/db";
-import { withTenantTx } from "./tenant-tx";
+import { withTenantTx } from "./tenant-tx.js";
 
 export type RecordNonceArgs = {
   tenantId: string;

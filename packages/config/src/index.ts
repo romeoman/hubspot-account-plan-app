@@ -8,7 +8,7 @@
  *   LlmProviderType, TenantSettings, TenantConfig).
  * - `factories`: tenant-aware constructors + 8 distinct QA fixtures.
  */
-export * from "./domain-types";
-export * from "./env";
-export * from "./factories";
-export * from "./llm-catalog";
+export * from "./domain-types.js";
+export * from "./env.js";
+export * from "./factories.js";
+export * from "./llm-catalog.js";
