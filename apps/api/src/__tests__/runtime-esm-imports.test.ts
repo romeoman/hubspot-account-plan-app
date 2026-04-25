@@ -1,7 +1,8 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { extractRelativeEsmSpecifiers } from "../../../../packages/config/src/__tests__/esm-import-specifiers.js";
 
 const apiSrcRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -25,17 +26,14 @@ describe("apps/api Node ESM import discipline", () => {
 
     for (const file of files) {
       const text = readFileSync(file, "utf8");
-      const matches = text.matchAll(
-        /\b(?:import|export)\b[\s\S]*?\bfrom\s+["'](\.{1,2}\/[^"']+)["']/g,
-      );
-      for (const match of matches) {
-        const specifier = match[1];
+      const specifiers = extractRelativeEsmSpecifiers(text);
+      for (const specifier of specifiers) {
         if (!specifier) {
           continue;
         }
         if (!specifier.endsWith(".js") && !specifier.endsWith(".json")) {
           invalidSpecifiers.push({
-            file: file.replace(`${apiSrcRoot}/`, ""),
+            file: relative(apiSrcRoot, file),
             specifier,
           });
         }

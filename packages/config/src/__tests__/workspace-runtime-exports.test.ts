@@ -1,7 +1,8 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { extractRelativeEsmSpecifiers } from "./esm-import-specifiers.js";
 
 type ExportTarget = {
   default: string;
@@ -83,17 +84,14 @@ describe("workspace runtime export surface", () => {
 
     for (const file of files) {
       const text = readFileSync(file, "utf8");
-      const matches = text.matchAll(
-        /\bimport\s+["'](\.[^"']+)["']|\bimport\s*\(\s*["'](\.[^"']+)["']\s*\)|\b(?:import|export)\b[\s\S]*?\bfrom\s+["'](\.[^"']+)["']/g,
-      );
-      for (const match of matches) {
-        const specifier = match[1] ?? match[2] ?? match[3];
+      const specifiers = extractRelativeEsmSpecifiers(text);
+      for (const specifier of specifiers) {
         if (!specifier) {
           continue;
         }
         if (!specifier.endsWith(".js") && !specifier.endsWith(".json")) {
           invalidSpecifiers.push({
-            file: file.replace(`${repoRoot}/`, ""),
+            file: relative(repoRoot, file),
             specifier,
           });
         }
