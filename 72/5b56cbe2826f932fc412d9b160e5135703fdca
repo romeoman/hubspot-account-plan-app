@@ -1,0 +1,23 @@
+apps/api/vercel.json
+  4b468bed8e685d2f 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "725b56cbe2826f932fc412d9b160e5135703fdca",
+  "prompts": {
+    "4b468bed8e685d2f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "db4f69bb-a675-4caa-ae83-bc9a452345ba",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Romeo Man",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}
