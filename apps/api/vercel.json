@@ -3,6 +3,6 @@
   "framework": null,
   "installCommand": "cd ../.. && corepack enable && pnpm install --frozen-lockfile",
   "buildCommand": "cd ../.. && pnpm exec tsc -b packages/config packages/db packages/validators apps/api",
-  "builds": [{ "src": "dist/vercel-handler.js", "use": "@vercel/node" }],
-  "routes": [{ "src": "/(.*)", "dest": "/dist/vercel-handler.js" }]
+  "outputDirectory": "public",
+  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }]
 }
