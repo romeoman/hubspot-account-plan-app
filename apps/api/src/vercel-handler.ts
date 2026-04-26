@@ -14,7 +14,7 @@
  * See `apps/api/vercel.json` for the matching deploy config.
  */
 import { handle } from "@hono/node-server/vercel";
-import app from "./index.js";
+import app from "./app.js";
 
 export const config = { runtime: "nodejs" } as const;
 
