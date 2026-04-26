@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createDatabase, llmConfig, providerConfig, tenants } from "@hap/db";
+import { settingsResponseSchema } from "@hap/validators";
 import { and, eq, like } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -135,6 +136,42 @@ describe("GET /api/settings", () => {
         minConfidence: 0.5,
       },
     });
+  });
+
+  // Issue #17 regression guard: simulates the live failure surface where a
+  // tenant's provider_config table still carries a legacy `news` row from
+  // before Issue B Wave 1 dropped the slot. The GET response must (a) omit
+  // the `news` key entirely, and (b) parse cleanly against the strict
+  // frontend schema in `@hap/validators`. If either invariant ever
+  // regresses, the deployed settings extension will render
+  // `settings-validation-failed: unrecognized_keys ["news"]`.
+  it("omits legacy 'news' provider rows from the GET /api/settings response", async () => {
+    const tenant = await seedTenant("Legacy News Tenant");
+    const app = await loadApp();
+
+    await db.insert(providerConfig).values({
+      tenantId: tenant.id,
+      providerName: "news",
+      enabled: true,
+      apiKeyEncrypted: null,
+      thresholds: {},
+      settings: {},
+    });
+
+    const res = await app.request("/api/settings", {
+      method: "GET",
+      headers: {
+        Authorization: "Bearer anything",
+        "x-test-portal-id": tenant.hubspotPortalId,
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect((body.signalProviders as Record<string, unknown>).news).toBeUndefined();
+
+    const parsed = settingsResponseSchema.safeParse(body);
+    expect(parsed.success).toBe(true);
   });
 });
 
