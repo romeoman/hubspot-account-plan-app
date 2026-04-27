@@ -240,9 +240,30 @@ function extractPrincipals(
  * Reconstruct the URL HubSpot signed. Hono's `c.req.url` already includes
  * protocol + host + path + query, which matches HubSpot's reference
  * implementation (`${protocol}://${hostname}${url}`).
+ *
+ * On Vercel TLS terminates at the edge and the function's underlying socket
+ * is plain TCP, so `@hono/node-server/vercel` reconstructs `c.req.url` with
+ * scheme `http://`. HubSpot's `hubspot.fetch` proxy signs the public HTTPS
+ * URL, which would otherwise produce an HMAC mismatch (issue #24). When the
+ * platform sets `x-forwarded-proto`, honor it as the canonical scheme so the
+ * payload matches what HubSpot signed. Only `http`/`https` are accepted; any
+ * other value is ignored (defensive — a forged header cannot redirect us to
+ * an unknown scheme).
  */
-function requestUrl(rawUrl: string): string {
-  return rawUrl;
+function requestUrl(rawUrl: string, forwardedProto: string | null): string {
+  if (!forwardedProto) return rawUrl;
+  // `x-forwarded-proto` may be a comma-separated list (proxy chain). Take the
+  // first entry, which is the original client-facing scheme.
+  const proto = forwardedProto.split(",")[0]?.trim().toLowerCase();
+  if (proto !== "http" && proto !== "https") return rawUrl;
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol === `${proto}:`) return rawUrl;
+    parsed.protocol = `${proto}:`;
+    return parsed.toString();
+  } catch {
+    return rawUrl;
+  }
 }
 
 /**
@@ -302,7 +323,7 @@ export function hubspotSignatureMiddleware(): MiddlewareHandler<{
     }
 
     const method = c.req.method.toUpperCase();
-    const url = requestUrl(c.req.url);
+    const url = requestUrl(c.req.url, c.req.header("x-forwarded-proto") ?? null);
 
     // Read the raw body text exactly once. For GET/DELETE, this is an empty
     // string. For JSON POST/PUT/PATCH, Hono's `c.req.text()` returns the raw

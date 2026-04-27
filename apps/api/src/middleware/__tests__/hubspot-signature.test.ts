@@ -176,6 +176,106 @@ describe("hubspotSignatureMiddleware — valid signatures", () => {
   });
 });
 
+describe("hubspotSignatureMiddleware — x-forwarded-proto canonicalization", () => {
+  // Issue #24: on Vercel TLS terminates at the edge, so the function's
+  // socket is plain TCP and @hono/node-server/vercel reconstructs c.req.url
+  // with scheme "http://". HubSpot signs the public "https://" URL via
+  // hubspot.fetch, so the HMAC payload diverges and every signed request
+  // fails with "signature mismatch" -> 401. The middleware must honor
+  // `x-forwarded-proto` (which Vercel always sets to "https") when
+  // canonicalizing the URL it hashes.
+  it("accepts a request signed against https when x-forwarded-proto: https is set and req.url is http", async () => {
+    const portal = portalId();
+    await db.insert(tenants).values({ hubspotPortalId: portal, name: "XfpHttps" }).returning();
+
+    const secret = process.env.HUBSPOT_CLIENT_SECRET ?? "";
+    const path = `/probe?portalId=${encodeURIComponent(portal)}&userId=u-xfp`;
+    // HubSpot signs the public HTTPS URL.
+    const signedUrl = `https://localhost${path}`;
+    const timestamp = Date.now();
+    const signature = signV3({
+      clientSecret: secret,
+      method: "GET",
+      uri: signedUrl,
+      body: "",
+      timestamp,
+    });
+
+    // Hono's app.request() defaults to http://localhost for relative URLs,
+    // matching the Vercel behavior where the function sees scheme=http.
+    const app = buildApp();
+    const res = await app.request(path, {
+      method: "GET",
+      headers: {
+        "X-HubSpot-Signature-v3": signature,
+        "X-HubSpot-Request-Timestamp": String(timestamp),
+        "x-forwarded-proto": "https",
+      },
+    });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { portalId: string; userId: string };
+    expect(json.portalId).toBe(portal);
+    expect(json.userId).toBe("u-xfp");
+  });
+
+  it("ignores a missing x-forwarded-proto and verifies against the request scheme as before", async () => {
+    // Regression guard: the existing GET test (above) already exercises this
+    // path implicitly. Re-asserting here keeps the contract explicit so a
+    // future refactor of canonicalization cannot silently change the no-XFP
+    // behavior.
+    const portal = portalId();
+    await db.insert(tenants).values({ hubspotPortalId: portal, name: "NoXfp" }).returning();
+    const secret = process.env.HUBSPOT_CLIENT_SECRET ?? "";
+    const path = `/probe?portalId=${encodeURIComponent(portal)}&userId=u-noxfp`;
+    const fullUrl = `http://localhost${path}`;
+    const timestamp = Date.now();
+    const signature = signV3({
+      clientSecret: secret,
+      method: "GET",
+      uri: fullUrl,
+      body: "",
+      timestamp,
+    });
+
+    const app = buildApp();
+    const res = await app.request(path, {
+      method: "GET",
+      headers: {
+        "X-HubSpot-Signature-v3": signature,
+        "X-HubSpot-Request-Timestamp": String(timestamp),
+      },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("rejects an invalid x-forwarded-proto value (not http/https) with 401", async () => {
+    const portal = portalId();
+    await db.insert(tenants).values({ hubspotPortalId: portal, name: "XfpBad" }).returning();
+    const secret = process.env.HUBSPOT_CLIENT_SECRET ?? "";
+    const path = `/probe?portalId=${encodeURIComponent(portal)}&userId=u-bad`;
+    const signedUrl = `https://localhost${path}`;
+    const timestamp = Date.now();
+    const signature = signV3({
+      clientSecret: secret,
+      method: "GET",
+      uri: signedUrl,
+      body: "",
+      timestamp,
+    });
+
+    const app = buildApp();
+    const res = await app.request(path, {
+      method: "GET",
+      headers: {
+        "X-HubSpot-Signature-v3": signature,
+        "X-HubSpot-Request-Timestamp": String(timestamp),
+        "x-forwarded-proto": "javascript",
+      },
+    });
+    expect(res.status).toBe(401);
+  });
+});
+
 describe("hubspotSignatureMiddleware — rejection paths", () => {
   it("rejects a missing signature header with 401", async () => {
     const app = buildApp();
