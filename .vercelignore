@@ -1,0 +1,36 @@
+# Vercel CLI ignore rules
+#
+# `vercel deploy` from this repo's root or from `apps/api/` (the configured
+# rootDirectory) does NOT reliably honor every entry in .gitignore — most
+# notably, the anchored `/.worktrees/` rule and per-package `dist/` rules
+# can leak into uploads when the CLI is invoked from a non-root cwd. That
+# leak shipped a stale, pre-PR-#21 `packages/config/dist/index.js` (with
+# extensionless ESM specifiers) in deploy `irc4g8y8q`, crashing cold-start
+# with `ERR_MODULE_NOT_FOUND` for `./domain-types`.
+#
+# This file makes the intent explicit and CLI-honored.
+
+# Local git worktrees (each contains its own checkout + built dist/)
+.worktrees/
+
+# Build output across all workspace packages and apps
+**/dist/
+**/build/
+**/.next/
+**/out/
+**/*.tsbuildinfo
+
+# Vercel CLI link directory (per PR #25 — also covered by apps/api/.gitignore)
+.vercel/
+
+# macOS Finder duplicate artifacts (e.g. `domain-types 2.js`,
+# `domain-types.d 2.ts`) that occasionally appear after copy/sync events
+# and got uploaded alongside real dist files in the failing deploy.
+**/* 2
+**/* 2.*
+
+# Local env files (defense in depth — should never be uploaded)
+.env
+.env.*
+!.env.example
+!.env.test.example
