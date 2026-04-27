@@ -171,6 +171,53 @@ describe("POST /webhooks/hubspot/lifecycle — auth", () => {
     expect(row?.isActive).toBe(true);
     expect(row?.deactivatedAt).toBeNull();
   });
+
+  it("accepts a webhook signed against https when x-forwarded-proto: https is set on a http-scheme request (issue #24)", async () => {
+    // On Vercel TLS terminates at the edge so the function's req.url is
+    // http://..., but HubSpot signs the public https URL. The lifecycle
+    // route must canonicalize via x-forwarded-proto for the same reason
+    // the middleware does.
+    const tenant = await seedTenant();
+    const app = buildApp();
+    const httpUrl = "http://localhost/webhooks/hubspot/lifecycle";
+    const httpsUrl = "https://localhost/webhooks/hubspot/lifecycle";
+    const events = [
+      {
+        eventId: 1,
+        subscriptionId: 123,
+        portalId: Number.isNaN(Number(tenant.hubspotPortalId))
+          ? tenant.hubspotPortalId
+          : Number(tenant.hubspotPortalId),
+        appId: 12345,
+        occurredAt: Date.now(),
+        subscriptionType: "APP_LIFECYCLE_EVENT",
+        attemptNumber: 0,
+        eventTypeId: LIFECYCLE_EVENT_TYPE_UNINSTALL,
+        sourceId: "source-1",
+      },
+    ];
+    const body = JSON.stringify(events);
+    const timestamp = Date.now();
+    const signature = signV3({
+      clientSecret: TEST_CLIENT_SECRET,
+      method: "POST",
+      url: httpsUrl,
+      body,
+      timestamp,
+    });
+
+    const res = await app.request(httpUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-hubspot-signature-v3": signature,
+        "x-hubspot-request-timestamp": String(timestamp),
+        "x-forwarded-proto": "https",
+      },
+      body,
+    });
+    expect(res.status).toBe(200);
+  });
 });
 
 describe("POST /webhooks/hubspot/lifecycle — app_uninstall (4-1916193)", () => {

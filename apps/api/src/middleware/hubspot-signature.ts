@@ -250,7 +250,7 @@ function extractPrincipals(
  * other value is ignored (defensive — a forged header cannot redirect us to
  * an unknown scheme).
  */
-function requestUrl(rawUrl: string, forwardedProto: string | null): string {
+export function canonicalizeRequestUrl(rawUrl: string, forwardedProto: string | null): string {
   if (!forwardedProto) return rawUrl;
   // `x-forwarded-proto` may be a comma-separated list (proxy chain). Take the
   // first entry, which is the original client-facing scheme.
@@ -323,7 +323,7 @@ export function hubspotSignatureMiddleware(): MiddlewareHandler<{
     }
 
     const method = c.req.method.toUpperCase();
-    const url = requestUrl(c.req.url, c.req.header("x-forwarded-proto") ?? null);
+    const url = canonicalizeRequestUrl(c.req.url, c.req.header("x-forwarded-proto") ?? null);
 
     // Read the raw body text exactly once. For GET/DELETE, this is an empty
     // string. For JSON POST/PUT/PATCH, Hono's `c.req.text()` returns the raw

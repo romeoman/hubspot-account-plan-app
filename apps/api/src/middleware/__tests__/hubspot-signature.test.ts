@@ -274,6 +274,33 @@ describe("hubspotSignatureMiddleware — x-forwarded-proto canonicalization", ()
     });
     expect(res.status).toBe(401);
   });
+
+  it("uses the first x-forwarded-proto entry when a proxy chain is present", async () => {
+    const portal = portalId();
+    await db.insert(tenants).values({ hubspotPortalId: portal, name: "XfpChain" }).returning();
+    const secret = process.env.HUBSPOT_CLIENT_SECRET ?? "";
+    const path = `/probe?portalId=${encodeURIComponent(portal)}&userId=u-chain`;
+    const signedUrl = `https://localhost${path}`;
+    const timestamp = Date.now();
+    const signature = signV3({
+      clientSecret: secret,
+      method: "GET",
+      uri: signedUrl,
+      body: "",
+      timestamp,
+    });
+
+    const app = buildApp();
+    const res = await app.request(path, {
+      method: "GET",
+      headers: {
+        "X-HubSpot-Signature-v3": signature,
+        "X-HubSpot-Request-Timestamp": String(timestamp),
+        "x-forwarded-proto": "https, http",
+      },
+    });
+    expect(res.status).toBe(200);
+  });
 });
 
 describe("hubspotSignatureMiddleware — rejection paths", () => {

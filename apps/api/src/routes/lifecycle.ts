@@ -32,7 +32,10 @@ import {
   applyHubSpotLifecycleEvent,
   type HubSpotLifecycleEventType,
 } from "../lib/tenant-lifecycle.js";
-import { verifyHubSpotSignatureV3 } from "../middleware/hubspot-signature.js";
+import {
+  canonicalizeRequestUrl,
+  verifyHubSpotSignatureV3,
+} from "../middleware/hubspot-signature.js";
 
 /**
  * HubSpot's documented event-type IDs for APP_LIFECYCLE_EVENT webhooks.
@@ -101,7 +104,10 @@ export function lifecycleWebhookRoutes(deps: LifecycleWebhookDeps): Hono {
 
     const verdict = verifyHubSpotSignatureV3({
       method: "POST",
-      url: c.req.url,
+      // Canonicalize via x-forwarded-proto so TLS-terminating proxies (Vercel
+      // edge -> Node function plain-TCP socket) match HubSpot's HTTPS-signed
+      // URL. Same fix as the middleware (issue #24).
+      url: canonicalizeRequestUrl(c.req.url, c.req.header("x-forwarded-proto") ?? null),
       body,
       timestamp,
       signature,
