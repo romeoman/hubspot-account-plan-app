@@ -1,0 +1,23 @@
+.vercelignore
+  178f5a3dbb0eb618 1-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "70155733a3e210db8a28c675cc44233f3e65914e",
+  "prompts": {
+    "178f5a3dbb0eb618": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8902a945-dc30-4863-9f02-18b3bb1d27f1",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "romeoman",
+      "messages": [],
+      "total_additions": 36,
+      "total_deletions": 0,
+      "accepted_lines": 36,
+      "overriden_lines": 0
+    }
+  }
+}
