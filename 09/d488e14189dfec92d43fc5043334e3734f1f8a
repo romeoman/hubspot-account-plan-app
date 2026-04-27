@@ -1,0 +1,23 @@
+apps/api/.gitignore
+  e9bcfee5fc8b6609 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "09d488e14189dfec92d43fc5043334e3734f1f8a",
+  "prompts": {
+    "e9bcfee5fc8b6609": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019dc433-1eef-75f1-bcfd-e9136be753cb",
+        "model": "gpt-5.5"
+      },
+      "human_author": "romeoman",
+      "messages": [],
+      "total_additions": 324,
+      "total_deletions": 0,
+      "accepted_lines": 324,
+      "overriden_lines": 0
+    }
+  }
+}
